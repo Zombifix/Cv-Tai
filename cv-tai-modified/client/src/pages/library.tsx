@@ -223,8 +223,8 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
   };
 
   return (
-    <AccordionItem value={experience.id} className="bg-card border rounded-xl shadow-sm overflow-hidden"
-      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+    <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+    <AccordionItem value={experience.id} className="bg-card border rounded-xl shadow-sm overflow-hidden">
       <div className="flex items-center pr-4">
         <AccordionTrigger className="flex-1 hover:no-underline py-4 px-5 data-[state=open]:border-b data-[state=open]:border-border/50">
           <div className="flex flex-col items-start text-left gap-1">
@@ -296,6 +296,7 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
         </div>
       </AccordionContent>
     </AccordionItem>
+    </div>
   );
 }
 
