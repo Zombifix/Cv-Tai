@@ -213,28 +213,39 @@ function ExperienceCard({ experience, isExploring, onExplore, onEdit }: {
 function EnrichmentPanel({ experience, onClose }: { experience: Experience; onClose: () => void }) {
   const { data: bullets, isLoading } = useBullets(experience.id);
   const createBullet = useCreateBullet();
+  const updateBullet = useUpdateBullet();
   const deleteBullet = useDeleteBullet();
   const { toast } = useToast();
 
+  // States
   const [activeQuestion, setActiveQuestion] = useState<SuggestedQuestion | null>(null);
   const [answerDraft, setAnswerDraft] = useState("");
+  const [reformulating, setReformulating] = useState(false);
+  const [proposedBullet, setProposedBullet] = useState<string | null>(null);
+  const [proposedTip, setProposedTip] = useState<string | null>(null);
+  const [editingBulletId, setEditingBulletId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
   const [freeMode, setFreeMode] = useState(false);
   const [freeText, setFreeText] = useState("");
+  const [contextDraft, setContextDraft] = useState("");
   const [questions, setQuestions] = useState<SuggestedQuestion[]>([]);
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const answerRef = useRef<HTMLTextAreaElement>(null);
   const freeRef = useRef<HTMLTextAreaElement>(null);
+  const contextRef = useRef<HTMLTextAreaElement>(null);
 
-  const existingBullets = bullets || [];
+  const allBullets = bullets || [];
+  const contextBullet = allBullets.find(b => b.tags?.includes("context"));
+  const enrichmentBullets = allBullets.filter(b => !b.tags?.includes("context"));
+  const hasContext = !!contextBullet;
 
-  // Fetch adaptive questions from API (re-fetches when bullets change)
+  // Fetch questions (only when context exists)
   const fetchQuestions = async () => {
+    if (!hasContext) return;
     setQuestionsLoading(true);
     try {
       const res = await fetch(`/api/experiences/${experience.id}/suggest-questions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
       });
       if (res.ok) {
         const data = await res.json();
@@ -242,16 +253,13 @@ function EnrichmentPanel({ experience, onClose }: { experience: Experience; onCl
       } else {
         setQuestions(FALLBACK_QUESTIONS);
       }
-    } catch {
-      setQuestions(FALLBACK_QUESTIONS);
-    } finally {
-      setQuestionsLoading(false);
-    }
+    } catch { setQuestions(FALLBACK_QUESTIONS); }
+    finally { setQuestionsLoading(false); }
   };
 
   useEffect(() => {
-    fetchQuestions();
-  }, [experience.id, existingBullets.length]);
+    if (hasContext) fetchQuestions();
+  }, [experience.id, hasContext, enrichmentBullets.length]);
 
   useEffect(() => {
     if (activeQuestion && answerRef.current) answerRef.current.focus();
@@ -261,30 +269,77 @@ function EnrichmentPanel({ experience, onClose }: { experience: Experience; onCl
     if (freeMode && freeRef.current) freeRef.current.focus();
   }, [freeMode]);
 
-  const handleSubmitAnswer = async () => {
-    if (!answerDraft.trim() || !activeQuestion) return;
+  useEffect(() => {
+    if (!hasContext && contextRef.current) contextRef.current.focus();
+  }, [hasContext]);
+
+  // Save context
+  const handleSaveContext = async () => {
+    if (!contextDraft.trim()) return;
     try {
-      await createBullet.mutateAsync({
-        experienceId: experience.id,
-        text: answerDraft.trim(),
-        tags: [activeQuestion.tag],
-      });
-      toast({ title: "Réponse enregistrée" });
-      setActiveQuestion(null);
-      setAnswerDraft("");
+      if (contextBullet) {
+        await updateBullet.mutateAsync({ id: contextBullet.id, experienceId: experience.id, text: contextDraft.trim() });
+      } else {
+        await createBullet.mutateAsync({ experienceId: experience.id, text: contextDraft.trim(), tags: ["context"] });
+      }
+      setContextDraft("");
+      toast({ title: "Contexte enregistré" });
     } catch (err) {
       toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
     }
   };
 
-  const handleSubmitFree = async () => {
-    if (!freeText.trim()) return;
+  // Submit answer → reformulate via AI
+  const handleSubmitAnswer = async () => {
+    if (!answerDraft.trim() || !activeQuestion) return;
+    setReformulating(true);
+    setProposedBullet(null);
+    setProposedTip(null);
+
+    try {
+      const res = await fetch(`/api/experiences/${experience.id}/reformulate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: activeQuestion.question,
+          answer: answerDraft.trim(),
+          context: contextBullet?.text || "",
+        }),
+        credentials: "include",
+      });
+      const data = await res.json();
+      setProposedBullet(data.bullet || answerDraft.trim());
+      setProposedTip(data.tip || null);
+    } catch {
+      setProposedBullet(answerDraft.trim());
+    } finally {
+      setReformulating(false);
+    }
+  };
+
+  // Accept proposed bullet
+  const handleAcceptBullet = async (text: string) => {
     try {
       await createBullet.mutateAsync({
         experienceId: experience.id,
-        text: freeText.trim(),
-        tags: ["free-add"],
+        text: text.trim(),
+        tags: [activeQuestion?.tag || "enrichment"],
       });
+      toast({ title: "Bullet CV enregistré" });
+      setActiveQuestion(null);
+      setAnswerDraft("");
+      setProposedBullet(null);
+      setProposedTip(null);
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
+    }
+  };
+
+  // Free add
+  const handleSubmitFree = async () => {
+    if (!freeText.trim()) return;
+    try {
+      await createBullet.mutateAsync({ experienceId: experience.id, text: freeText.trim(), tags: ["libre"] });
       toast({ title: "Élément ajouté" });
       setFreeText("");
       setFreeMode(false);
@@ -293,6 +348,19 @@ function EnrichmentPanel({ experience, onClose }: { experience: Experience; onCl
     }
   };
 
+  // Edit bullet
+  const handleSaveEdit = async () => {
+    if (!editingBulletId || !editText.trim()) return;
+    try {
+      await updateBullet.mutateAsync({ id: editingBulletId, experienceId: experience.id, text: editText.trim() });
+      setEditingBulletId(null);
+      setEditText("");
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
+    }
+  };
+
+  // Delete bullet
   const handleDeleteBullet = async (bulletId: string) => {
     try {
       await deleteBullet.mutateAsync({ id: bulletId, experienceId: experience.id });
@@ -317,151 +385,223 @@ function EnrichmentPanel({ experience, onClose }: { experience: Experience; onCl
           )}
         </div>
         <SheetTitle className="text-xl font-bold">{experience.title}</SheetTitle>
-        {experience.description && (
-          <p className="text-sm text-foreground/70 mt-1 whitespace-pre-line">{experience.description}</p>
-        )}
       </SheetHeader>
 
-      {/* Corps scrollable — bullets existants */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-3">
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-4">
         {isLoading && (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
             <RefreshCw className="w-5 h-5 animate-spin" />
           </div>
         )}
 
-        {!isLoading && existingBullets.length === 0 && (
-          <div className="text-center py-10">
-            <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
-              <Lightbulb className="w-6 h-6 text-muted-foreground" />
+        {/* ── CONTEXT BLOCK ── */}
+        {!isLoading && !hasContext && (
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-5 space-y-3 animate-in fade-in-50">
+            <div className="flex items-center gap-2">
+              <Lightbulb className="w-4 h-4 text-primary" />
+              <p className="text-sm font-medium">D'abord, décris ton rôle dans tes mots</p>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Aucun enrichissement pour l'instant.<br />
-              Choisissez une question ci-dessous ou ajoutez librement.
+            <p className="text-xs text-muted-foreground">
+              Pas du langage CV — juste ce que tu faisais concrètement, avec qui, dans quel contexte. C'est ce qui permet de te poser les bonnes questions ensuite.
             </p>
+            <Textarea
+              ref={contextRef}
+              value={contextDraft}
+              onChange={e => setContextDraft(e.target.value)}
+              placeholder='Ex: "J\'étais le seul designer produit sur le loyalty B2B. Je bossais avec 2 PM et une équipe dev de 8. Le produit partait de zéro, on construisait tout depuis le début."'
+              className="min-h-[80px] text-sm resize-none"
+            />
+            <Button size="sm" onClick={handleSaveContext} disabled={!contextDraft.trim() || createBullet.isPending}>
+              {createBullet.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin mr-2" /> : null}
+              Enregistrer le contexte
+            </Button>
           </div>
         )}
 
-        {existingBullets.map((bullet) => (
+        {/* Context display (editable) */}
+        {hasContext && contextBullet && (
+          <div className="bg-muted/30 rounded-lg p-4 border border-border/30">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Contexte</p>
+              <button
+                onClick={() => { setEditingBulletId(contextBullet.id); setEditText(contextBullet.text); }}
+                className="text-xs text-muted-foreground hover:text-primary transition-colors"
+              >
+                <Pencil className="w-3 h-3" />
+              </button>
+            </div>
+            {editingBulletId === contextBullet.id ? (
+              <div className="space-y-2">
+                <Textarea value={editText} onChange={e => setEditText(e.target.value)} className="text-sm resize-none min-h-[60px]" />
+                <div className="flex gap-2">
+                  <Button size="sm" variant="default" onClick={handleSaveEdit} disabled={!editText.trim()} className="h-7 text-xs">Enregistrer</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditingBulletId(null)} className="h-7 text-xs">Annuler</Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-foreground/80 leading-relaxed">{contextBullet.text}</p>
+            )}
+          </div>
+        )}
+
+        {/* ── ENRICHMENT BULLETS ── */}
+        {enrichmentBullets.map((bullet) => (
           <div key={bullet.id} className="group relative bg-card rounded-lg p-4 border border-border/50 hover:border-border transition-colors">
             {bullet.tags && bullet.tags.length > 0 && (
               <div className="flex gap-1.5 mb-2">
                 {bullet.tags.map((tag, i) => (
-                  <Badge key={i} variant="secondary" className="text-[10px] px-2 py-0">
-                    {tag}
-                  </Badge>
+                  <Badge key={i} variant="secondary" className="text-[10px] px-2 py-0">{tag}</Badge>
                 ))}
               </div>
             )}
-            <p className="text-sm text-foreground/90 leading-relaxed pr-8">{bullet.text}</p>
-            <button
-              onClick={() => handleDeleteBullet(bullet.id)}
-              className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* Zone d'interaction bas — toujours visible */}
-      <div className="border-t border-border/50 bg-muted/20 p-5 space-y-3 shrink-0">
-
-        {/* Réponse à une question */}
-        {activeQuestion && !freeMode && (
-          <div className="space-y-2.5 animate-in fade-in-50 slide-in-from-bottom-2 duration-200">
-            <p className="text-sm font-medium text-foreground leading-snug">{activeQuestion.question}</p>
-            <div className="flex gap-2">
-              <Textarea
-                ref={answerRef}
-                value={answerDraft}
-                onChange={e => setAnswerDraft(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmitAnswer(); } }}
-                placeholder="Votre réponse…"
-                className="min-h-[72px] text-sm resize-none"
-              />
-              <div className="flex flex-col gap-1.5 justify-end">
-                <Button size="sm" onClick={handleSubmitAnswer} disabled={!answerDraft.trim() || createBullet.isPending} className="h-9 px-3">
-                  {createBullet.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "OK"}
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => { setActiveQuestion(null); setAnswerDraft(""); }} className="h-7 text-xs text-muted-foreground">
-                  Annuler
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Ajout libre */}
-        {freeMode && (
-          <div className="space-y-2.5 animate-in fade-in-50 slide-in-from-bottom-2 duration-200">
-            <p className="text-sm font-medium text-foreground flex items-center gap-2">
-              <PenLine className="w-4 h-4 text-primary" /> Ajout libre
-            </p>
-            <div className="flex gap-2">
-              <Textarea
-                ref={freeRef}
-                value={freeText}
-                onChange={e => setFreeText(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmitFree(); } }}
-                placeholder="Certification, compétence, contexte, réalisation… tout ce qui manque."
-                className="min-h-[72px] text-sm resize-none"
-              />
-              <div className="flex flex-col gap-1.5 justify-end">
-                <Button size="sm" onClick={handleSubmitFree} disabled={!freeText.trim() || createBullet.isPending} className="h-9 px-3">
-                  {createBullet.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Ajouter"}
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => { setFreeMode(false); setFreeText(""); }} className="h-7 text-xs text-muted-foreground">
-                  Annuler
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Questions suggérées */}
-        {!activeQuestion && !freeMode && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <MessageSquare className="w-3.5 h-3.5" />
-                {questionsLoading ? "Génération des questions…" : questions.length > 0 ? "Questions suggérées" : "Ajoutez librement un élément"}
-              </p>
-              {!questionsLoading && (
-                <button onClick={fetchQuestions} className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1" title="Nouvelles questions">
-                  <RefreshCw className="w-3 h-3" /> Rafraîchir
-                </button>
-              )}
-            </div>
-            {questionsLoading ? (
-              <div className="flex items-center justify-center py-4">
-                <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" />
+            {editingBulletId === bullet.id ? (
+              <div className="space-y-2">
+                <Textarea value={editText} onChange={e => setEditText(e.target.value)} className="text-sm resize-none min-h-[60px]" />
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={handleSaveEdit} disabled={!editText.trim()} className="h-7 text-xs">Enregistrer</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditingBulletId(null)} className="h-7 text-xs">Annuler</Button>
+                </div>
               </div>
             ) : (
-              questions.map((q) => (
-              <button
-                key={q.id}
-                onClick={() => { setActiveQuestion(q); setAnswerDraft(""); }}
-                className="w-full text-left text-sm p-3 rounded-lg border border-border bg-background hover:border-primary/50 hover:bg-primary/5 transition-all leading-snug"
-              >
-                {q.question}
-              </button>
-            ))
+              <p className="text-sm text-foreground/90 leading-relaxed pr-16">{bullet.text}</p>
+            )}
+            {editingBulletId !== bullet.id && (
+              <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                <button onClick={() => { setEditingBulletId(bullet.id); setEditText(bullet.text); }}
+                  className="text-muted-foreground hover:text-primary"><Pencil className="w-3.5 h-3.5" /></button>
+                <button onClick={() => handleDeleteBullet(bullet.id)}
+                  className="text-muted-foreground hover:text-destructive"><X className="w-3.5 h-3.5" /></button>
+              </div>
             )}
           </div>
-        )}
+        ))}
 
-        {/* Bouton ajout libre — toujours visible */}
-        {!freeMode && (
-          <button
-            onClick={() => { setFreeMode(true); setActiveQuestion(null); setAnswerDraft(""); }}
-            className="w-full text-sm p-2.5 rounded-lg border-2 border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-all flex items-center justify-center gap-2"
-          >
-            <PenLine className="w-3.5 h-3.5" />
-            Ajouter librement un élément
-          </button>
+        {/* Empty state after context is set */}
+        {hasContext && enrichmentBullets.length === 0 && !isLoading && (
+          <div className="text-center py-6">
+            <p className="text-sm text-muted-foreground">
+              Contexte posé. Réponds aux questions ci-dessous pour construire tes bullets CV.
+            </p>
+          </div>
         )}
       </div>
+
+      {/* ── BOTTOM INTERACTION ZONE ── */}
+      {hasContext && (
+        <div className="border-t border-border/50 bg-muted/20 p-5 space-y-3 shrink-0">
+
+          {/* Proposed bullet review */}
+          {proposedBullet && activeQuestion && (
+            <div className="space-y-2.5 animate-in fade-in-50 slide-in-from-bottom-2 duration-200">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Proposition de bullet CV</p>
+              <div className="bg-card border border-primary/30 rounded-lg p-3">
+                <Textarea
+                  value={proposedBullet}
+                  onChange={e => setProposedBullet(e.target.value)}
+                  className="text-sm resize-none min-h-[40px] border-0 p-0 focus-visible:ring-0 bg-transparent"
+                />
+              </div>
+              {proposedTip && (
+                <p className="text-xs text-amber-600 flex items-center gap-1.5">
+                  <Lightbulb className="w-3 h-3 shrink-0" /> {proposedTip}
+                </p>
+              )}
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => handleAcceptBullet(proposedBullet)} disabled={createBullet.isPending} className="h-8 text-xs">
+                  {createBullet.isPending ? <RefreshCw className="w-3 h-3 animate-spin mr-1" /> : <Check className="w-3 h-3 mr-1" />}
+                  Valider
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => { setProposedBullet(null); setProposedTip(null); }} className="h-8 text-xs text-muted-foreground">
+                  Annuler
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Answer input */}
+          {activeQuestion && !proposedBullet && !freeMode && (
+            <div className="space-y-2.5 animate-in fade-in-50 slide-in-from-bottom-2 duration-200">
+              <p className="text-sm font-medium text-foreground leading-snug">{activeQuestion.question}</p>
+              <div className="flex gap-2">
+                <Textarea
+                  ref={answerRef}
+                  value={answerDraft}
+                  onChange={e => setAnswerDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmitAnswer(); } }}
+                  placeholder="Réponds simplement, l'IA reformulera pour ton CV…"
+                  className="min-h-[60px] text-sm resize-none"
+                />
+                <div className="flex flex-col gap-1.5 justify-end">
+                  <Button size="sm" onClick={handleSubmitAnswer} disabled={!answerDraft.trim() || reformulating} className="h-9 px-3">
+                    {reformulating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "OK"}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => { setActiveQuestion(null); setAnswerDraft(""); }} className="h-7 text-xs text-muted-foreground">
+                    Annuler
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Free add */}
+          {freeMode && (
+            <div className="space-y-2.5 animate-in fade-in-50 slide-in-from-bottom-2 duration-200">
+              <p className="text-sm font-medium text-foreground flex items-center gap-2">
+                <PenLine className="w-4 h-4 text-primary" /> Ajout libre
+              </p>
+              <div className="flex gap-2">
+                <Textarea ref={freeRef} value={freeText} onChange={e => setFreeText(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmitFree(); } }}
+                  placeholder="Certification, compétence, réalisation… tout ce qui manque." className="min-h-[60px] text-sm resize-none" />
+                <div className="flex flex-col gap-1.5 justify-end">
+                  <Button size="sm" onClick={handleSubmitFree} disabled={!freeText.trim() || createBullet.isPending} className="h-9 px-3">
+                    {createBullet.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Ajouter"}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => { setFreeMode(false); setFreeText(""); }} className="h-7 text-xs text-muted-foreground">Annuler</Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Questions */}
+          {!activeQuestion && !freeMode && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  {questionsLoading ? "Génération…" : questions.length > 0 ? "Questions suggérées" : "Ajoutez librement"}
+                </p>
+                {!questionsLoading && (
+                  <button onClick={fetchQuestions} className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
+                    <RefreshCw className="w-3 h-3" /> Rafraîchir
+                  </button>
+                )}
+              </div>
+              {questionsLoading ? (
+                <div className="flex items-center justify-center py-3">
+                  <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                questions.map((q) => (
+                  <button key={q.id} onClick={() => { setActiveQuestion(q); setAnswerDraft(""); setProposedBullet(null); }}
+                    className="w-full text-left text-sm p-3 rounded-lg border border-border bg-background hover:border-primary/50 hover:bg-primary/5 transition-all leading-snug">
+                    {q.question}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* Free add button */}
+          {!freeMode && !proposedBullet && (
+            <button onClick={() => { setFreeMode(true); setActiveQuestion(null); setAnswerDraft(""); setProposedBullet(null); }}
+              className="w-full text-sm p-2.5 rounded-lg border-2 border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-all flex items-center justify-center gap-2">
+              <PenLine className="w-3.5 h-3.5" /> Ajouter librement un élément
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
