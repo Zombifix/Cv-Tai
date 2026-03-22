@@ -177,7 +177,8 @@ export interface ScoredExperience {
 export async function scoreExperiences(
   parsedJob: ParsedJob,
   experiences: Experience[],
-  openai: OpenAI
+  openai: OpenAI,
+  bulletsByExpMap?: Map<string, Bullet[]>
 ): Promise<ScoredExperience[]> {
   log("scoreExperiences", `Scoring ${experiences.length} experiences`);
 
@@ -185,8 +186,11 @@ export async function scoreExperiences(
 
   const expSummaries = experiences
     .map(
-      (e, i) =>
-        `[${i}] "${e.title}" at "${e.company}" (${e.startDate || "?"} → ${e.endDate || "Present"})${e.description ? ` — ${e.description.slice(0, 150)}` : ""}`
+      (e, i) => {
+        const bulletTags = bulletsByExpMap?.get(e.id)?.flatMap(b => b.tags || []).filter(Boolean) || [];
+        const tagsStr = bulletTags.length > 0 ? ` | Tags: ${[...new Set(bulletTags)].join(", ")}` : "";
+        return `[${i}] "${e.title}" at "${e.company}" (${e.startDate || "?"} → ${e.endDate || "Present"})${e.description ? ` — ${e.description.slice(0, 200)}` : ""}${tagsStr}`;
+      }
     )
     .join("\n");
 
@@ -291,8 +295,11 @@ export async function scoreBulletsInExperiences(
 
   const bulletSummaries = allBullets
     .map(
-      (b, i) =>
-        `[${i}] (${b.experience.title} @ ${b.experience.company}): ${b.bullet.text}`
+      (b, i) => {
+        const tags = (b.bullet.tags || []).filter(Boolean);
+        const tagsStr = tags.length > 0 ? ` [tags: ${tags.join(", ")}]` : "";
+        return `[${i}] (${b.experience.title} @ ${b.experience.company}): ${b.bullet.text}${tagsStr}`;
+      }
     )
     .join("\n");
 
@@ -301,7 +308,10 @@ export async function scoreBulletsInExperiences(
     messages: [
       {
         role: "system",
-        content: `You are a CV bullet point optimizer. Score each bullet for relevance to the target job. Prioritize bullets that demonstrate: direct skill matches, quantified achievements, relevant responsibilities, transferable competencies. Be strict about relevance.`,
+        content: `You are a CV bullet point optimizer. Score each bullet for relevance to the target job. 
+Prioritize bullets that demonstrate: direct skill matches, quantified achievements, relevant responsibilities, transferable competencies.
+Each bullet may have semantic tags — use these tags for precise keyword matching against the job requirements.
+Be strict about relevance.`,
       },
       {
         role: "user",
@@ -335,10 +345,15 @@ Return JSON with:
       reason: "Not scored",
     };
 
+    // Bonus for enriched bullets (those with semantic tags vs imported/empty)
+    const tags = (ab.bullet.tags || []).filter(Boolean);
+    const isEnriched = tags.length > 0 && !tags.every(t => t === "imported" || t === "libre");
+    const enrichmentBonus = isEnriched ? 5 : 0;
+
     return {
       bullet: ab.bullet,
       experience: ab.experience,
-      score: entry.score || 0,
+      score: Math.min(100, (entry.score || 0) + enrichmentBonus),
       matchedKeywords: entry.matchedKeywords || [],
       reason: entry.reason || "Not evaluated",
     };
@@ -492,6 +507,10 @@ export async function buildCompositionPlan(
   const selectedBulletTexts = sections
     .flatMap((s) => s.bullets.map((b) => b.bullet.text.toLowerCase()));
 
+  // Collect all tags from selected bullets for tag-based skill matching
+  const selectedBulletTags = sections
+    .flatMap((s) => s.bullets.flatMap((b) => (b.bullet.tags || []).filter(Boolean).map(t => t.toLowerCase())));
+
   const relevantSkills = userSkills
     .filter((skill) => {
       const skillLower = skill.name.toLowerCase();
@@ -504,7 +523,10 @@ export async function buildCompositionPlan(
       const isMentionedInBullets = selectedBulletTexts.some((bt) =>
         bt.includes(skillLower)
       );
-      return isJobRelevant || isMentionedInBullets;
+      const isMatchedByTags = selectedBulletTags.some((tag) =>
+        tag.includes(skillLower) || skillLower.includes(tag)
+      );
+      return isJobRelevant || isMentionedInBullets || isMatchedByTags;
     })
     .map((s) => s.name);
 
@@ -587,7 +609,8 @@ export async function generateTailoredCV(
   mode: "original" | "polished" | "adaptive",
   openai: OpenAI,
   outputLength: "compact" | "balanced" | "detailed" = "balanced",
-  customMaxChars?: number
+  customMaxChars?: number,
+  extras?: { profileName?: string; profileTitle?: string; profileSummary?: string; formations?: any[]; languages?: any[] }
 ): Promise<string> {
   log("generateTailoredCV", `Mode: ${mode}, Length: ${outputLength}, Sections: ${plan.sections.length}`);
 
@@ -623,13 +646,32 @@ export async function generateTailoredCV(
   const experienceSections = plan.sections
     .map(
       (section) => `
-### ${section.experience.title} | ${section.experience.company}
+### ${section.experience.title} | ${section.experience.company}${section.experience.contractType ? ` (${section.experience.contractType})` : ""}
 ${section.experience.startDate || ""} – ${section.experience.endDate || "Present"}
 
 ${section.bullets.map((sb) => `• ${sb.bullet.text}`).join("\n")}
 `
     )
     .join("\n");
+
+  // Profile header
+  const profileBlock = extras?.profileName
+    ? `CANDIDATE:
+Name: ${extras.profileName}
+Title: ${extras.profileTitle || ""}
+${extras.profileSummary ? `Bio: ${extras.profileSummary}` : ""}
+`
+    : "";
+
+  // Formations
+  const formationsBlock = extras?.formations?.length
+    ? `\nFORMATION:\n${extras.formations.map((f: any) => `- ${f.degree}, ${f.school}${f.year ? ` (${f.year})` : ""}`).join("\n")}\n`
+    : "";
+
+  // Languages
+  const languagesBlock = extras?.languages?.length
+    ? `\nLANGUAGES:\n${extras.languages.map((l: any) => `- ${l.name}${l.level ? `: ${l.level}` : ""}`).join("\n")}\n`
+    : "";
 
   const modeInstructions = 
     mode === "original" ? originalInstructions :
@@ -650,7 +692,7 @@ ${section.bullets.map((sb) => `• ${sb.bullet.text}`).join("\n")}
     ? `⚠️ LANGUAGE: This CV MUST be written ENTIRELY in French (FR). Every word — the summary, all section headings, all skill labels, all bullet text (if rewritten) — must be in French. Writing in English is FORBIDDEN.\n\n`
     : `LANGUAGE: Write the CV entirely in English.\n\n`;
 
-  const prompt = `${langHeader}Generate a professional CV for the target role: "${plan.targetTitle}"
+  const prompt = `${langHeader}${profileBlock}Generate a professional CV for the target role: "${plan.targetTitle}"
 
 ${modeInstructions}
 
@@ -662,12 +704,14 @@ ${experienceSections}
 
 SKILLS:
 ${plan.relevantSkills.join(" · ")}
-
+${formationsBlock}${languagesBlock}
 FORMAT RULES:
 - Output a clean, professional CV document.
-- Start with the candidate's target title and professional summary.
-- List each experience with title, company, and date range.
+- Start with the candidate's name (if provided), target title and professional summary.
+- List each experience with title, company, contract type (if available), and date range.
 - List bullet points under each experience.
+- Include Formation/Education section if provided.
+- Include Languages section if provided.
 - End with a Skills section containing ONLY the skills listed above (translate skill names to ${parsedJob.language === "FR" ? "French" : "English"} if needed).
 - NO introductions, labels, commentary, or JSON.
 - NO "Fallback:", "Output:", "Generated CV:" or similar labels.
