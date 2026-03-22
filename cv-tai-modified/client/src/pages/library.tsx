@@ -708,11 +708,25 @@ function CVImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
       return;
     }
     setStep("loading");
-    const formData = new FormData();
-    formData.append("file", file);
 
     try {
-      const res = await fetch("/api/import/cv", { method: "POST", body: formData, credentials: "include" });
+      // Read file as base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(",")[1]); // remove data:...;base64, prefix
+        };
+        reader.onerror = () => reject(new Error("Impossible de lire le fichier"));
+        reader.readAsDataURL(file);
+      });
+
+      const res = await fetch("/api/import/cv", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileBase64: base64 }),
+        credentials: "include",
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       if (!data.experiences?.length) {
