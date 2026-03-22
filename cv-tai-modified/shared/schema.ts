@@ -68,7 +68,7 @@ export const runs = pgTable("runs", {
 });
 
 export const insertExperienceSchema = createInsertSchema(experiences).omit({ id: true, createdAt: true });
-export const insertBulletSchema = createInsertSchema(bullets).omit({ id: true, createdAt: true, embedding: true });
+export const insertBulletSchema = createInsertSchema(bullets).omit({ id: true, createdAt: true });
 export const insertSkillSchema = createInsertSchema(skills).omit({ id: true, createdAt: true });
 export const insertJobPostSchema = createInsertSchema(jobPosts).omit({ id: true, createdAt: true });
 export const insertRunSchema = createInsertSchema(runs).omit({ id: true, createdAt: true });
