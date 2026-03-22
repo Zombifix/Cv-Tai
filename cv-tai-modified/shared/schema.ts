@@ -20,10 +20,20 @@ const vector = customType<{ data: number[]; driverData: string }>({
   },
 });
 
+export const profile = pgTable("profile", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().default(""),
+  title: text("title").notNull().default(""),
+  summary: text("summary"),
+  targetRole: text("target_role"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const experiences = pgTable("experiences", {
   id: uuid("id").primaryKey().defaultRandom(),
   title: text("title").notNull(),
   company: text("company").notNull(),
+  contractType: text("contract_type"),
   startDate: date("start_date"),
   endDate: date("end_date"),
   description: text("description"),
@@ -49,6 +59,21 @@ export const skills = pgTable("skills", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const formations = pgTable("formations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  school: text("school").notNull(),
+  degree: text("degree").notNull(),
+  year: text("year"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const languages = pgTable("languages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  level: text("level"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const jobPosts = pgTable("job_posts", {
   id: uuid("id").primaryKey().defaultRandom(),
   url: text("url"),
@@ -68,11 +93,17 @@ export const runs = pgTable("runs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const insertProfileSchema = createInsertSchema(profile).omit({ id: true, updatedAt: true });
 export const insertExperienceSchema = createInsertSchema(experiences).omit({ id: true, createdAt: true });
 export const insertBulletSchema = createInsertSchema(bullets).omit({ id: true, createdAt: true });
 export const insertSkillSchema = createInsertSchema(skills).omit({ id: true, createdAt: true });
+export const insertFormationSchema = createInsertSchema(formations).omit({ id: true, createdAt: true });
+export const insertLanguageSchema = createInsertSchema(languages).omit({ id: true, createdAt: true });
 export const insertJobPostSchema = createInsertSchema(jobPosts).omit({ id: true, createdAt: true });
 export const insertRunSchema = createInsertSchema(runs).omit({ id: true, createdAt: true });
+
+export type Profile = typeof profile.$inferSelect;
+export type InsertProfile = z.infer<typeof insertProfileSchema>;
 
 export type Experience = typeof experiences.$inferSelect;
 export type InsertExperience = z.infer<typeof insertExperienceSchema>;
@@ -82,6 +113,12 @@ export type InsertBullet = z.infer<typeof insertBulletSchema>;
 
 export type Skill = typeof skills.$inferSelect;
 export type InsertSkill = z.infer<typeof insertSkillSchema>;
+
+export type Formation = typeof formations.$inferSelect;
+export type InsertFormation = z.infer<typeof insertFormationSchema>;
+
+export type Language = typeof languages.$inferSelect;
+export type InsertLanguage = z.infer<typeof insertLanguageSchema>;
 
 export type JobPost = typeof jobPosts.$inferSelect;
 export type InsertJobPost = z.infer<typeof insertJobPostSchema>;
