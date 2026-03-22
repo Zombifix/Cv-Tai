@@ -69,8 +69,32 @@ export async function ensureTables() {
       );
     `);
     console.log("[DB] Tables verified/created successfully");
-    // Add category column if it doesn't exist
-    await client.query(`ALTER TABLE skills ADD COLUMN IF NOT EXISTS category TEXT`).catch(() => {});
+    // Add new columns/tables
+    await client.query(`
+      ALTER TABLE experiences ADD COLUMN IF NOT EXISTS contract_type TEXT;
+      ALTER TABLE skills ADD COLUMN IF NOT EXISTS category TEXT;
+      CREATE TABLE IF NOT EXISTS profile (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name TEXT NOT NULL DEFAULT '',
+        title TEXT NOT NULL DEFAULT '',
+        summary TEXT,
+        target_role TEXT,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS formations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        school TEXT NOT NULL,
+        degree TEXT NOT NULL,
+        year TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS languages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name TEXT NOT NULL,
+        level TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `).catch((e) => console.log("[DB] Some ALTER/CREATE already done:", e.message));
   } catch (err: any) {
     // If vector extension fails, create tables without the embedding column
     if (err.message?.includes("vector")) {
@@ -126,7 +150,13 @@ export async function ensureTables() {
         );
       `);
       console.log("[DB] Tables created without pgvector");
-      await client.query(`ALTER TABLE skills ADD COLUMN IF NOT EXISTS category TEXT`).catch(() => {});
+      await client.query(`
+        ALTER TABLE experiences ADD COLUMN IF NOT EXISTS contract_type TEXT;
+        ALTER TABLE skills ADD COLUMN IF NOT EXISTS category TEXT;
+        CREATE TABLE IF NOT EXISTS profile (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', summary TEXT, target_role TEXT, updated_at TIMESTAMP DEFAULT NOW());
+        CREATE TABLE IF NOT EXISTS formations (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), school TEXT NOT NULL, degree TEXT NOT NULL, year TEXT, created_at TIMESTAMP DEFAULT NOW());
+        CREATE TABLE IF NOT EXISTS languages (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT NOT NULL, level TEXT, created_at TIMESTAMP DEFAULT NOW());
+      `).catch(() => {});
     } else {
       console.error("[DB] Failed to create tables:", err.message);
     }
