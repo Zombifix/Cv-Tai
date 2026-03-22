@@ -775,28 +775,33 @@ Reponds UNIQUEMENT en JSON valide :
       const allExps = await storage.getExperiences();
       const allBullets = await storage.getAllBullets();
       const allSkills = await storage.getSkills();
+      const profileData = await storage.getProfile();
+      const formations = await storage.getFormations();
+      const langs = await storage.getLanguages();
 
       if (allExps.length === 0) {
         return res.status(400).json({ message: "Your CV library is empty. Please add experiences first." });
       }
 
-      // Step 3: Score experiences (2-level matching: experiences first)
-      let scoredExps: ScoredExperience[];
-      try {
-        scoredExps = await scoreExperiences(parsedJob, allExps, openai);
-      } catch (err: any) {
-        console.error("[TAILOR] FAILED scoreExperiences:", err.message);
-        return res.status(500).json({ message: `Failed to score experiences: ${err.message}` });
-      }
-
-      // Step 4: Score bullets only within top experiences (max 3)
-      const topExps = scoredExps.slice(0, 3);
-
+      // Build bullets map (used for both experience scoring and bullet scoring)
       const bulletsByExp = new Map<string, typeof allBullets>();
       for (const b of allBullets) {
         if (!bulletsByExp.has(b.experienceId)) bulletsByExp.set(b.experienceId, []);
         bulletsByExp.get(b.experienceId)!.push(b);
       }
+
+      // Step 3: Score experiences — now includes bullet tags for better matching
+      let scoredExps: ScoredExperience[];
+      try {
+        scoredExps = await scoreExperiences(parsedJob, allExps, openai, bulletsByExp);
+      } catch (err: any) {
+        console.error("[TAILOR] FAILED scoreExperiences:", err.message);
+        return res.status(500).json({ message: `Failed to score experiences: ${err.message}` });
+      }
+
+      // Step 4: Score bullets from ALL experiences (not just top 3)
+      // Tags allow precise matching across the whole library
+      const topExps = scoredExps.filter(se => se.score >= 15);
 
       let scoredBullets: ScoredBullet[];
       try {
@@ -815,10 +820,16 @@ Reponds UNIQUEMENT en JSON valide :
         return res.status(500).json({ message: `Failed to build CV composition: ${err.message}` });
       }
 
-      // Step 6: Generate tailored CV text
+      // Step 6: Generate tailored CV text — now includes profile, formations, languages
       let outputCvText: string;
       try {
-        outputCvText = await generateTailoredCV(plan, parsedJob, mode, openai, outputLength ?? "balanced", customMaxChars);
+        outputCvText = await generateTailoredCV(plan, parsedJob, mode, openai, outputLength ?? "balanced", customMaxChars, {
+          profileName: profileData?.name,
+          profileTitle: profileData?.title,
+          profileSummary: profileData?.summary || undefined,
+          formations,
+          languages: langs,
+        });
       } catch (err: any) {
         console.error("[TAILOR] FAILED generateTailoredCV:", err.message);
         return res.status(500).json({ message: `Failed to generate CV text: ${err.message}` });
