@@ -1,11 +1,10 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { format } from "date-fns";
 import { Layout } from "@/components/layout";
 import { useExperiences, useCreateExperience, useUpdateExperience, useDeleteExperience } from "@/hooks/use-experiences";
 import { useBullets, useCreateBullet, useUpdateBullet, useDeleteBullet } from "@/hooks/use-bullets";
 import { useSkills, useCreateSkill, useUpdateSkill, useDeleteSkill } from "@/hooks/use-skills";
 import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Plus, Building, Calendar, Pencil, RefreshCw, Briefcase, Zap, Upload, Sparkles, Check, X, MessageSquare, PenLine, Lightbulb, Search } from "lucide-react";
+import { Plus, Building, Calendar, Pencil, RefreshCw, Briefcase, Zap, Upload, Sparkles, Check, X, MessageSquare, PenLine, Lightbulb, Search, GraduationCap, Globe, Target } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Experience, Bullet } from "@shared/schema";
@@ -22,16 +21,8 @@ import type { Experience, Bullet } from "@shared/schema";
 /* ══════════════════════════════════════════════════════════════════
    TYPES
    ══════════════════════════════════════════════════════════════════ */
-interface Gap {
-  id: string;
-  dimension: string;
-  question: string;
-  priority: number;
-}
+interface Gap { id: string; dimension: string; question: string; priority: number; }
 
-/* ══════════════════════════════════════════════════════════════════
-   DEPTH INDICATOR
-   ══════════════════════════════════════════════════════════════════ */
 function getDepthInfo(bulletCount: number) {
   if (bulletCount === 0) return { label: "A explorer", variant: "secondary" as const, dots: 0 };
   if (bulletCount <= 2) return { label: "En surface", variant: "outline" as const, dots: 1 };
@@ -40,31 +31,156 @@ function getDepthInfo(bulletCount: number) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   MAIN PAGE
+   PROFILE HOOK
+   ══════════════════════════════════════════════════════════════════ */
+function useProfile() {
+  const [profile, setProfile] = useState<any>({ name: "", title: "", summary: "", targetRole: "" });
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/profile", { credentials: "include" }).then(r => r.json()).then(p => {
+      setProfile(p || { name: "", title: "", summary: "", targetRole: "" });
+      setLoaded(true);
+    }).catch(() => setLoaded(true));
+  }, []);
+
+  const save = useCallback(async (updates: any) => {
+    const merged = { ...profile, ...updates };
+    setProfile(merged);
+    await fetch("/api/profile", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates), credentials: "include",
+    });
+  }, [profile]);
+
+  return { profile, save, loaded };
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   MAIN PAGE — Single page, no tabs
    ══════════════════════════════════════════════════════════════════ */
 export default function Library() {
+  const { profile, save: saveProfile, loaded: profileLoaded } = useProfile();
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileDraft, setProfileDraft] = useState({ name: "", title: "", summary: "" });
+  const [roleCheckOpen, setRoleCheckOpen] = useState(false);
+  const [roleTarget, setRoleTarget] = useState("");
+  const [roleResult, setRoleResult] = useState<any>(null);
+  const [roleChecking, setRoleChecking] = useState(false);
+
+  useEffect(() => {
+    if (profileLoaded) {
+      setProfileDraft({ name: profile.name || "", title: profile.title || "", summary: profile.summary || "" });
+      setRoleTarget(profile.targetRole || "");
+    }
+  }, [profileLoaded]);
+
+  const handleSaveProfile = () => {
+    saveProfile(profileDraft);
+    setEditingProfile(false);
+  };
+
+  const handleCheckRole = async () => {
+    if (!roleTarget.trim()) return;
+    setRoleChecking(true);
+    saveProfile({ targetRole: roleTarget.trim() });
+    try {
+      const res = await fetch("/api/profile/check-role", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: roleTarget.trim() }), credentials: "include",
+      });
+      const data = await res.json();
+      setRoleResult(data);
+    } catch { setRoleResult(null); }
+    finally { setRoleChecking(false); }
+  };
+
   return (
     <Layout>
-      <div className="flex flex-col gap-8">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Super-CV Library</h1>
-          <p className="text-muted-foreground mt-1">Explorez et enrichissez vos experiences professionnelles.</p>
+      <div className="flex flex-col gap-10 max-w-4xl">
+
+        {/* ── PROFILE HEADER ── */}
+        <div className="border-b border-border/50 pb-6">
+          {editingProfile ? (
+            <div className="space-y-3 animate-in fade-in-50">
+              <Input value={profileDraft.name} onChange={e => setProfileDraft({ ...profileDraft, name: e.target.value })}
+                placeholder="Prenom Nom" className="text-2xl font-bold border-0 p-0 h-auto focus-visible:ring-0 bg-transparent" />
+              <Input value={profileDraft.title} onChange={e => setProfileDraft({ ...profileDraft, title: e.target.value })}
+                placeholder="Senior Product Designer" className="text-base text-muted-foreground border-0 p-0 h-auto focus-visible:ring-0 bg-transparent" />
+              <Input value={profileDraft.summary} onChange={e => setProfileDraft({ ...profileDraft, summary: e.target.value })}
+                placeholder="Une phrase qui te resume (optionnel)" className="text-sm text-muted-foreground border-0 p-0 h-auto focus-visible:ring-0 bg-transparent" />
+              <Button size="sm" onClick={handleSaveProfile}>Valider</Button>
+            </div>
+          ) : (
+            <div className="group cursor-pointer" onClick={() => setEditingProfile(true)}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight">{profile.name || "Votre nom"}</h1>
+                  <p className="text-base text-muted-foreground mt-0.5">{profile.title || "Votre poste"}</p>
+                  {profile.summary && <p className="text-sm text-muted-foreground/70 mt-1">{profile.summary}</p>}
+                </div>
+                <Pencil className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-2" />
+              </div>
+            </div>
+          )}
+
+          {/* Role target — compact */}
+          <div className="mt-4">
+            <div className="flex items-center gap-2">
+              <Target className="w-3.5 h-3.5 text-muted-foreground" />
+              <Input value={roleTarget} onChange={e => setRoleTarget(e.target.value)}
+                placeholder="Role vise (ex: Lead Product Designer)"
+                className="h-8 text-sm border-0 p-0 focus-visible:ring-0 bg-transparent flex-1"
+                onKeyDown={e => { if (e.key === "Enter") handleCheckRole(); }} />
+              {roleTarget.trim() && (
+                <Button variant="ghost" size="sm" onClick={handleCheckRole} disabled={roleChecking} className="h-7 text-xs">
+                  {roleChecking ? <RefreshCw className="w-3 h-3 animate-spin" /> : "Analyser"}
+                </Button>
+              )}
+            </div>
+
+            {/* Role check result — narrative */}
+            {roleResult && (
+              <div className="mt-3 p-4 bg-muted/30 rounded-lg border border-border/50 animate-in fade-in-50 space-y-3">
+                <p className="text-sm text-foreground leading-relaxed">{roleResult.summary}</p>
+                {roleResult.dimensions?.length > 0 && (
+                  <div className="space-y-1.5">
+                    {roleResult.dimensions.map((dim: any, i: number) => (
+                      <div key={i} className="flex items-center gap-2 text-xs">
+                        <span className={`w-1.5 h-1.5 rounded-full ${dim.status === "fort" ? "bg-green-500" : dim.status === "correct" ? "bg-yellow-500" : dim.status === "leger" ? "bg-orange-500" : "bg-red-400"}`} />
+                        <span className="text-muted-foreground w-36 truncate">{dim.name}</span>
+                        <div className="flex-1 h-1 bg-border rounded-full overflow-hidden">
+                          <div className="h-full rounded-full bg-foreground/30" style={{ width: `${dim.score}%` }} />
+                        </div>
+                        <span className="text-muted-foreground w-10 text-right">{dim.bullets || 0}b</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {roleResult.dimensions?.filter((d: any) => d.tip).map((dim: any, i: number) => (
+                  <div key={i} className="text-xs bg-background p-2.5 rounded border border-border/50">
+                    <span className="font-medium text-foreground">{dim.name} :</span>{" "}
+                    <span className="text-muted-foreground">{dim.tip}</span>
+                  </div>
+                ))}
+                <button onClick={() => setRoleResult(null)} className="text-xs text-muted-foreground hover:text-foreground">Fermer</button>
+              </div>
+            )}
+          </div>
         </div>
 
-        <Tabs defaultValue="experiences" className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-2 p-1 bg-muted/50 rounded-xl">
-            <TabsTrigger value="experiences" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">Experiences</TabsTrigger>
-            <TabsTrigger value="skills" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">Skills</TabsTrigger>
-          </TabsList>
-          <div className="mt-8">
-            <TabsContent value="experiences" className="m-0 space-y-6 animate-in fade-in-50 duration-500">
-              <ExperiencesSection />
-            </TabsContent>
-            <TabsContent value="skills" className="m-0 space-y-6 animate-in fade-in-50 duration-500">
-              <SkillsSection />
-            </TabsContent>
-          </div>
-        </Tabs>
+        {/* ── EXPERIENCES ── */}
+        <ExperiencesSection />
+
+        {/* ── SKILLS ── */}
+        <SkillsSection />
+
+        {/* ── FORMATIONS ── */}
+        <FormationsSection />
+
+        {/* ── LANGUAGES ── */}
+        <LanguagesSection />
+
       </div>
     </Layout>
   );
@@ -174,6 +290,7 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
           <div className="flex flex-col items-start text-left gap-1">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Building className="w-3 h-3" /> {experience.company}
+              {experience.contractType && <Badge variant="outline" className="text-[9px] px-1.5 py-0">{experience.contractType}</Badge>}
               <span className="opacity-40">|</span>
               <Calendar className="w-3 h-3" />
               {experience.startDate ? format(new Date(experience.startDate), "MMM yyyy") : "N/A"} - {experience.endDate ? format(new Date(experience.endDate), "MMM yyyy") : "Present"}
@@ -564,7 +681,7 @@ function ExperienceDialog({ open, onOpenChange, experience, onClose }: any) {
   const deleteExp = useDeleteExperience();
   const { toast } = useToast();
 
-  const [formData, setFormData] = useState({ title: "", company: "", startDate: "", endDate: "", description: "" });
+  const [formData, setFormData] = useState({ title: "", company: "", contractType: "", startDate: "", endDate: "", description: "" });
 
   // Fix: use useEffect for pre-filling instead of useState side-effect
   useEffect(() => {
@@ -572,12 +689,13 @@ function ExperienceDialog({ open, onOpenChange, experience, onClose }: any) {
       setFormData({
         title: experience.title || "",
         company: experience.company || "",
+        contractType: experience.contractType || "",
         startDate: experience.startDate || "",
         endDate: experience.endDate || "",
         description: experience.description || "",
       });
     } else if (open && !experience) {
-      setFormData({ title: "", company: "", startDate: "", endDate: "", description: "" });
+      setFormData({ title: "", company: "", contractType: "", startDate: "", endDate: "", description: "" });
     }
   }, [open, experience]);
 
@@ -623,6 +741,17 @@ function ExperienceDialog({ open, onOpenChange, experience, onClose }: any) {
             <div className="space-y-2"><Label>Entreprise</Label><Input required value={formData.company} onChange={e => setFormData({ ...formData, company: e.target.value })} placeholder="Accor" /></div>
             <div className="space-y-2"><Label>Date debut</Label><Input type="date" value={formData.startDate} onChange={e => setFormData({ ...formData, startDate: e.target.value })} /></div>
             <div className="space-y-2"><Label>Date fin</Label><Input type="date" value={formData.endDate} onChange={e => setFormData({ ...formData, endDate: e.target.value })} /></div>
+          </div>
+          <div className="space-y-2">
+            <Label>Type de contrat</Label>
+            <div className="flex gap-2">
+              {["CDI", "Freelance", "CDD", "Stage", "Alternance"].map(ct => (
+                <button key={ct} type="button" onClick={() => setFormData({ ...formData, contractType: formData.contractType === ct ? "" : ct })}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${formData.contractType === ct ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:border-primary/50"}`}>
+                  {ct}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="space-y-2"><Label>Description</Label><Textarea value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Description du role..." className="h-24" /></div>
           <DialogFooter className="pt-4 flex justify-between sm:justify-between">
@@ -980,5 +1109,187 @@ function CVImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   FORMATIONS SECTION
+   ══════════════════════════════════════════════════════════════════ */
+function FormationsSection() {
+  const [formations, setFormations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addOpen, setAddOpen] = useState(false);
+  const [school, setSchool] = useState("");
+  const [degree, setDegree] = useState("");
+  const [year, setYear] = useState("");
+  const { toast } = useToast();
+
+  const fetchFormations = async () => {
+    try {
+      const res = await fetch("/api/formations", { credentials: "include" });
+      if (res.ok) setFormations(await res.json());
+    } catch {} finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchFormations(); }, []);
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!school.trim() || !degree.trim()) return;
+    try {
+      await fetch("/api/formations", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ school: school.trim(), degree: degree.trim(), year: year.trim() || null }),
+        credentials: "include",
+      });
+      setSchool(""); setDegree(""); setYear(""); setAddOpen(false);
+      fetchFormations();
+      toast({ title: "Formation ajoutee" });
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    await fetch(`/api/formations/${id}`, { method: "DELETE", credentials: "include" });
+    fetchFormations();
+  };
+
+  if (loading) return null;
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+          <GraduationCap className="w-3.5 h-3.5" /> Formation
+        </h2>
+        <Dialog open={addOpen} onOpenChange={setAddOpen}>
+          <DialogTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-7 text-xs"><Plus className="w-3 h-3 mr-1" /> Ajouter</Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader><DialogTitle>Ajouter une formation</DialogTitle></DialogHeader>
+            <form onSubmit={handleAdd} className="space-y-4 py-4">
+              <div className="space-y-2"><Label>Ecole</Label><Input required value={school} onChange={e => setSchool(e.target.value)} placeholder="Web School Factory" /></div>
+              <div className="space-y-2"><Label>Diplome</Label><Input required value={degree} onChange={e => setDegree(e.target.value)} placeholder="Master en Digital Design" /></div>
+              <div className="space-y-2"><Label>Annee</Label><Input value={year} onChange={e => setYear(e.target.value)} placeholder="2019" /></div>
+              <DialogFooter><Button type="submit">Ajouter</Button></DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {formations.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Aucune formation ajoutee.</p>
+      ) : (
+        <div className="space-y-2">
+          {formations.map((f: any) => (
+            <div key={f.id} className="group flex items-center justify-between p-3 bg-card rounded-lg border border-border/50">
+              <div>
+                <p className="text-sm font-medium">{f.degree}</p>
+                <p className="text-xs text-muted-foreground">{f.school}{f.year ? ` · ${f.year}` : ""}</p>
+              </div>
+              <button onClick={() => handleDelete(f.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   LANGUAGES SECTION
+   ══════════════════════════════════════════════════════════════════ */
+function LanguagesSection() {
+  const [langs, setLangs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addOpen, setAddOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [level, setLevel] = useState("");
+  const { toast } = useToast();
+
+  const fetchLangs = async () => {
+    try {
+      const res = await fetch("/api/languages", { credentials: "include" });
+      if (res.ok) setLangs(await res.json());
+    } catch {} finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchLangs(); }, []);
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    try {
+      await fetch("/api/languages", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), level: level.trim() || null }),
+        credentials: "include",
+      });
+      setName(""); setLevel(""); setAddOpen(false);
+      fetchLangs();
+      toast({ title: "Langue ajoutee" });
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    await fetch(`/api/languages/${id}`, { method: "DELETE", credentials: "include" });
+    fetchLangs();
+  };
+
+  if (loading) return null;
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+          <Globe className="w-3.5 h-3.5" /> Langues
+        </h2>
+        <Dialog open={addOpen} onOpenChange={setAddOpen}>
+          <DialogTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-7 text-xs"><Plus className="w-3 h-3 mr-1" /> Ajouter</Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader><DialogTitle>Ajouter une langue</DialogTitle></DialogHeader>
+            <form onSubmit={handleAdd} className="space-y-4 py-4">
+              <div className="space-y-2"><Label>Langue</Label><Input required value={name} onChange={e => setName(e.target.value)} placeholder="Anglais" /></div>
+              <div className="space-y-2">
+                <Label>Niveau</Label>
+                <div className="flex gap-2">
+                  {["Langue maternelle", "Courant (C1)", "Professionnel (B2)", "Intermediaire (B1)", "Debutant"].map(l => (
+                    <button key={l} type="button" onClick={() => setLevel(level === l ? "" : l)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all ${level === l ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:border-primary/50"}`}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <DialogFooter><Button type="submit">Ajouter</Button></DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {langs.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Aucune langue ajoutee.</p>
+      ) : (
+        <div className="flex flex-wrap gap-3">
+          {langs.map((l: any) => (
+            <div key={l.id} className="group flex items-center gap-2 px-4 py-2 bg-card rounded-full border border-border/50">
+              <span className="font-medium text-sm">{l.name}</span>
+              {l.level && <span className="text-xs text-muted-foreground">{l.level}</span>}
+              <button onClick={() => handleDelete(l.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
