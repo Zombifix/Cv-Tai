@@ -704,7 +704,7 @@ Reponds UNIQUEMENT en JSON valide :
   // Tailor — Pipeline V2
   app.post(api.tailor.generate.path, async (req, res) => {
     try {
-      const { url, text, mode, outputLength, customMaxChars } = api.tailor.generate.input.parse(req.body);
+      const { url, text, mode, outputLength, customMaxChars, introMaxChars, bodyMaxChars } = api.tailor.generate.input.parse(req.body);
 
       // Normalize LinkedIn URL
       const normalizedUrl = url ? normalizeLinkedInUrl(url) : undefined;
@@ -757,6 +757,8 @@ Reponds UNIQUEMENT en JSON valide :
         mode,
         outputLength,
         customMaxChars,
+        introMaxChars,
+        bodyMaxChars,
         allExperiences: allExps,
         allBullets: allBullets,
         allSkills: allSkills,
