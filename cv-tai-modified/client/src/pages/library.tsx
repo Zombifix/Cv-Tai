@@ -263,7 +263,7 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
             </div>
           </div>
         </AccordionTrigger>
-        <div ref={btnsRef} className="flex items-center gap-1 pl-3">
+        <div ref={btnsRef} className="flex items-center gap-1 ml-auto pl-3">
           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={onEdit}>
             <Pencil className="w-4 h-4" />
           </Button>
