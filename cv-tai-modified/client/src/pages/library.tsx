@@ -201,6 +201,7 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
   const depth = getDepthInfo(bulletCount);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [hovered, setHovered] = useState(false);
 
   const handleSaveEdit = async () => {
     if (!editingId || !editText.trim()) return;
@@ -222,7 +223,8 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
   };
 
   return (
-    <AccordionItem value={experience.id} className="bg-card border rounded-xl shadow-sm overflow-hidden group/exp">
+    <AccordionItem value={experience.id} className="bg-card border rounded-xl shadow-sm overflow-hidden"
+      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
       <div className="flex items-center pr-4">
         <AccordionTrigger className="flex-1 hover:no-underline py-4 px-5 data-[state=open]:border-b data-[state=open]:border-border/50">
           <div className="flex flex-col items-start text-left gap-1">
@@ -244,7 +246,7 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
             </div>
           </div>
         </AccordionTrigger>
-        <div className="flex items-center gap-1 pl-3 opacity-0 group-hover/exp:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1 pl-3 transition-opacity" style={{ opacity: hovered ? 1 : 0 }}>
           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={onEdit}>
             <Pencil className="w-4 h-4" />
           </Button>
