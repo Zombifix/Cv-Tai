@@ -77,10 +77,6 @@ export default function Library() {
 
   return (
     <Layout>
-      <style>{`
-        [data-exp-card] .exp-card-btns { visibility: hidden; }
-        [data-exp-card]:hover .exp-card-btns { visibility: visible; }
-      `}</style>
       <div className="flex flex-col gap-10 max-w-4xl">
 
         {/* ── PROFILE HEADER ── */}
@@ -225,8 +221,27 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
     }
   };
 
+  const cardRef = useRef<HTMLDivElement>(null);
+  const btnsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const card = cardRef.current;
+    const btns = btnsRef.current;
+    if (!card || !btns) return;
+    btns.style.visibility = "hidden";
+    const show = () => { btns.style.visibility = "visible"; };
+    const hide = () => { btns.style.visibility = "hidden"; };
+    card.addEventListener("mouseenter", show);
+    card.addEventListener("mouseleave", hide);
+    return () => {
+      card.removeEventListener("mouseenter", show);
+      card.removeEventListener("mouseleave", hide);
+    };
+  }, []);
+
   return (
-    <AccordionItem value={experience.id} data-exp-card className="bg-card border rounded-xl shadow-sm overflow-hidden">
+    <div ref={cardRef}>
+    <AccordionItem value={experience.id} className="bg-card border rounded-xl shadow-sm overflow-hidden">
       <div className="flex items-center pr-4">
         <AccordionTrigger className="flex-1 hover:no-underline py-4 px-5 data-[state=open]:border-b data-[state=open]:border-border/50">
           <div className="flex flex-col items-start text-left gap-1">
@@ -248,7 +263,7 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
             </div>
           </div>
         </AccordionTrigger>
-        <div className="exp-card-btns flex items-center gap-1 pl-3">
+        <div ref={btnsRef} className="flex items-center gap-1 pl-3">
           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={onEdit}>
             <Pencil className="w-4 h-4" />
           </Button>
@@ -298,6 +313,7 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
         </div>
       </AccordionContent>
     </AccordionItem>
+    </div>
   );
 }
 
