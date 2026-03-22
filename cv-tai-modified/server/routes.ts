@@ -670,9 +670,16 @@ Reponds UNIQUEMENT en JSON valide :
 
       const prompt = `Tu es un assistant CV. Tu fais 3 choses en une seule reponse :
 
-1. REFORMULER toute la matiere en UN bullet CV (verbe d'action, concis, max 30 mots, chiffres si dispo)
+1. REFORMULER toute la matiere en UN bullet CV (verbe d'action, max 2-3 phrases, garde les chiffres et le contexte specifique)
 2. TAGGER avec des mots-cles semantiques pour le matching futur (3-6 tags)
 3. DECIDER si une RELANCE est necessaire pour creuser davantage (1 relance max)
+
+REGLES REFORMULATION :
+- Garde TOUS les chiffres et metriques mentionnes
+- Garde le contexte specifique (type de projet, equipe, contraintes)
+- Ne simplifie PAS a l'exces — un bullet peut faire 2-3 phrases si la matiere le justifie
+- Commence par un verbe d'action
+- Ecris en francais
 
 EXPERIENCE :
 - Poste : ${exp.title}
