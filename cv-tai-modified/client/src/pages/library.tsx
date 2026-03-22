@@ -166,7 +166,11 @@ function ExperiencesSection() {
         </Card>
       ) : (
         <Accordion type="multiple" className="space-y-3">
-          {experiences.map(exp => (
+          {[...experiences].sort((a, b) => {
+            const dateA = a.endDate ? new Date(a.endDate).getTime() : Date.now();
+            const dateB = b.endDate ? new Date(b.endDate).getTime() : Date.now();
+            return dateB - dateA;
+          }).map(exp => (
             <ExperienceAccordionItem
               key={exp.id}
               experience={exp}
@@ -406,25 +410,31 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
   // Accept and save bullet(s)
   const handleAcceptBullet = async () => {
     if (!currentBullet) return;
+    let saved = 0;
     try {
       // Save main bullet
-      await createBullet.mutateAsync({
-        experienceId: experience.id,
-        text: currentBullet.trim(),
-        tags: currentTags,
-      });
+      try {
+        await createBullet.mutateAsync({ experienceId: experience.id, text: currentBullet.trim(), tags: currentTags });
+        saved++;
+      } catch (e: any) {
+        if (!e.message?.includes("similaire")) throw e; // re-throw if not a duplicate
+      }
       // Auto-save extra bullets (multi-topic split)
       for (const extra of extraBullets) {
         if (extra.bullet && extra.bullet.trim()) {
-          await createBullet.mutateAsync({
-            experienceId: experience.id,
-            text: extra.bullet.trim(),
-            tags: extra.tags || [],
-          });
+          try {
+            await createBullet.mutateAsync({ experienceId: experience.id, text: extra.bullet.trim(), tags: extra.tags || [] });
+            saved++;
+          } catch (e: any) {
+            if (!e.message?.includes("similaire")) throw e;
+          }
         }
       }
-      const count = 1 + extraBullets.length;
-      toast({ title: count > 1 ? `${count} bullets enregistres` : "Bullet CV enregistre" });
+      if (saved > 0) {
+        toast({ title: saved > 1 ? `${saved} bullets enregistres` : "Bullet CV enregistre" });
+      } else {
+        toast({ title: "Doublons ignores", description: "Ces bullets existaient deja." });
+      }
       resetThread();
     } catch (err) {
       toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
