@@ -43,6 +43,7 @@ export const bullets = pgTable("bullets", {
 export const skills = pgTable("skills", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").unique().notNull(),
+  category: text("category"),
   level: integer("level"),
   priority: integer("priority").default(0),
   createdAt: timestamp("created_at").defaultNow(),
