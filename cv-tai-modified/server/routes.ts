@@ -21,9 +21,6 @@ import {
   type ScoredBullet,
   type CompositionPlan,
 } from "./tailoring-engine";
-import multer from "multer";
-
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 let openai: OpenAI | null = null;
 if (process.env.GROQ_API_KEY) {
@@ -84,19 +81,22 @@ export async function registerRoutes(
   });
 
   // ══════════════════════════════════════════════════════════════
-  // CV IMPORT — PDF upload or text paste → parse ALL experiences
+  // CV IMPORT — PDF (base64) or text paste → parse ALL experiences
   // ══════════════════════════════════════════════════════════════
-  app.post("/api/import/cv", upload.single("file"), async (req: any, res) => {
+  app.post("/api/import/cv", async (req, res) => {
     try {
       let rawText = "";
 
-      // PDF file uploaded
-      if (req.file) {
+      if (req.body?.fileBase64) {
+        // PDF sent as base64
         try {
           const pdfParse = (await import("pdf-parse")).default;
-          const data = await pdfParse(req.file.buffer);
-          rawText = data.text;
-          console.log("[IMPORT] PDF parsed:", rawText.length, "chars");
+          const buffer = Buffer.from(req.body.fileBase64, "base64");
+          console.log("[IMPORT] PDF buffer size:", buffer.length);
+          const data = await pdfParse(buffer);
+          rawText = data.text || "";
+          console.log("[IMPORT] PDF text extracted:", rawText.length, "chars");
+          console.log("[IMPORT] First 200 chars:", rawText.slice(0, 200));
         } catch (pdfErr: any) {
           console.error("[IMPORT] PDF parse error:", pdfErr.message);
           return res.status(400).json({ message: "Impossible de lire ce PDF. Essayez de coller le texte directement." });
@@ -104,11 +104,14 @@ export async function registerRoutes(
       } else if (req.body?.text) {
         rawText = req.body.text;
       } else {
-        return res.status(400).json({ message: "Envoyez un fichier PDF ou du texte." });
+        return res.status(400).json({ message: "Envoyez un fichier PDF (base64) ou du texte." });
       }
 
-      if (rawText.trim().length < 20) {
-        return res.status(400).json({ message: "Pas assez de contenu à analyser." });
+      // Clean up extracted text
+      rawText = rawText.replace(/\s+/g, " ").trim();
+
+      if (rawText.length < 20) {
+        return res.status(400).json({ message: "Pas assez de contenu extrait. Essayez de coller le texte de votre CV directement." });
       }
 
       // Truncate to avoid token limits
