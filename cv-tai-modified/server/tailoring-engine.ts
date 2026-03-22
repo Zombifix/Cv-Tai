@@ -108,22 +108,27 @@ function deterministicScore(bullet: Bullet, allKw: string[], critKw: string[]): 
   const text = bullet.text.toLowerCase();
   const kwLow = allKw.map(k => k.toLowerCase());
   const critLow = critKw.map(k => k.toLowerCase());
-  let score = 0;
+  let score = 5; // Base score — every bullet in the library has some value
   const mTags: string[] = []; const mKw: string[] = [];
 
+  // Tag matching (strongest)
   for (const tag of tags) {
     for (const kw of kwLow) {
       if (tag.includes(kw) || kw.includes(tag) || tag === kw) { score += 8; mTags.push(tag); mKw.push(kw); break; }
     }
   }
+  // Critical keyword matching
   for (const ck of critLow) {
-    if (text.includes(ck) || tags.some(t => t.includes(ck) || ck.includes(t))) { score += 5; if (!mKw.includes(ck)) mKw.push(ck); }
+    if (text.includes(ck) || tags.some(t => t.includes(ck) || ck.includes(t))) { score += 6; if (!mKw.includes(ck)) mKw.push(ck); }
   }
+  // Text matching (increased weight — important when no tags)
   for (const kw of kwLow) {
-    if (kw.length >= 4 && text.includes(kw) && !mKw.includes(kw)) { score += 3; mKw.push(kw); }
+    if (kw.length >= 3 && text.includes(kw) && !mKw.includes(kw)) { score += 5; mKw.push(kw); }
   }
+  // Enrichment bonus
   const isEnriched = tags.length > 0 && !tags.every(t => ["imported", "libre", "general"].includes(t));
   if (isEnriched) score += 5;
+  // Metrics bonus
   if (/\d+/.test(bullet.text)) score += 3;
 
   return { score: Math.min(70, score), matchedTags: [...new Set(mTags)], matchedKeywords: [...new Set(mKw)] };
@@ -143,24 +148,24 @@ export async function hybridScoreAllBullets(parsedJob: ParsedJob, allExps: Exper
     return { bullet: b, experience: exp, deterministicScore: det.score, llmScore: 0, totalScore: det.score, matchedTags: det.matchedTags, matchedKeywords: det.matchedKeywords, dimension: inferDimension((b.tags || []).filter(Boolean)) } as ScoredBullet;
   }).filter(Boolean) as ScoredBullet[];
 
-  // LLM refinement on top 25
-  const top = [...scored].sort((a, b) => b.deterministicScore - a.deterministicScore).slice(0, 25);
-  if (top.length > 0) {
-    const list = top.map((sb, i) => `[${i}] (${sb.experience.title} @ ${sb.experience.company}): ${sb.bullet.text}${(sb.bullet.tags||[]).length ? ` [${(sb.bullet.tags||[]).join(",")}]` : ""}`).join("\n");
+  // LLM refinement — send all bullets (not just top 25) for better scoring when tags are sparse
+  const toScore = scored.length <= 30 ? scored : [...scored].sort((a, b) => b.deterministicScore - a.deterministicScore).slice(0, 30);
+  if (toScore.length > 0) {
+    const list = toScore.map((sb, i) => `[${i}] (${sb.experience.title} @ ${sb.experience.company}): ${sb.bullet.text}${(sb.bullet.tags||[]).length ? ` [${(sb.bullet.tags||[]).join(",")}]` : ""}`).join("\n");
     try {
       const res = await openai.chat.completions.create({
         model: MODEL,
         messages: [
-          { role: "system", content: `Score each bullet 0-30 for relevance to the target job. Consider skill match, impact, seniority alignment. Be strict.` },
-          { role: "user", content: `Target: "${parsedJob.title}" at "${parsedJob.company}" (${parsedJob.domain})\nRequired: ${parsedJob.requiredSkills.join(", ")}\nResponsibilities: ${parsedJob.responsibilities.slice(0,5).join(", ")}\n\nBullets:\n${list}\n\nReturn JSON: {"scores": [{"index": 0, "score": 0-30}]}` },
+          { role: "system", content: `Score each CV bullet 0-50 for relevance to the target job. Consider: direct skill match, transferable competencies, impact/metrics, seniority alignment. Score generously for bullets from the same domain even without exact keyword match.` },
+          { role: "user", content: `Target: "${parsedJob.title}" at "${parsedJob.company}" (${parsedJob.domain})\nRequired: ${parsedJob.requiredSkills.join(", ")}\nResponsibilities: ${parsedJob.responsibilities.slice(0,5).join(", ")}\n\nBullets:\n${list}\n\nReturn JSON: {"scores": [{"index": 0, "score": 0-50}]}` },
         ],
         response_format: { type: "json_object" }, temperature: 0.3,
       });
       const r = JSON.parse(res.choices[0].message.content || "{}");
       for (const s of (r.scores || [])) {
-        if (s.index >= 0 && s.index < top.length) {
-          top[s.index].llmScore = Math.min(30, s.score || 0);
-          top[s.index].totalScore = top[s.index].deterministicScore + top[s.index].llmScore;
+        if (s.index >= 0 && s.index < toScore.length) {
+          toScore[s.index].llmScore = Math.min(50, s.score || 0);
+          toScore[s.index].totalScore = toScore[s.index].deterministicScore + toScore[s.index].llmScore;
         }
       }
     } catch (e: any) { log("hybridScore LLM failed", e.message); }
@@ -175,7 +180,7 @@ export async function hybridScoreAllBullets(parsedJob: ParsedJob, allExps: Exper
 interface BudgetAlloc { experience: Experience; charBudget: number; maxBullets: number; importance: "critical" | "standard" | "minimal"; }
 
 export function allocateCharBudget(exps: Experience[], scored: ScoredBullet[], totalChars: number): BudgetAlloc[] {
-  const OVERHEAD = 500; // header + skills + formations + languages
+  const OVERHEAD = 500;
   const EXP_HEADER = 80;
   const pool = totalChars - OVERHEAD - exps.length * EXP_HEADER;
 
@@ -192,17 +197,21 @@ export function allocateCharBudget(exps: Experience[], scored: ScoredBullet[], t
     const end = exp.endDate ? new Date(exp.endDate) : new Date();
     const years = (Date.now() - end.getTime()) / (365.25 * 24 * 3600 * 1000);
     const recency = years <= 1 ? 1.5 : years <= 3 ? 1.2 : years <= 5 ? 1.0 : 0.7;
-    return { exp, score: (avg * 0.6 + best * 0.4) * recency, years };
+    // Guarantee a minimum score for recent experiences even if bullet scores are low
+    const minScore = years <= 5 ? 10 : 2;
+    return { exp, score: Math.max(minScore, (avg * 0.6 + best * 0.4) * recency), years, bulletCount: bullets.length };
   });
 
-  const totalScore = expData.reduce((s, e) => s + Math.max(e.score, 1), 0);
+  const totalScore = expData.reduce((s, e) => s + e.score, 0);
 
   return expData.map(ed => {
-    const prop = Math.max(ed.score, 1) / totalScore;
+    const prop = ed.score / totalScore;
     let budget = Math.round(pool * prop);
-    budget = Math.max(80, Math.min(Math.round(pool * 0.4), budget));
-    const maxB = Math.max(1, Math.floor(budget / 120));
-    const imp: "critical" | "standard" | "minimal" = ed.score > totalScore * 0.25 ? "critical" : ed.years > 6 ? "minimal" : "standard";
+    // Min 250 chars for recent exps (enough for 1-2 bullets), 120 for old ones
+    const minBudget = ed.years <= 5 ? 250 : 120;
+    budget = Math.max(minBudget, Math.min(Math.round(pool * 0.4), budget));
+    const maxB = Math.max(1, Math.floor(budget / 100));
+    const imp: "critical" | "standard" | "minimal" = ed.score > totalScore * 0.2 ? "critical" : ed.years > 6 ? "minimal" : "standard";
     return { experience: ed.exp, charBudget: budget, maxBullets: maxB, importance: imp };
   });
 }
@@ -214,14 +223,26 @@ export function selectBullets(scored: ScoredBullet[], allocs: BudgetAlloc[]): Sc
     const bullets = scored.filter(sb => sb.experience.id === alloc.experience.id).sort((a, b) => b.totalScore - a.totalScore);
     const sel: ScoredBullet[] = [];
     let chars = 0;
-    for (const sb of bullets) {
-      if (sel.length >= alloc.maxBullets || chars + sb.bullet.text.length > alloc.charBudget) break;
+
+    // Always include at least the best bullet if the experience has any
+    if (bullets.length > 0 && sel.length === 0) {
+      sel.push(bullets[0]);
+      chars += bullets[0].bullet.text.length;
+      const dim = bullets[0].dimension;
+      dimCounts.set(dim, (dimCounts.get(dim) || 0) + 1);
+    }
+
+    // Then fill remaining budget
+    for (const sb of bullets.slice(1)) {
+      if (sel.length >= alloc.maxBullets) break;
+      if (chars + sb.bullet.text.length > alloc.charBudget) break;
       const dc = dimCounts.get(sb.dimension) || 0;
-      if (dc >= 2 && sb.totalScore < 50) continue;
+      if (dc >= 2 && sb.totalScore < 40) continue;
       sel.push(sb);
       chars += sb.bullet.text.length;
       dimCounts.set(sb.dimension, dc + 1);
     }
+
     const avg = sel.length > 0 ? sel.reduce((s, b) => s + b.totalScore, 0) / sel.length : 0;
     return { experience: alloc.experience, score: avg, reason: alloc.importance === "critical" ? "Highly relevant" : alloc.importance === "minimal" ? "Timeline continuity" : "Relevant", matchedAspects: [...new Set(sel.flatMap(sb => sb.matchedKeywords))], selectedBullets: sel, charBudget: alloc.charBudget };
   });
