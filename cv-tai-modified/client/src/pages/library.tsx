@@ -640,75 +640,214 @@ function ExperienceDialog({ open, onOpenChange, experience, onClose }: any) {
    ══════════════════════════════════════════════════════════════════ */
 function SkillsSection() {
   const { data: skills, isLoading } = useSkills();
-  const [open, setOpen] = useState(false);
-  const [editingSkill, setEditingSkill] = useState<any>(null);
+  const createSkill = useCreateSkill();
+  const deleteSkill = useDeleteSkill();
+  const { toast } = useToast();
+  const [addOpen, setAddOpen] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [proposed, setProposed] = useState<Array<{name: string; category: string; accepted: boolean}>>([]);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addCategory, setAddCategory] = useState("Techniques");
+
+  const CATEGORIES = ["Outils", "Methodologies", "Soft Skills", "Domaines", "Techniques"];
+  const CATEGORY_ICONS: Record<string, string> = {
+    "Outils": "wrench",
+    "Methodologies": "compass",
+    "Soft Skills": "users",
+    "Domaines": "globe",
+    "Techniques": "code",
+  };
+
+  const grouped = CATEGORIES.reduce((acc, cat) => {
+    const catSkills = (skills || []).filter(s => (s.category || "Techniques") === cat);
+    if (catSkills.length > 0) acc[cat] = catSkills;
+    return acc;
+  }, {} as Record<string, typeof skills>);
+
+  // Uncategorized
+  const uncategorized = (skills || []).filter(s => !s.category || !CATEGORIES.includes(s.category));
+  if (uncategorized.length > 0) grouped["Autres"] = uncategorized;
+
+  const handleExtract = async () => {
+    setExtracting(true);
+    try {
+      const res = await fetch("/api/skills/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      if (!data.skills?.length) {
+        toast({ title: "Aucune nouvelle competence detectee" });
+        setExtracting(false);
+        return;
+      }
+      setProposed(data.skills.map((s: any) => ({ ...s, accepted: true })));
+      setReviewOpen(true);
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleSaveProposed = async () => {
+    const toSave = proposed.filter(s => s.accepted);
+    let saved = 0;
+    for (const s of toSave) {
+      try {
+        await createSkill.mutateAsync({ name: s.name, category: s.category } as any);
+        saved++;
+      } catch { /* skip duplicates */ }
+    }
+    toast({ title: `${saved} competence${saved > 1 ? "s" : ""} ajoutee${saved > 1 ? "s" : ""}` });
+    setReviewOpen(false);
+    setProposed([]);
+  };
+
+  const handleAddManual = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addName.trim()) return;
+    try {
+      await createSkill.mutateAsync({ name: addName.trim(), category: addCategory } as any);
+      setAddName("");
+      setAddOpen(false);
+      toast({ title: "Competence ajoutee" });
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try { await deleteSkill.mutateAsync(id); }
+    catch (err) { toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" }); }
+  };
 
   if (isLoading) return <div className="h-40 flex items-center justify-center text-muted-foreground"><RefreshCw className="w-6 h-6 animate-spin" /></div>;
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold flex items-center gap-2"><Zap className="w-5 h-5 text-accent" /> Professional Skills</h2>
-        <SkillDialog open={open} onOpenChange={setOpen} skill={editingSkill} onClose={() => setEditingSkill(null)} />
+        <h2 className="text-xl font-bold flex items-center gap-2"><Zap className="w-5 h-5 text-accent" /> Competences</h2>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExtract} disabled={extracting} className="gap-2">
+            {extracting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {extracting ? "Analyse..." : "Extraire auto"}
+          </Button>
+          <Dialog open={addOpen} onOpenChange={setAddOpen}>
+            <DialogTrigger asChild>
+              <Button><Plus className="w-4 h-4 mr-2" /> Ajouter</Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[400px]">
+              <DialogHeader><DialogTitle>Ajouter une competence</DialogTitle></DialogHeader>
+              <form onSubmit={handleAddManual} className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Nom</Label>
+                  <Input required value={addName} onChange={e => setAddName(e.target.value)} placeholder="Figma, User Testing..." />
+                </div>
+                <div className="space-y-2">
+                  <Label>Categorie</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {CATEGORIES.map(cat => (
+                      <button key={cat} type="button" onClick={() => setAddCategory(cat)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${addCategory === cat ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:border-primary/50"}`}>
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button type="submit" disabled={createSkill.isPending}>Enregistrer</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
-      <div className="bg-card border rounded-xl p-6 shadow-sm">
-        {!skills?.length ? (
-          <div className="text-center py-8 text-muted-foreground">Aucune competence ajoutee.</div>
-        ) : (
-          <div className="flex flex-wrap gap-3">
-            {skills.map(skill => (
-              <div key={skill.id} onClick={() => { setEditingSkill(skill); setOpen(true); }} className="group cursor-pointer flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-full border border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all">
-                <span className="font-medium text-sm">{skill.name}</span>
-              </div>
-            ))}
+
+      {/* Skills grouped by category */}
+      <div className="bg-card border rounded-xl p-6 shadow-sm space-y-5">
+        {Object.keys(grouped).length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground space-y-3">
+            <p>Aucune competence.</p>
+            <p className="text-xs">Cliquez "Extraire auto" pour detecter vos competences depuis vos experiences.</p>
           </div>
+        ) : (
+          Object.entries(grouped).map(([category, catSkills]) => (
+            <div key={category}>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{category}</p>
+              <div className="flex flex-wrap gap-2">
+                {catSkills!.map(skill => (
+                  <div key={skill.id} className="group flex items-center gap-1.5 px-3 py-1.5 bg-secondary text-secondary-foreground rounded-full border border-border/50 hover:border-destructive/30 transition-all">
+                    <span className="font-medium text-sm">{skill.name}</span>
+                    <button onClick={() => handleDelete(skill.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
         )}
       </div>
+
+      {/* Review Dialog for extracted skills */}
+      <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
+        <DialogContent className="sm:max-w-[550px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" />
+              Competences detectees
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Decochez les competences qui ne vous correspondent pas.</p>
+          <div className="space-y-4 py-4">
+            {CATEGORIES.map(cat => {
+              const catItems = proposed.filter(s => s.category === cat);
+              if (!catItems.length) return null;
+              return (
+                <div key={cat}>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{cat}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {catItems.map((skill, idx) => {
+                      const globalIdx = proposed.findIndex(s => s.name === skill.name);
+                      return (
+                        <button key={idx} onClick={() => {
+                          setProposed(prev => prev.map((s, i) => i === globalIdx ? { ...s, accepted: !s.accepted } : s));
+                        }}
+                          className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                            skill.accepted
+                              ? "bg-primary/10 text-primary border-primary/30"
+                              : "bg-muted text-muted-foreground border-border line-through opacity-50"
+                          }`}>
+                          {skill.accepted ? <Check className="w-3 h-3 inline mr-1" /> : <X className="w-3 h-3 inline mr-1" />}
+                          {skill.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setReviewOpen(false)}>Annuler</Button>
+            <Button onClick={handleSaveProposed} disabled={createSkill.isPending || proposed.filter(s => s.accepted).length === 0}>
+              {createSkill.isPending ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Ajouter {proposed.filter(s => s.accepted).length} competence{proposed.filter(s => s.accepted).length > 1 ? "s" : ""}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 function SkillDialog({ open, onOpenChange, skill, onClose }: any) {
-  const createSkill = useCreateSkill();
-  const updateSkill = useUpdateSkill();
-  const deleteSkill = useDeleteSkill();
-  const { toast } = useToast();
-  const [name, setName] = useState("");
-
-  useEffect(() => {
-    if (skill && open) setName(skill.name);
-    else if (open && !skill) setName("");
-  }, [open, skill]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      if (skill) await updateSkill.mutateAsync({ id: skill.id, name });
-      else await createSkill.mutateAsync({ name });
-      onOpenChange(false); onClose();
-    } catch (err) { toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" }); }
-  };
-
-  const handleDelete = async () => {
-    try { await deleteSkill.mutateAsync(skill.id); onOpenChange(false); onClose(); }
-    catch (err) { toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" }); }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); if (!val) onClose(); }}>
-      <DialogTrigger asChild>{!skill && <Button><Plus className="w-4 h-4 mr-2" /> Add Skill</Button>}</DialogTrigger>
-      <DialogContent className="sm:max-w-[400px]">
-        <DialogHeader><DialogTitle>{skill ? "Modifier" : "Ajouter une competence"}</DialogTitle></DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 py-4">
-          <div className="space-y-2"><Label>Nom</Label><Input required value={name} onChange={e => setName(e.target.value)} placeholder="Figma, User Testing, Gestion de projet..." /></div>
-          <DialogFooter className="flex justify-between sm:justify-between pt-4">
-            {skill ? <Button type="button" variant="destructive" onClick={handleDelete}>Supprimer</Button> : <div />}
-            <Button type="submit" disabled={createSkill.isPending || updateSkill.isPending}>Enregistrer</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
+  // Kept for backward compat but no longer used as primary
+  return null;
 }
 
 /* ══════════════════════════════════════════════════════════════════
