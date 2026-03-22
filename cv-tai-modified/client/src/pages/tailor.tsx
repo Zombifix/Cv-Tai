@@ -8,52 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { WandSparkles, Link as LinkIcon, FileText, Target, RefreshCw, Info, SlidersHorizontal, Zap, Sparkles, Gauge } from "lucide-react";
+import { WandSparkles, Link as LinkIcon, FileText, Target, RefreshCw, Info, SlidersHorizontal, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const PRESET_KEY = "cv-tailor-preset";
-
-type Preset = "quick" | "standard" | "deep";
-
-const PRESETS: {
-  value: Preset;
-  label: string;
-  icon: React.ReactNode;
-  tagline: string;
-  description: string;
-  mode: "original" | "polished" | "adaptive";
-  outputLength: "compact" | "balanced" | "detailed";
-  recommended?: boolean;
-}[] = [
-  {
-    value: "quick",
-    label: "Quick",
-    icon: <Zap className="w-5 h-5" />,
-    tagline: "No rewrite · Concise",
-    description: "Selects your best bullets as-is and formats them. Best when your wording is already strong.",
-    mode: "original",
-    outputLength: "compact",
-  },
-  {
-    value: "standard",
-    label: "Standard",
-    icon: <Sparkles className="w-5 h-5" />,
-    tagline: "Light rewrite · Balanced",
-    description: "Lightly rephrases bullets to embed missing keywords. Recommended for most applications.",
-    mode: "polished",
-    outputLength: "balanced",
-    recommended: true,
-  },
-  {
-    value: "deep",
-    label: "Deep",
-    icon: <Gauge className="w-5 h-5" />,
-    tagline: "Full rewrite · Detailed",
-    description: "Strongly adapts your bullets and expands the output. Best for competitive or senior roles.",
-    mode: "adaptive",
-    outputLength: "detailed",
-  },
-];
+type Mode = "fidele" | "optimise";
 
 function normalizeLinkedInUrl(rawUrl: string): { url: string; converted: boolean } {
   if (!rawUrl) return { url: rawUrl, converted: false };
@@ -77,14 +35,10 @@ export default function Tailor() {
 
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
-  const [preset, setPreset] = useState<Preset>(() => {
-    try { return (localStorage.getItem(PRESET_KEY) as Preset) || "standard"; } catch { return "standard"; }
-  });
+  const [mode, setMode] = useState<Mode>("optimise");
   const [urlConverted, setUrlConverted] = useState(false);
-
-  useEffect(() => {
-    try { localStorage.setItem(PRESET_KEY, preset); } catch {}
-  }, [preset]);
+  const [introMaxChars, setIntroMaxChars] = useState("");
+  const [bodyMaxChars, setBodyMaxChars] = useState("");
 
   useEffect(() => {
     try {
@@ -113,22 +67,24 @@ export default function Tailor() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url && !text) {
-      toast({ title: "Input Required", description: "Please provide either a Job URL or Job Description text.", variant: "destructive" });
+      toast({ title: "Champ requis", description: "Colle une URL ou le texte de l'annonce.", variant: "destructive" });
       return;
     }
-    // URL-only is now supported — the server will scrape the page automatically
-    const selectedPreset = PRESETS.find(p => p.value === preset)!;
     try {
+      const introChars = introMaxChars ? parseInt(introMaxChars) : undefined;
+      const bodyChars = bodyMaxChars ? parseInt(bodyMaxChars) : undefined;
+
       const run = await generate.mutateAsync({
         url: url || undefined,
         text: text || undefined,
-        mode: selectedPreset.mode,
-        outputLength: selectedPreset.outputLength,
+        mode: mode === "fidele" ? "original" : "polished",
+        introMaxChars: introChars && introChars >= 50 ? introChars : undefined,
+        bodyMaxChars: bodyChars && bodyChars >= 500 ? bodyChars : undefined,
       });
-      toast({ title: "Tailoring Complete", description: "Your CV has been optimized!" });
+      toast({ title: "CV genere", description: "Ton CV a ete optimise !" });
       setLocation(`/results/${run.id}`);
     } catch (err) {
-      toast({ title: "Failed to tailor CV", description: (err as Error).message, variant: "destructive" });
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
     }
   };
 
@@ -141,7 +97,7 @@ export default function Tailor() {
           </div>
           <h1 className="text-4xl font-extrabold tracking-tight text-foreground">Tailor Your CV</h1>
           <p className="text-lg text-muted-foreground max-w-xl mx-auto">
-            Provide a job description, and our AI will select and optimize the best experiences from your library to match.
+            Colle une annonce et l'IA selectionne et optimise tes experiences.
           </p>
         </div>
 
@@ -154,15 +110,14 @@ export default function Tailor() {
               {/* ── TARGET ROLE ── */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold flex items-center gap-2 border-b pb-2">
-                  <Target className="w-5 h-5 text-accent" /> Target Role
+                  <Target className="w-5 h-5 text-accent" /> Annonce
                 </h3>
 
                 <div className="space-y-3">
-                  <Label>Job Posting URL</Label>
+                  <Label>URL de l'annonce</Label>
                   <div className="relative">
                     <LinkIcon className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
                     <Input
-                      data-testid="input-job-url"
                       placeholder="https://linkedin.com/jobs/view/..."
                       className="pl-10 py-6 bg-background text-base rounded-xl"
                       value={url}
@@ -170,34 +125,25 @@ export default function Tailor() {
                     />
                   </div>
                   {urlConverted && (
-                    <div className="flex items-center gap-2 text-xs text-primary bg-primary/5 p-2 rounded-lg" data-testid="text-url-converted">
+                    <div className="flex items-center gap-2 text-xs text-primary bg-primary/5 p-2 rounded-lg">
                       <Info className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span>LinkedIn collection URL detected. Automatically converted to direct job link.</span>
-                    </div>
-                  )}
-                  {url && !text.trim() && (
-                    <div className="flex items-start gap-2 text-xs text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 p-3 rounded-xl">
-                      <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                      <span>
-                        <strong>URL détectée.</strong> Le contenu de la page sera récupéré automatiquement. Pour un résultat optimal, vous pouvez aussi <strong>coller le texte de l'annonce</strong> ci-dessous.
-                      </span>
+                      <span>URL LinkedIn convertie automatiquement.</span>
                     </div>
                   )}
                 </div>
 
                 <div className="relative flex items-center py-2">
                   <div className="flex-grow border-t border-border" />
-                  <span className="flex-shrink-0 mx-4 text-muted-foreground text-sm font-medium uppercase">Or</span>
+                  <span className="flex-shrink-0 mx-4 text-muted-foreground text-sm font-medium uppercase">Ou</span>
                   <div className="flex-grow border-t border-border" />
                 </div>
 
                 <div className="space-y-3">
-                  <Label>Paste Job Description</Label>
+                  <Label>Texte de l'annonce</Label>
                   <div className="relative">
                     <FileText className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
                     <Textarea
-                      data-testid="input-job-text"
-                      placeholder="Paste the raw text of the job description here..."
+                      placeholder="Colle le texte brut de l'annonce ici..."
                       className="pl-10 pt-3 min-h-[140px] bg-background text-base rounded-xl resize-y"
                       value={text}
                       onChange={e => setText(e.target.value)}
@@ -206,59 +152,98 @@ export default function Tailor() {
                 </div>
               </div>
 
-              {/* ── TAILORING MODE ── */}
+              {/* ── MODE ── */}
               <div className="space-y-4 pt-2">
                 <h3 className="text-lg font-semibold flex items-center gap-2 border-b pb-2">
-                  <SlidersHorizontal className="w-5 h-5 text-primary" /> Tailoring Mode
+                  <SlidersHorizontal className="w-5 h-5 text-primary" /> Mode
                 </h3>
 
                 <RadioGroup
-                  value={preset}
-                  onValueChange={v => setPreset(v as Preset)}
-                  className="grid grid-cols-1 sm:grid-cols-3 gap-3"
-                  data-testid="radio-tailoring-mode"
+                  value={mode}
+                  onValueChange={v => setMode(v as Mode)}
+                  className="grid grid-cols-2 gap-3"
                 >
-                  {PRESETS.map(opt => (
-                    <Label
-                      key={opt.value}
-                      htmlFor={`preset-${opt.value}`}
-                      className={`relative cursor-pointer flex flex-col gap-2 p-4 rounded-xl border-2 transition-all duration-200 ${
-                        preset === opt.value
-                          ? "border-primary bg-primary/5 shadow-sm"
-                          : "border-border bg-background hover:border-primary/30"
-                      }`}
-                    >
-                      {opt.recommended && (
-                        <span className="absolute -top-2.5 left-3 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary text-primary-foreground">
-                          Recommended
-                        </span>
-                      )}
-                      <RadioGroupItem value={opt.value} id={`preset-${opt.value}`} className="sr-only" />
-                      <div className="flex items-center gap-2">
-                        <span className={preset === opt.value ? "text-primary" : "text-muted-foreground"}>
-                          {opt.icon}
-                        </span>
-                        <span className="font-bold text-sm">{opt.label}</span>
-                      </div>
-                      <span className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide">{opt.tagline}</span>
-                      <span className="text-xs text-muted-foreground font-normal leading-relaxed">{opt.description}</span>
-                    </Label>
-                  ))}
+                  <Label
+                    htmlFor="mode-fidele"
+                    className={`cursor-pointer flex flex-col gap-2 p-4 rounded-xl border-2 transition-all duration-200 ${
+                      mode === "fidele"
+                        ? "border-primary bg-primary/5 shadow-sm"
+                        : "border-border bg-background hover:border-primary/30"
+                    }`}
+                  >
+                    <RadioGroupItem value="fidele" id="mode-fidele" className="sr-only" />
+                    <div className="flex items-center gap-2">
+                      <FileText className={`w-5 h-5 ${mode === "fidele" ? "text-primary" : "text-muted-foreground"}`} />
+                      <span className="font-bold text-sm">Fidele</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground leading-relaxed">
+                      Selectionne et agence tes bullets tels quels. Aucune reecriture.
+                    </span>
+                  </Label>
+
+                  <Label
+                    htmlFor="mode-optimise"
+                    className={`relative cursor-pointer flex flex-col gap-2 p-4 rounded-xl border-2 transition-all duration-200 ${
+                      mode === "optimise"
+                        ? "border-primary bg-primary/5 shadow-sm"
+                        : "border-border bg-background hover:border-primary/30"
+                    }`}
+                  >
+                    <span className="absolute -top-2.5 left-3 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary text-primary-foreground">
+                      Recommande
+                    </span>
+                    <RadioGroupItem value="optimise" id="mode-optimise" className="sr-only" />
+                    <div className="flex items-center gap-2">
+                      <Sparkles className={`w-5 h-5 ${mode === "optimise" ? "text-primary" : "text-muted-foreground"}`} />
+                      <span className="font-bold text-sm">Optimise</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground leading-relaxed">
+                      Reformule tes bullets pour integrer les mots-cles de l'offre. Contenu identique, angle adapte.
+                    </span>
+                  </Label>
                 </RadioGroup>
+              </div>
+
+              {/* ── CHARACTER LIMITS ── */}
+              <div className="space-y-4 pt-2">
+                <h3 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground">
+                  Limites de caracteres <span className="text-xs font-normal">(optionnel — adapte a ton template CV)</span>
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Intro / Resume pro</Label>
+                    <Input
+                      type="number"
+                      placeholder="Ex: 300"
+                      value={introMaxChars}
+                      onChange={e => setIntroMaxChars(e.target.value)}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Corps (experiences)</Label>
+                    <Input
+                      type="number"
+                      placeholder="Ex: 3400"
+                      value={bodyMaxChars}
+                      onChange={e => setBodyMaxChars(e.target.value)}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* ── SUBMIT ── */}
               <Button
-                data-testid="button-generate"
                 type="submit"
                 size="lg"
                 className="w-full text-lg py-6 rounded-xl shadow-lg shadow-primary/20 transition-all hover:scale-[1.01]"
                 disabled={generate.isPending}
               >
                 {generate.isPending ? (
-                  <><RefreshCw className="w-5 h-5 mr-2 animate-spin" /> Tailoring your CV...</>
+                  <><RefreshCw className="w-5 h-5 mr-2 animate-spin" /> Generation en cours...</>
                 ) : (
-                  <><WandSparkles className="w-5 h-5 mr-2" /> Generate Tailored CV</>
+                  <><WandSparkles className="w-5 h-5 mr-2" /> Generer le CV</>
                 )}
               </Button>
             </form>
