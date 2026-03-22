@@ -412,6 +412,7 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
 // ─── Master Pipeline ─────────────────────────────────────────────────────────
 export interface TailorInput {
   jobText: string; mode: string; outputLength?: string; customMaxChars?: number;
+  introMaxChars?: number; bodyMaxChars?: number;
   allExperiences: Experience[]; allBullets: Bullet[]; allSkills: Skill[];
   profile?: { name?: string; title?: string; summary?: string | null };
   formations?: any[]; languages?: any[];
@@ -429,23 +430,29 @@ export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Pro
   log("Pipeline V2 Start");
 
   const isFidele = input.mode === "original";
-  const totalChars = input.customMaxChars || CHAR_LIMITS[input.outputLength || "balanced"] || 3500;
+  const bodyChars = input.bodyMaxChars || input.customMaxChars || CHAR_LIMITS[input.outputLength || "balanced"] || 3500;
+  const introChars = input.introMaxChars || 400;
 
   const parsedJob = await parseJobDescription(input.jobText, openai);
   const scored = await hybridScoreAllBullets(parsedJob, input.allExperiences, input.allBullets, openai);
-  const allocs = allocateCharBudget(input.allExperiences, scored, totalChars);
+  const allocs = allocateCharBudget(input.allExperiences, scored, bodyChars);
   const selExps = selectBullets(scored, allocs);
   let cv = await buildStructuredCV(parsedJob, selExps, input.allSkills, input.mode, openai, {
     profileName: input.profile?.name, profileTitle: input.profile?.title,
     profileSummary: input.profile?.summary || undefined, formations: input.formations, languages: input.languages,
   });
 
+  // Truncate summary to intro limit
+  if (cv.summary && cv.summary.length > introChars) {
+    cv.summary = cv.summary.slice(0, introChars).replace(/[,;]?\s*\S*$/, "").trim();
+  }
+
   if (!isFidele) cv = await reformulateBullets(cv, parsedJob, openai);
   const postRules = applyPostRules(cv, parsedJob);
   const cvText = renderCVText(cv, parsedJob);
   const report = generateOptimizationReport(parsedJob, selExps, input.allSkills, postRules, cv);
 
-  log(`Pipeline V2 Done — Confidence: ${report.confidence}% | Chars: ${cvText.length}/${totalChars}`);
+  log(`Pipeline V2 Done — Confidence: ${report.confidence}% | Chars: ${cvText.length} | Body limit: ${bodyChars} | Intro limit: ${introChars}`);
   log("══════════════════════════════════════");
 
   return {
