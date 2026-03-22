@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { Layout } from "@/components/layout";
 import { useExperiences, useCreateExperience, useUpdateExperience, useDeleteExperience } from "@/hooks/use-experiences";
 import { useBullets, useCreateBullet, useUpdateBullet, useDeleteBullet } from "@/hooks/use-bullets";
-import { useSkills, useCreateSkill, useUpdateSkill, useDeleteSkill } from "@/hooks/use-skills";
+import { useSkills, useCreateSkill, useDeleteSkill } from "@/hooks/use-skills";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Plus, Building, Calendar, Pencil, RefreshCw, Briefcase, Zap, Upload, Sparkles, Check, X, MessageSquare, PenLine, Lightbulb, Search, GraduationCap, Globe, Target } from "lucide-react";
+import { Plus, Building, Calendar, Pencil, RefreshCw, Briefcase, Zap, Upload, Sparkles, Check, X, PenLine, Lightbulb, Search, GraduationCap, Globe } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Experience, Bullet } from "@shared/schema";
@@ -24,10 +24,10 @@ import type { Experience, Bullet } from "@shared/schema";
 interface Gap { id: string; dimension: string; question: string; priority: number; }
 
 function getDepthInfo(bulletCount: number) {
-  if (bulletCount === 0) return { label: "A explorer", variant: "secondary" as const, dots: 0 };
-  if (bulletCount <= 2) return { label: "En surface", variant: "outline" as const, dots: 1 };
-  if (bulletCount <= 5) return { label: "Approfondie", variant: "outline" as const, dots: 3 };
-  return { label: "Riche", variant: "default" as const, dots: 5 };
+  if (bulletCount === 0) return { label: "Vide", variant: "destructive" as const, dots: 0 };
+  if (bulletCount <= 2) return { label: "Ebauche", variant: "outline" as const, dots: 1 };
+  if (bulletCount <= 5) return { label: "Structure", variant: "outline" as const, dots: 3 };
+  return { label: "Complet", variant: "default" as const, dots: 5 };
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -63,36 +63,16 @@ export default function Library() {
   const { profile, save: saveProfile, loaded: profileLoaded } = useProfile();
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileDraft, setProfileDraft] = useState({ name: "", title: "", summary: "" });
-  const [roleCheckOpen, setRoleCheckOpen] = useState(false);
-  const [roleTarget, setRoleTarget] = useState("");
-  const [roleResult, setRoleResult] = useState<any>(null);
-  const [roleChecking, setRoleChecking] = useState(false);
 
   useEffect(() => {
     if (profileLoaded) {
       setProfileDraft({ name: profile.name || "", title: profile.title || "", summary: profile.summary || "" });
-      setRoleTarget(profile.targetRole || "");
     }
   }, [profileLoaded]);
 
   const handleSaveProfile = () => {
     saveProfile(profileDraft);
     setEditingProfile(false);
-  };
-
-  const handleCheckRole = async () => {
-    if (!roleTarget.trim()) return;
-    setRoleChecking(true);
-    saveProfile({ targetRole: roleTarget.trim() });
-    try {
-      const res = await fetch("/api/profile/check-role", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: roleTarget.trim() }), credentials: "include",
-      });
-      const data = await res.json();
-      setRoleResult(data);
-    } catch { setRoleResult(null); }
-    finally { setRoleChecking(false); }
   };
 
   return (
@@ -124,49 +104,6 @@ export default function Library() {
             </div>
           )}
 
-          {/* Role target — compact */}
-          <div className="mt-4">
-            <div className="flex items-center gap-2">
-              <Target className="w-3.5 h-3.5 text-muted-foreground" />
-              <Input value={roleTarget} onChange={e => setRoleTarget(e.target.value)}
-                placeholder="Role vise (ex: Lead Product Designer)"
-                className="h-8 text-sm border-0 p-0 focus-visible:ring-0 bg-transparent flex-1"
-                onKeyDown={e => { if (e.key === "Enter") handleCheckRole(); }} />
-              {roleTarget.trim() && (
-                <Button variant="ghost" size="sm" onClick={handleCheckRole} disabled={roleChecking} className="h-7 text-xs">
-                  {roleChecking ? <RefreshCw className="w-3 h-3 animate-spin" /> : "Analyser"}
-                </Button>
-              )}
-            </div>
-
-            {/* Role check result — narrative */}
-            {roleResult && (
-              <div className="mt-3 p-4 bg-muted/30 rounded-lg border border-border/50 animate-in fade-in-50 space-y-3">
-                <p className="text-sm text-foreground leading-relaxed">{roleResult.summary}</p>
-                {roleResult.dimensions?.length > 0 && (
-                  <div className="space-y-1.5">
-                    {roleResult.dimensions.map((dim: any, i: number) => (
-                      <div key={i} className="flex items-center gap-2 text-xs">
-                        <span className={`w-1.5 h-1.5 rounded-full ${dim.status === "fort" ? "bg-green-500" : dim.status === "correct" ? "bg-yellow-500" : dim.status === "leger" ? "bg-orange-500" : "bg-red-400"}`} />
-                        <span className="text-muted-foreground w-36 truncate">{dim.name}</span>
-                        <div className="flex-1 h-1 bg-border rounded-full overflow-hidden">
-                          <div className="h-full rounded-full bg-foreground/30" style={{ width: `${dim.score}%` }} />
-                        </div>
-                        <span className="text-muted-foreground w-10 text-right">{dim.bullets || 0}b</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {roleResult.dimensions?.filter((d: any) => d.tip).map((dim: any, i: number) => (
-                  <div key={i} className="text-xs bg-background p-2.5 rounded border border-border/50">
-                    <span className="font-medium text-foreground">{dim.name} :</span>{" "}
-                    <span className="text-muted-foreground">{dim.tip}</span>
-                  </div>
-                ))}
-                <button onClick={() => setRoleResult(null)} className="text-xs text-muted-foreground hover:text-foreground">Fermer</button>
-              </div>
-            )}
-          </div>
         </div>
 
         {/* ── EXPERIENCES ── */}
@@ -175,11 +112,11 @@ export default function Library() {
         {/* ── SKILLS ── */}
         <SkillsSection />
 
-        {/* ── FORMATIONS ── */}
-        <FormationsSection />
-
-        {/* ── LANGUAGES ── */}
-        <LanguagesSection />
+        {/* ── FORMATIONS + LANGUAGES — side by side ── */}
+        <div className="grid grid-cols-2 gap-6">
+          <FormationsSection />
+          <LanguagesSection />
+        </div>
 
       </div>
     </Layout>
@@ -303,7 +240,6 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
                   <div key={i} className={`w-1.5 h-1.5 rounded-full ${i < depth.dots ? 'bg-primary' : 'bg-border'}`} />
                 ))}
               </div>
-              {bulletCount > 0 && <span className="text-[10px] text-muted-foreground">{bulletCount} bullet{bulletCount > 1 ? "s" : ""}</span>}
             </div>
           </div>
         </AccordionTrigger>
@@ -682,8 +618,8 @@ function ExperienceDialog({ open, onOpenChange, experience, onClose }: any) {
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({ title: "", company: "", contractType: "", startDate: "", endDate: "", description: "" });
+  const [isCurrent, setIsCurrent] = useState(false);
 
-  // Fix: use useEffect for pre-filling instead of useState side-effect
   useEffect(() => {
     if (experience && open) {
       setFormData({
@@ -694,19 +630,22 @@ function ExperienceDialog({ open, onOpenChange, experience, onClose }: any) {
         endDate: experience.endDate || "",
         description: experience.description || "",
       });
+      setIsCurrent(!experience.endDate);
     } else if (open && !experience) {
       setFormData({ title: "", company: "", contractType: "", startDate: "", endDate: "", description: "" });
+      setIsCurrent(false);
     }
   }, [open, experience]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const data = { ...formData, endDate: isCurrent ? null : formData.endDate || null };
       if (experience) {
-        await updateExp.mutateAsync({ id: experience.id, ...formData });
+        await updateExp.mutateAsync({ id: experience.id, ...data });
         toast({ title: "Experience mise a jour" });
       } else {
-        await createExp.mutateAsync(formData);
+        await createExp.mutateAsync(data);
         toast({ title: "Experience ajoutee" });
       }
       onOpenChange(false);
@@ -740,7 +679,16 @@ function ExperienceDialog({ open, onOpenChange, experience, onClose }: any) {
             <div className="space-y-2"><Label>Titre</Label><Input required value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} placeholder="Product Designer" /></div>
             <div className="space-y-2"><Label>Entreprise</Label><Input required value={formData.company} onChange={e => setFormData({ ...formData, company: e.target.value })} placeholder="Accor" /></div>
             <div className="space-y-2"><Label>Date debut</Label><Input type="date" value={formData.startDate} onChange={e => setFormData({ ...formData, startDate: e.target.value })} /></div>
-            <div className="space-y-2"><Label>Date fin</Label><Input type="date" value={formData.endDate} onChange={e => setFormData({ ...formData, endDate: e.target.value })} /></div>
+            <div className="space-y-2">
+              <Label>Date fin</Label>
+              <Input type="date" value={isCurrent ? "" : formData.endDate} onChange={e => setFormData({ ...formData, endDate: e.target.value })} disabled={isCurrent} className={isCurrent ? "opacity-40" : ""} />
+              <label className="flex items-center gap-2 cursor-pointer mt-1" onClick={() => setIsCurrent(!isCurrent)}>
+                <div className={`w-8 h-[18px] rounded-full p-0.5 transition-colors ${isCurrent ? "bg-primary" : "bg-border"}`}>
+                  <div className={`w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform ${isCurrent ? "translate-x-3.5" : "translate-x-0"}`} />
+                </div>
+                <span className="text-xs text-muted-foreground">Poste actuel</span>
+              </label>
+            </div>
           </div>
           <div className="space-y-2">
             <Label>Type de contrat</Label>
@@ -854,20 +802,23 @@ function SkillsSection() {
     catch (err) { toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" }); }
   };
 
+  const totalSkills = (skills || []).length;
+  const atLimit = totalSkills >= 15;
+
   if (isLoading) return <div className="h-40 flex items-center justify-center text-muted-foreground"><RefreshCw className="w-6 h-6 animate-spin" /></div>;
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold flex items-center gap-2"><Zap className="w-5 h-5 text-accent" /> Competences</h2>
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2"><Zap className="w-3.5 h-3.5" /> Competences</h2>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleExtract} disabled={extracting} className="gap-2">
-            {extracting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            {extracting ? "Analyse..." : "Extraire auto"}
+          <Button variant="outline" size="sm" onClick={handleExtract} disabled={extracting || atLimit} className="gap-2 h-8 text-xs">
+            {extracting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            {atLimit ? "Limite atteinte" : extracting ? "Analyse..." : "Extraire auto"}
           </Button>
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
             <DialogTrigger asChild>
-              <Button><Plus className="w-4 h-4 mr-2" /> Ajouter</Button>
+              <Button size="sm" className="h-8 text-xs" disabled={atLimit}><Plus className="w-3.5 h-3.5 mr-1" /> Ajouter</Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[400px]">
               <DialogHeader><DialogTitle>Ajouter une competence</DialogTitle></DialogHeader>
@@ -896,12 +847,12 @@ function SkillsSection() {
         </div>
       </div>
 
-      {/* Skills grouped by category */}
-      <div className="bg-card border rounded-xl p-6 shadow-sm space-y-5">
+      {/* Skills grouped by category — 2 columns */}
+      <div className="bg-card border rounded-xl p-5 shadow-sm grid grid-cols-2 gap-x-8 gap-y-4">
         {Object.keys(grouped).length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground space-y-3">
-            <p>Aucune competence.</p>
-            <p className="text-xs">Cliquez "Extraire auto" pour detecter vos competences depuis vos experiences.</p>
+          <div className="text-center py-6 text-muted-foreground col-span-2">
+            <p className="text-sm">Aucune competence.</p>
+            <p className="text-xs mt-1">Cliquez "Extraire auto" pour detecter vos competences.</p>
           </div>
         ) : (
           Object.entries(grouped).map(([category, catSkills]) => (
@@ -931,7 +882,7 @@ function SkillsSection() {
               Competences detectees
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">Decochez les competences qui ne vous correspondent pas.</p>
+          <p className="text-sm text-muted-foreground">Decochez pour exclure. Les competences decochees ne seront <strong>plus jamais reproposees</strong>.</p>
           <div className="space-y-4 py-4">
             {CATEGORIES.map(cat => {
               const catItems = proposed.filter(s => s.category === cat);
@@ -1211,6 +1162,9 @@ function LanguagesSection() {
   const [level, setLevel] = useState("");
   const { toast } = useToast();
 
+  const LANG_SUGGESTIONS = ["Francais", "Anglais", "Espagnol", "Allemand", "Italien", "Portugais", "Chinois", "Arabe", "Japonais"];
+  const LEVELS = ["Langue maternelle", "Courant (C1)", "Professionnel (B2)", "Intermediaire (B1)", "Scolaire", "Notions"];
+
   const fetchLangs = async () => {
     try {
       const res = await fetch("/api/languages", { credentials: "include" });
@@ -1220,13 +1174,12 @@ function LanguagesSection() {
 
   useEffect(() => { fetchLangs(); }, []);
 
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAdd = async () => {
     if (!name.trim()) return;
     try {
       await fetch("/api/languages", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), level: level.trim() || null }),
+        body: JSON.stringify({ name: name.trim(), level: level || null }),
         credentials: "include",
       });
       setName(""); setLevel(""); setAddOpen(false);
@@ -1250,18 +1203,29 @@ function LanguagesSection() {
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
           <Globe className="w-3.5 h-3.5" /> Langues
         </h2>
-        <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <Dialog open={addOpen} onOpenChange={(val) => { setAddOpen(val); if (!val) { setName(""); setLevel(""); } }}>
           <DialogTrigger asChild>
             <Button variant="ghost" size="sm" className="h-7 text-xs"><Plus className="w-3 h-3 mr-1" /> Ajouter</Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[400px]">
+          <DialogContent className="sm:max-w-[420px]">
             <DialogHeader><DialogTitle>Ajouter une langue</DialogTitle></DialogHeader>
-            <form onSubmit={handleAdd} className="space-y-4 py-4">
-              <div className="space-y-2"><Label>Langue</Label><Input required value={name} onChange={e => setName(e.target.value)} placeholder="Anglais" /></div>
+            <div className="space-y-5 py-4">
+              <div className="space-y-2">
+                <Label>Langue</Label>
+                <div className="flex flex-wrap gap-2">
+                  {LANG_SUGGESTIONS.map(l => (
+                    <button key={l} type="button" onClick={() => setName(name === l ? "" : l)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${name === l ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:border-primary/50"}`}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                <Input value={name} onChange={e => setName(e.target.value)} placeholder="Autre langue..." className="mt-2 h-8 text-sm" />
+              </div>
               <div className="space-y-2">
                 <Label>Niveau</Label>
-                <div className="flex gap-2">
-                  {["Langue maternelle", "Courant (C1)", "Professionnel (B2)", "Intermediaire (B1)", "Debutant"].map(l => (
+                <div className="flex flex-wrap gap-2">
+                  {LEVELS.map(l => (
                     <button key={l} type="button" onClick={() => setLevel(level === l ? "" : l)}
                       className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all ${level === l ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:border-primary/50"}`}>
                       {l}
@@ -1269,8 +1233,8 @@ function LanguagesSection() {
                   ))}
                 </div>
               </div>
-              <DialogFooter><Button type="submit">Ajouter</Button></DialogFooter>
-            </form>
+              <DialogFooter><Button onClick={handleAdd} disabled={!name.trim()}>Ajouter</Button></DialogFooter>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
@@ -1278,13 +1242,15 @@ function LanguagesSection() {
       {langs.length === 0 ? (
         <p className="text-sm text-muted-foreground">Aucune langue ajoutee.</p>
       ) : (
-        <div className="flex flex-wrap gap-3">
+        <div className="space-y-2">
           {langs.map((l: any) => (
-            <div key={l.id} className="group flex items-center gap-2 px-4 py-2 bg-card rounded-full border border-border/50">
-              <span className="font-medium text-sm">{l.name}</span>
-              {l.level && <span className="text-xs text-muted-foreground">{l.level}</span>}
+            <div key={l.id} className="group flex items-center justify-between p-3 bg-card rounded-lg border border-border/50">
+              <div className="flex items-center gap-3">
+                <span className="font-medium text-sm">{l.name}</span>
+                {l.level && <span className="text-xs text-muted-foreground">{l.level}</span>}
+              </div>
               <button onClick={() => handleDelete(l.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive">
-                <X className="w-3 h-3" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           ))}
