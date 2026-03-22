@@ -409,7 +409,7 @@ function EnrichmentPanel({ experience, onClose }: { experience: Experience; onCl
               ref={contextRef}
               value={contextDraft}
               onChange={e => setContextDraft(e.target.value)}
-              placeholder='Ex: "J\'étais le seul designer produit sur le loyalty B2B. Je bossais avec 2 PM et une équipe dev de 8. Le produit partait de zéro, on construisait tout depuis le début."'
+              placeholder="Ex: J'étais le seul designer produit sur le loyalty B2B. Je bossais avec 2 PM et une équipe dev de 8. Le produit partait de zéro."
               className="min-h-[80px] text-sm resize-none"
             />
             <Button size="sm" onClick={handleSaveContext} disabled={!contextDraft.trim() || createBullet.isPending}>
