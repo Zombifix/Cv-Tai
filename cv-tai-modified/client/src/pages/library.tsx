@@ -24,10 +24,10 @@ import type { Experience, Bullet } from "@shared/schema";
 interface Gap { id: string; dimension: string; question: string; priority: number; }
 
 function getDepthInfo(bulletCount: number) {
-  if (bulletCount === 0) return { label: "Vide", variant: "destructive" as const, dots: 0 };
-  if (bulletCount <= 2) return { label: "Ebauche", variant: "outline" as const, dots: 1 };
-  if (bulletCount <= 5) return { label: "Structure", variant: "outline" as const, dots: 3 };
-  return { label: "Complet", variant: "default" as const, dots: 5 };
+  if (bulletCount === 0) return { label: "Vide", color: "#C45050", bg: "#FEF0EF", dots: 0 };
+  if (bulletCount <= 2) return { label: "Ebauche", color: "#B8941F", bg: "#FEF9EC", dots: 1 };
+  if (bulletCount <= 5) return { label: "Structure", color: "#4D8A5E", bg: "#EEF5EF", dots: 3 };
+  return { label: "Complet", color: "#2D7A3D", bg: "#E0F0E0", dots: 5 };
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -80,7 +80,8 @@ export default function Library() {
       <div className="flex flex-col gap-10 max-w-4xl">
 
         {/* ── PROFILE HEADER ── */}
-        <div className="border-b border-border/50 pb-6">
+        <Card className="border border-border">
+          <CardContent className="p-5">
           {editingProfile ? (
             <div className="space-y-3 animate-in fade-in-50">
               <Input value={profileDraft.name} onChange={e => setProfileDraft({ ...profileDraft, name: e.target.value })}
@@ -92,19 +93,19 @@ export default function Library() {
               <Button size="sm" onClick={handleSaveProfile}>Valider</Button>
             </div>
           ) : (
-            <div className="group cursor-pointer" onClick={() => setEditingProfile(true)}>
+            <div className="cursor-pointer group" onClick={() => setEditingProfile(true)}>
               <div className="flex items-start justify-between">
                 <div>
                   <h1 className="text-2xl font-bold tracking-tight">{profile.name || "Votre nom"}</h1>
                   <p className="text-base text-muted-foreground mt-0.5">{profile.title || "Votre poste"}</p>
                   {profile.summary && <p className="text-sm text-muted-foreground/70 mt-1">{profile.summary}</p>}
                 </div>
-                <Pencil className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-2" />
+                <Pencil className="w-4 h-4 text-muted-foreground opacity-50 group-hover:opacity-100 transition-opacity mt-1" />
               </div>
             </div>
           )}
-
-        </div>
+          </CardContent>
+        </Card>
 
         {/* ── EXPERIENCES ── */}
         <ExperiencesSection />
@@ -221,7 +222,7 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
   };
 
   return (
-    <AccordionItem value={experience.id} className="bg-card border rounded-xl shadow-sm overflow-hidden">
+    <AccordionItem value={experience.id} className="bg-card border rounded-xl shadow-sm overflow-hidden group/exp">
       <div className="flex items-center pr-4">
         <AccordionTrigger className="flex-1 hover:no-underline py-4 px-5 data-[state=open]:border-b data-[state=open]:border-border/50">
           <div className="flex flex-col items-start text-left gap-1">
@@ -234,16 +235,16 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
             </div>
             <span className="font-bold text-base">{experience.title}</span>
             <div className="flex items-center gap-2 mt-1">
-              <Badge variant={depth.variant} className="text-[10px]">{depth.label}</Badge>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded" style={{ background: depth.bg, color: depth.color }}>{depth.label}</span>
               <div className="flex gap-1">
                 {[...Array(5)].map((_, i) => (
-                  <div key={i} className={`w-1.5 h-1.5 rounded-full ${i < depth.dots ? 'bg-primary' : 'bg-border'}`} />
+                  <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: i < depth.dots ? depth.color : "#e8e5de" }} />
                 ))}
               </div>
             </div>
           </div>
         </AccordionTrigger>
-        <div className="flex items-center gap-1 pl-3">
+        <div className="flex items-center gap-1 pl-3 opacity-0 group-hover/exp:opacity-100 transition-opacity">
           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={onEdit}>
             <Pencil className="w-4 h-4" />
           </Button>
