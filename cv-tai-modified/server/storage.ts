@@ -1,16 +1,23 @@
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
 import {
-  experiences, bullets, skills, jobPosts, runs,
+  profile, experiences, bullets, skills, formations, languages, jobPosts, runs,
+  type Profile, type InsertProfile,
   type Experience, type InsertExperience,
   type Bullet, type InsertBullet,
   type Skill, type InsertSkill,
+  type Formation, type InsertFormation,
+  type Language, type InsertLanguage,
   type JobPost, type InsertJobPost,
   type Run, type InsertRun,
   type RunResponse
 } from "@shared/schema";
 
 export interface IStorage {
+  // Profile
+  getProfile(): Promise<Profile | undefined>;
+  upsertProfile(data: Partial<InsertProfile>): Promise<Profile>;
+
   // Experiences
   getExperiences(): Promise<Experience[]>;
   getExperience(id: string): Promise<Experience | undefined>;
@@ -32,6 +39,17 @@ export interface IStorage {
   updateSkill(id: string, updates: Partial<InsertSkill>): Promise<Skill>;
   deleteSkill(id: string): Promise<void>;
 
+  // Formations
+  getFormations(): Promise<Formation[]>;
+  createFormation(f: InsertFormation): Promise<Formation>;
+  deleteFormation(id: string): Promise<void>;
+
+  // Languages
+  getLanguages(): Promise<Language[]>;
+  createLanguage(l: InsertLanguage): Promise<Language>;
+  updateLanguage(id: string, updates: Partial<InsertLanguage>): Promise<Language>;
+  deleteLanguage(id: string): Promise<void>;
+
   // Job Posts
   createJobPost(jobPost: InsertJobPost): Promise<JobPost>;
 
@@ -42,6 +60,22 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // Profile
+  async getProfile() {
+    const [p] = await db.select().from(profile);
+    return p;
+  }
+  async upsertProfile(data: Partial<InsertProfile>) {
+    const existing = await this.getProfile();
+    if (existing) {
+      const [updated] = await db.update(profile).set({ ...data, updatedAt: new Date() }).where(eq(profile.id, existing.id)).returning();
+      return updated;
+    }
+    const [created] = await db.insert(profile).values({ name: data.name || "", title: data.title || "", ...data }).returning();
+    return created;
+  }
+
+  // Experiences
   async getExperiences() {
     return await db.select().from(experiences).orderBy(experiences.priority);
   }
@@ -97,6 +131,34 @@ export class DatabaseStorage implements IStorage {
   }
   async deleteSkill(id: string) {
     await db.delete(skills).where(eq(skills.id, id));
+  }
+
+  // Formations
+  async getFormations() {
+    return await db.select().from(formations);
+  }
+  async createFormation(f: InsertFormation) {
+    const [created] = await db.insert(formations).values(f).returning();
+    return created;
+  }
+  async deleteFormation(id: string) {
+    await db.delete(formations).where(eq(formations.id, id));
+  }
+
+  // Languages
+  async getLanguages() {
+    return await db.select().from(languages);
+  }
+  async createLanguage(l: InsertLanguage) {
+    const [created] = await db.insert(languages).values(l).returning();
+    return created;
+  }
+  async updateLanguage(id: string, updates: Partial<InsertLanguage>) {
+    const [updated] = await db.update(languages).set(updates).where(eq(languages.id, id)).returning();
+    return updated;
+  }
+  async deleteLanguage(id: string) {
+    await db.delete(languages).where(eq(languages.id, id));
   }
 
   async createJobPost(jobPost: InsertJobPost) {
