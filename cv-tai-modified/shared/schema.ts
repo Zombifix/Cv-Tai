@@ -37,7 +37,6 @@ export const bullets = pgTable("bullets", {
   text: text("text").notNull(),
   priority: integer("priority").default(0),
   tags: text("tags").array().default(sql`'{}'::text[]`),
-  embedding: vector("embedding"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
