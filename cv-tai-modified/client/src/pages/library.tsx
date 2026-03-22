@@ -77,6 +77,10 @@ export default function Library() {
 
   return (
     <Layout>
+      <style>{`
+        [data-exp-card] .exp-card-btns { visibility: hidden; }
+        [data-exp-card]:hover .exp-card-btns { visibility: visible; }
+      `}</style>
       <div className="flex flex-col gap-10 max-w-4xl">
 
         {/* ── PROFILE HEADER ── */}
@@ -202,8 +206,6 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
 
-  const [hovered, setHovered] = useState(false);
-
   const handleSaveEdit = async () => {
     if (!editingId || !editText.trim()) return;
     try {
@@ -224,8 +226,7 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
   };
 
   return (
-    <div onMouseOver={() => setHovered(true)} onMouseOut={() => setHovered(false)}>
-    <AccordionItem value={experience.id} className="bg-card border rounded-xl shadow-sm overflow-hidden">
+    <AccordionItem value={experience.id} data-exp-card className="bg-card border rounded-xl shadow-sm overflow-hidden">
       <div className="flex items-center pr-4">
         <AccordionTrigger className="flex-1 hover:no-underline py-4 px-5 data-[state=open]:border-b data-[state=open]:border-border/50">
           <div className="flex flex-col items-start text-left gap-1">
@@ -247,7 +248,7 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
             </div>
           </div>
         </AccordionTrigger>
-        <div style={{ display: hovered ? "flex" : "none", alignItems: "center", gap: 4, paddingLeft: 12 }}>
+        <div className="exp-card-btns flex items-center gap-1 pl-3">
           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={onEdit}>
             <Pencil className="w-4 h-4" />
           </Button>
@@ -297,7 +298,6 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
         </div>
       </AccordionContent>
     </AccordionItem>
-    </div>
   );
 }
 
