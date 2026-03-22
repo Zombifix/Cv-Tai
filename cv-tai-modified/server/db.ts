@@ -69,6 +69,8 @@ export async function ensureTables() {
       );
     `);
     console.log("[DB] Tables verified/created successfully");
+    // Add category column if it doesn't exist
+    await client.query(`ALTER TABLE skills ADD COLUMN IF NOT EXISTS category TEXT`).catch(() => {});
   } catch (err: any) {
     // If vector extension fails, create tables without the embedding column
     if (err.message?.includes("vector")) {
@@ -124,6 +126,7 @@ export async function ensureTables() {
         );
       `);
       console.log("[DB] Tables created without pgvector");
+      await client.query(`ALTER TABLE skills ADD COLUMN IF NOT EXISTS category TEXT`).catch(() => {});
     } else {
       console.error("[DB] Failed to create tables:", err.message);
     }
