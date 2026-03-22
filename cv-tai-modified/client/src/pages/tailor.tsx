@@ -1,255 +1,859 @@
-import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
-import { Layout } from "@/components/layout";
-import { useGenerateTailor } from "@/hooks/use-tailor";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { WandSparkles, Link as LinkIcon, FileText, Target, RefreshCw, Info, SlidersHorizontal, Sparkles } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import type { Express } from "express";
+import type { Server } from "http";
+import { storage } from "./storage";
+import { api } from "@shared/routes";
+import { z } from "zod";
+import OpenAI from "openai";
+import { db } from "./db";
+import { bullets } from "@shared/schema";
+import { eq, sql } from "drizzle-orm";
+import {
+  normalizeLinkedInUrl,
+  checkLLMHealth,
+  runTailorPipeline,
+} from "./tailoring-engine";
 
-type Mode = "fidele" | "optimise";
+let openai: OpenAI | null = null;
+if (process.env.GROQ_API_KEY) {
+  openai = new OpenAI({
+    apiKey: process.env.GROQ_API_KEY,
+    baseURL: "https://api.groq.com/openai/v1",
+  });
+}
 
-function normalizeLinkedInUrl(rawUrl: string): { url: string; converted: boolean } {
-  if (!rawUrl) return { url: rawUrl, converted: false };
-  try {
-    const urlObj = new URL(rawUrl);
-    if (!urlObj.hostname.includes("linkedin.com")) return { url: rawUrl, converted: false };
-    const jobIdParam = urlObj.searchParams.get("currentJobId");
-    if (jobIdParam) {
-      return { url: `https://www.linkedin.com/jobs/view/${jobIdParam}`, converted: true };
-    }
-    return { url: rawUrl, converted: false };
-  } catch {
-    return { url: rawUrl, converted: false };
+// Embeddings disabled as per request
+async function getEmbedding(text: string): Promise<number[]> {
+  return Array(1536).fill(0);
+}
+
+async function seedDatabase() {
+  const exps = await storage.getExperiences();
+  if (exps.length === 0) {
+    const exp = await storage.createExperience({
+      title: "Senior Software Engineer",
+      company: "Tech Solutions Inc.",
+      startDate: new Date("2020-01-01").toISOString(),
+      endDate: new Date("2023-01-01").toISOString(),
+      description: "Led the development of a cloud-native SaaS platform.",
+      priority: 10,
+    });
+    
+    await storage.createBullet({
+      experienceId: exp.id,
+      text: "Designed and implemented microservices architecture using Node.js and Docker, improving system scalability by 40%.",
+      priority: 5,
+      tags: ["Node.js", "Docker", "Architecture"],
+    });
+
+    await storage.createBullet({
+      experienceId: exp.id,
+      text: "Optimized database queries in PostgreSQL, reducing average API response time from 300ms to 50ms.",
+      priority: 8,
+      tags: ["PostgreSQL", "Performance", "SQL"],
+    });
+    
+    await storage.createSkill({ name: "TypeScript", level: 5, priority: 10 });
+    await storage.createSkill({ name: "React", level: 5, priority: 9 });
+    await storage.createSkill({ name: "Node.js", level: 4, priority: 8 });
   }
 }
 
-export default function Tailor() {
-  const [, setLocation] = useLocation();
-  const { toast } = useToast();
-  const generate = useGenerateTailor();
+export async function registerRoutes(
+  httpServer: Server,
+  app: Express
+): Promise<Server> {
+  
+  // Seed initial data
+  seedDatabase().catch(console.error);
 
-  const [url, setUrl] = useState("");
-  const [text, setText] = useState("");
-  const [mode, setMode] = useState<Mode>("optimise");
-  const [urlConverted, setUrlConverted] = useState(false);
-  const [introMaxChars, setIntroMaxChars] = useState("");
-  const [bodyMaxChars, setBodyMaxChars] = useState("");
+  app.get("/api/llm/health", async (_req, res) => {
+    const result = await checkLLMHealth(openai);
+    res.status(result.success ? 200 : 503).json(result);
+  });
 
-  useEffect(() => {
+  // ══════════════════════════════════════════════════════════════
+  // CV IMPORT — PDF (base64) or text paste → parse ALL experiences
+  // ══════════════════════════════════════════════════════════════
+  app.post("/api/import/cv", async (req, res) => {
     try {
-      const state = window.history.state;
-      if (state?.tailorPrefill) {
-        const { text: prefillText, url: prefillUrl } = state.tailorPrefill;
-        window.history.replaceState({}, "", "/tailor");
-        if (prefillUrl && prefillUrl.startsWith("http")) {
-          const { url: normalized, converted } = normalizeLinkedInUrl(prefillUrl);
-          setUrl(normalized);
-          setUrlConverted(converted);
-        } else if (prefillText) {
-          const cleaned = prefillText.replace(/^Mock extracted description for .*/gm, "").trim();
-          if (cleaned) setText(cleaned);
+      let rawText = "";
+
+      if (req.body?.fileBase64) {
+        // PDF sent as base64
+        try {
+          const pdfParse = (await import("pdf-parse")).default;
+          const buffer = Buffer.from(req.body.fileBase64, "base64");
+          console.log("[IMPORT] PDF buffer size:", buffer.length);
+          const data = await pdfParse(buffer);
+          rawText = data.text || "";
+          console.log("[IMPORT] PDF text extracted:", rawText.length, "chars");
+          console.log("[IMPORT] First 200 chars:", rawText.slice(0, 200));
+        } catch (pdfErr: any) {
+          console.error("[IMPORT] PDF parse error:", pdfErr.message);
+          return res.status(400).json({ message: "Impossible de lire ce PDF. Essayez de coller le texte directement." });
+        }
+      } else if (req.body?.text) {
+        rawText = req.body.text;
+      } else {
+        return res.status(400).json({ message: "Envoyez un fichier PDF (base64) ou du texte." });
+      }
+
+      // Clean up extracted text
+      rawText = rawText.replace(/\s+/g, " ").trim();
+
+      if (rawText.length < 20) {
+        return res.status(400).json({ message: "Pas assez de contenu extrait. Essayez de coller le texte de votre CV directement." });
+      }
+
+      // Truncate to avoid token limits
+      const truncated = rawText.slice(0, 8000);
+
+      if (!openai) {
+        return res.status(500).json({ message: "Service IA non configuré (GROQ_API_KEY manquant)." });
+      }
+
+      const prompt = `Analyse ce CV et extrais TOUTES les expériences professionnelles.
+
+Pour chaque expérience, extrais :
+- title : intitulé du poste
+- company : nom de l'entreprise
+- startDate : date de début au format YYYY-MM-DD (estime si besoin, ex: "2020" → "2020-01-01")
+- endDate : date de fin au format YYYY-MM-DD (null si poste actuel)
+- description : résumé court du rôle en 1-2 phrases
+- bullets : liste des réalisations/responsabilités (chaque bullet = une ligne du CV)
+
+Réponds UNIQUEMENT en JSON valide, sans markdown ni backticks :
+{
+  "experiences": [
+    {
+      "title": "...",
+      "company": "...",
+      "startDate": "...",
+      "endDate": "..." ou null,
+      "description": "...",
+      "bullets": ["...", "..."]
+    }
+  ]
+}
+
+CV à analyser :
+${truncated}`;
+
+      const response = await openai.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+      });
+
+      let parsed;
+      try {
+        parsed = JSON.parse(response.choices[0].message.content || "{}");
+      } catch {
+        return res.status(500).json({ message: "L'IA n'a pas pu analyser le contenu." });
+      }
+
+      const experiences = parsed.experiences || [];
+      console.log("[IMPORT] Parsed", experiences.length, "experiences");
+
+      res.json({ experiences, rawTextLength: rawText.length });
+    } catch (err: any) {
+      console.error("[IMPORT] Error:", err.message);
+      res.status(500).json({ message: "Erreur lors de l'import: " + err.message });
+    }
+  });
+
+  // Bulk create experiences from import
+  app.post("/api/import/save", async (req, res) => {
+    try {
+      const { experiences: exps } = req.body;
+      if (!exps || !Array.isArray(exps)) {
+        return res.status(400).json({ message: "experiences array required" });
+      }
+
+      const created = [];
+      for (const exp of exps) {
+        const newExp = await storage.createExperience({
+          title: exp.title || "Sans titre",
+          company: exp.company || "Non renseigné",
+          startDate: exp.startDate || undefined,
+          endDate: exp.endDate || undefined,
+          description: exp.description || "",
+        });
+
+        if (exp.bullets && Array.isArray(exp.bullets)) {
+          for (const bulletText of exp.bullets) {
+            if (bulletText.trim()) {
+              await storage.createBullet({
+                experienceId: newExp.id,
+                text: bulletText.trim(),
+                tags: [],
+              });
+            }
+          }
+        }
+
+        created.push(newExp);
+      }
+
+      res.status(201).json({ created: created.length });
+    } catch (err: any) {
+      console.error("[IMPORT] Save error:", err.message);
+      res.status(500).json({ message: "Erreur lors de la sauvegarde." });
+    }
+  });
+
+  // Parse experience from raw text
+  app.post("/api/experiences/parse", async (req, res) => {
+    try {
+      const { text } = req.body;
+      if (!text) return res.status(400).json({ message: "text required" });
+      
+      if (!openai) {
+        return res.json({
+          title: text.split("\n")[0].slice(0, 50),
+          company: "Unknown",
+          summary: text.slice(0, 200),
+        });
+      }
+
+      const response = await openai.chat.completions.create({
+        model: "llama-3.2-90b-vision-preview",
+        messages: [{
+          role: "user",
+          content: `Parse this raw experience text into structured JSON. Be strict about what is explicitly mentioned. If a field is not mentioned, omit it. Return ONLY valid JSON with these fields: title, company, employmentType, startDate (YYYY-MM-DD format), endDate (YYYY-MM-DD format), location, summary (brief 1-2 sentences), responsibilities (array of 3-5 bullet points), achievements (array of 3-5 bullet points with metrics), skills (array of technical skills), tools (array of software/tools), industry (array of industry tags).
+
+Raw experience text:
+${text}`,
+        }],
+        response_format: { type: "json_object" },
+      });
+
+      const parsed = JSON.parse(response.choices[0].message.content || "{}");
+      res.json(parsed);
+    } catch (err: any) {
+      console.error("Parse error", err);
+      res.status(500).json({ message: "Failed to parse experience" });
+    }
+  });
+
+  // Experiences
+  app.get(api.experiences.list.path, async (req, res) => {
+    const exps = await storage.getExperiences();
+    res.json(exps);
+  });
+  app.get(api.experiences.get.path, async (req, res) => {
+    const exp = await storage.getExperience(req.params.id);
+    if (!exp) return res.status(404).json({ message: "Not found" });
+    res.json(exp);
+  });
+  app.post(api.experiences.create.path, async (req, res) => {
+    try {
+      const input = api.experiences.create.input.parse(req.body);
+      const exp = await storage.createExperience(input);
+      res.status(201).json(exp);
+    } catch (e) {
+      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
+      throw e;
+    }
+  });
+  app.put(api.experiences.update.path, async (req, res) => {
+    try {
+      const input = api.experiences.update.input.parse(req.body);
+      const exp = await storage.updateExperience(req.params.id, input);
+      res.json(exp);
+    } catch (e) {
+      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
+      throw e;
+    }
+  });
+  app.delete(api.experiences.delete.path, async (req, res) => {
+    await storage.deleteExperience(req.params.id);
+    res.status(204).end();
+  });
+
+  // Bullets
+  app.get(api.bullets.listByExperience.path, async (req, res) => {
+    const b = await storage.getBulletsByExperience(req.params.experienceId);
+    res.json(b);
+  });
+  app.post(api.bullets.create.path, async (req, res) => {
+    try {
+      const input = api.bullets.create.input.parse(req.body);
+      const bullet = await storage.createBullet({ ...input, experienceId: req.params.experienceId });
+      getEmbedding(bullet.text).then(emb => storage.updateBulletEmbedding(bullet.id, emb));
+      res.status(201).json(bullet);
+    } catch (e) {
+      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
+      throw e;
+    }
+  });
+  app.put(api.bullets.update.path, async (req, res) => {
+    try {
+      const input = api.bullets.update.input.parse(req.body);
+      const bullet = await storage.updateBullet(req.params.id, input);
+      if (input.text) {
+        getEmbedding(input.text).then(emb => storage.updateBulletEmbedding(bullet.id, emb));
+      }
+      res.json(bullet);
+    } catch (e) {
+      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
+      throw e;
+    }
+  });
+  app.delete(api.bullets.delete.path, async (req, res) => {
+    await storage.deleteBullet(req.params.id);
+    res.status(204).end();
+  });
+  app.post(api.bullets.reEmbedAll.path, async (req, res) => {
+    const all = await storage.getAllBullets();
+    let count = 0;
+    for (const b of all) {
+      const emb = await getEmbedding(b.text);
+      await storage.updateBulletEmbedding(b.id, emb);
+      count++;
+    }
+    res.json({ success: true, count });
+  });
+
+  // Skills
+  app.get(api.skills.list.path, async (req, res) => {
+    const s = await storage.getSkills();
+    res.json(s);
+  });
+  app.post(api.skills.create.path, async (req, res) => {
+    try {
+      const input = api.skills.create.input.parse(req.body);
+      const skill = await storage.createSkill(input);
+      res.status(201).json(skill);
+    } catch (e) {
+      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
+      throw e;
+    }
+  });
+  app.put(api.skills.update.path, async (req, res) => {
+    try {
+      const input = api.skills.update.input.parse(req.body);
+      const skill = await storage.updateSkill(req.params.id, input);
+      res.json(skill);
+    } catch (e) {
+      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
+      throw e;
+    }
+  });
+  app.delete(api.skills.delete.path, async (req, res) => {
+    await storage.deleteSkill(req.params.id);
+    res.status(204).end();
+  });
+
+  // Extract skills from all experiences + bullets via LLM
+  app.post("/api/skills/extract", async (req, res) => {
+    try {
+      const allExps = await storage.getExperiences();
+      const allBullets = await storage.getAllBullets();
+      const existingSkills = await storage.getSkills();
+
+      if (allExps.length === 0) {
+        return res.status(400).json({ message: "Ajoutez des experiences d'abord." });
+      }
+
+      // Build a summary of all experiences + bullets
+      const expSummaries = allExps.map(exp => {
+        const expBullets = allBullets.filter(b => b.experienceId === exp.id);
+        return `${exp.title} chez ${exp.company}:\n${exp.description || ""}\n${expBullets.map(b => "- " + b.text).join("\n")}`;
+      }).join("\n\n");
+
+      const existingNames = existingSkills.map(s => s.name.toLowerCase());
+
+      if (!openai) {
+        return res.json({ skills: [] });
+      }
+
+      const prompt = `Analyse ces experiences professionnelles et extrais TOUTES les competences (skills).
+
+EXPERIENCES :
+${expSummaries.slice(0, 6000)}
+
+COMPETENCES DEJA ENREGISTREES (ne pas dupliquer) :
+${existingNames.join(", ") || "aucune"}
+
+REGLES :
+- Extrais les competences explicites ET implicites
+- Classe chaque competence dans UNE categorie parmi : "Outils", "Methodologies", "Soft Skills", "Domaines", "Techniques"
+- "Outils" = logiciels, apps, plateformes (Figma, Jira, Salesforce...)
+- "Methodologies" = methodes de travail (User Research, Design Thinking, Agile, A/B Testing...)
+- "Soft Skills" = competences humaines (Leadership, Communication, Gestion de stakeholders...)
+- "Domaines" = expertises metier (E-commerce, CRM, B2B, Luxury, Retail...)
+- "Techniques" = competences techniques (Design System, Prototypage, Data Visualization...)
+- NE PAS inclure les competences deja enregistrees
+- Max 20 nouvelles competences
+- Nom court (1-3 mots max)
+
+Reponds UNIQUEMENT en JSON valide :
+{
+  "skills": [
+    {"name": "...", "category": "Outils"},
+    {"name": "...", "category": "Methodologies"}
+  ]
+}`;
+
+      const response = await openai.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+      });
+
+      let result;
+      try {
+        result = JSON.parse(response.choices[0].message.content || "{}");
+      } catch {
+        return res.json({ skills: [] });
+      }
+
+      const extracted = result.skills || [];
+      // Filter out duplicates
+      const filtered = extracted.filter((s: any) =>
+        s.name && !existingNames.includes(s.name.toLowerCase())
+      );
+
+      console.log("[SKILLS] Extracted", filtered.length, "new skills");
+      res.json({ skills: filtered });
+    } catch (err: any) {
+      console.error("[SKILLS] Extract error:", err.message);
+      res.json({ skills: [] });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // PROFILE
+  // ══════════════════════════════════════════════════════════════
+  app.get("/api/profile", async (_req, res) => {
+    const p = await storage.getProfile();
+    res.json(p || { name: "", title: "", summary: null, targetRole: null });
+  });
+  app.put("/api/profile", async (req, res) => {
+    try {
+      const p = await storage.upsertProfile(req.body);
+      res.json(p);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Role target check — analyze library against a target role
+  app.post("/api/profile/check-role", async (req, res) => {
+    try {
+      const { role } = req.body;
+      if (!role) return res.status(400).json({ message: "role required" });
+
+      const allExps = await storage.getExperiences();
+      const allBullets = await storage.getAllBullets();
+
+      if (allExps.length === 0) return res.json({ summary: "Ajoutez des experiences d'abord.", dimensions: [] });
+
+      if (!openai) return res.json({ summary: "Service IA non configure.", dimensions: [] });
+
+      const expSummaries = allExps.map(exp => {
+        const expBullets = allBullets.filter(b => b.experienceId === exp.id);
+        return `${exp.title} chez ${exp.company}:\n${expBullets.map(b => `- ${b.text} [tags: ${(b.tags || []).join(", ")}]`).join("\n")}`;
+      }).join("\n\n");
+
+      const prompt = `Analyse ce profil par rapport au poste vise : "${role}".
+
+EXPERIENCES :
+${expSummaries.slice(0, 5000)}
+
+Evalue 5-6 dimensions cles pour ce type de poste. Pour chaque dimension :
+- score de 0 a 100
+- status : "fort" (70+), "correct" (40-69), "leger" (15-39), "absent" (0-14)
+- bullets : combien de bullets couvrent cette dimension
+- Si le score est faible, propose un "tip" : soit un pont avec une experience existante, soit un constat de manque
+
+Termine par un "summary" : 2 phrases max, ton direct, qui resume les forces et les trous.
+
+Reponds UNIQUEMENT en JSON :
+{
+  "summary": "...",
+  "dimensions": [
+    {"name": "...", "score": 80, "status": "fort", "bullets": 3, "tip": null},
+    {"name": "...", "score": 20, "status": "leger", "bullets": 1, "tip": "Ton experience X peut se reformuler sous cet angle."}
+  ]
+}`;
+
+      const response = await openai.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.4,
+      });
+
+      let result;
+      try { result = JSON.parse(response.choices[0].message.content || "{}"); }
+      catch { result = { summary: "Impossible d'analyser.", dimensions: [] }; }
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("[CHECK-ROLE] Error:", err.message);
+      res.json({ summary: "Erreur lors de l'analyse.", dimensions: [] });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // FORMATIONS
+  // ══════════════════════════════════════════════════════════════
+  app.get("/api/formations", async (_req, res) => {
+    const f = await storage.getFormations();
+    res.json(f);
+  });
+  app.post("/api/formations", async (req, res) => {
+    try {
+      const { school, degree, year } = req.body;
+      if (!school || !degree) return res.status(400).json({ message: "school and degree required" });
+      const f = await storage.createFormation({ school, degree, year });
+      res.status(201).json(f);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app.delete("/api/formations/:id", async (req, res) => {
+    await storage.deleteFormation(req.params.id);
+    res.status(204).end();
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // LANGUAGES
+  // ══════════════════════════════════════════════════════════════
+  app.get("/api/languages", async (_req, res) => {
+    const l = await storage.getLanguages();
+    res.json(l);
+  });
+  app.post("/api/languages", async (req, res) => {
+    try {
+      const { name, level } = req.body;
+      if (!name) return res.status(400).json({ message: "name required" });
+      const l = await storage.createLanguage({ name, level });
+      res.status(201).json(l);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app.delete("/api/languages/:id", async (req, res) => {
+    await storage.deleteLanguage(req.params.id);
+    res.status(204).end();
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // SETTINGS — reset all data
+  // ══════════════════════════════════════════════════════════════
+  app.post("/api/settings/reset", async (_req, res) => {
+    try {
+      const client = await (await import("./db")).pool.connect();
+      try {
+        await client.query("DELETE FROM runs");
+        await client.query("DELETE FROM job_posts");
+        await client.query("DELETE FROM bullets");
+        await client.query("DELETE FROM experiences");
+        await client.query("DELETE FROM skills");
+        await client.query("DELETE FROM formations");
+        await client.query("DELETE FROM languages");
+        await client.query("DELETE FROM profile");
+        console.log("[SETTINGS] All data reset");
+        res.json({ success: true });
+      } finally {
+        client.release();
+      }
+    } catch (err: any) {
+      console.error("[SETTINGS] Reset failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Runs history
+  app.get("/api/runs", async (_req, res) => {
+    const allRuns = await storage.getRuns();
+    res.json(allRuns);
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // GAP DETECTION — analyze experience + bullets, find what's missing
+  // ══════════════════════════════════════════════════════════════
+  app.post("/api/experiences/:id/detect-gaps", async (req, res) => {
+    try {
+      const exp = await storage.getExperience(req.params.id);
+      if (!exp) return res.status(404).json({ message: "Experience not found" });
+
+      const existingBullets = await storage.getBulletsByExperience(exp.id);
+      const bulletTexts = existingBullets.map(b => `- ${b.text} [tags: ${(b.tags || []).join(", ")}]`).join("\n");
+
+      if (!openai) {
+        return res.json({ gaps: [
+          { id: "g1", dimension: "scope", question: "Tu travaillais avec combien de personnes ?", priority: 1 },
+          { id: "g2", dimension: "impact", question: "Quel resultat concret ca a donne ?", priority: 2 },
+        ]});
+      }
+
+      const prompt = `Tu analyses un CV pour trouver ce qui MANQUE. Tu dois identifier les lacunes et poser UNE question par lacune.
+
+ETAPE 1 — IDENTIFIER LES MISSIONS/PERIMETRES DISTINCTS
+Regarde la description et les bullets. S'il y a plusieurs MISSIONS ou PERIMETRES de travail differents (ex: CRM + B2B, app mobile + back-office, produit client + produit interne), identifie-les.
+ATTENTION : une competence transversale (design system, user research, figma) n'est PAS un perimetre distinct. Un perimetre = un projet, un produit, ou un scope de responsabilite separe.
+
+EXPERIENCE :
+- Poste : ${exp.title}
+- Entreprise : ${exp.company}
+- Description : ${exp.description || "Aucune"}
+${existingBullets.length > 0 ? `\nBULLETS EXISTANTS :\n${bulletTexts}` : "\nAucun bullet existant."}
+
+ETAPE 2 — TROUVER LES LACUNES
+Pour CHAQUE mission/perimetre identifie, verifie ces dimensions :
+1. SCOPE — taille equipe, perimetre, nombre utilisateurs/clients
+2. IMPACT — resultats concrets, chiffres, ameliorations
+3. CONTEXTE — pourquoi ce projet existait, quel probleme
+4. METHODE — approche, process mis en place
+5. COLLABORATION — avec qui (equipes, stakeholders)
+6. DIFFICULTES — contraintes, obstacles
+
+REGLES :
+- Si plusieurs missions/perimetres, assure-toi que les questions couvrent TOUS les perimetres (pas juste un)
+- Max 4 questions au total
+- Chaque question PRECISE de quel perimetre/mission elle parle
+- Questions en 15 mots MAX, tutoiement, ton direct
+- Si tout est bien couvert, retourne un tableau vide
+
+Exemple pour Accor avec CRM + B2B :
+- "Le CRM Loyalty, c'est deploye pour combien de marques ?"
+- "L'outil B2B partenaires, ca a remplace quoi comme process ?"
+- "Tu bossais avec combien de personnes sur le CRM ?"
+
+Reponds UNIQUEMENT en JSON valide :
+{"gaps": [{"id": "g1", "dimension": "scope|impact|contexte|methode|collaboration|difficultes", "question": "...", "priority": 1}]}`;
+
+      const response = await openai.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.5,
+      });
+
+      let result;
+      try {
+        result = JSON.parse(response.choices[0].message.content || "{}");
+      } catch {
+        result = { gaps: [] };
+      }
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("[GAPS] Error:", err.message);
+      res.json({ gaps: [] });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // MICRO-THREAD — follow-up + progressive reformulation + auto-tags
+  // ══════════════════════════════════════════════════════════════
+  app.post("/api/experiences/:id/enrich", async (req, res) => {
+    try {
+      const exp = await storage.getExperience(req.params.id);
+      if (!exp) return res.status(404).json({ message: "Experience not found" });
+
+      const { dimension, question, answer, previousAnswers } = req.body;
+      if (!answer) return res.status(400).json({ message: "answer required" });
+
+      // Build conversation history for micro-thread
+      const history = previousAnswers || [];
+      const allAnswers = [...history, answer].join(" | ");
+
+      if (!openai) {
+        return res.json({
+          bullet: answer,
+          tags: [dimension || "general"],
+          followUp: null,
+          isComplete: true,
+        });
+      }
+
+      const prompt = `Tu es un assistant CV. Tu analyses la reponse et tu fais ceci :
+
+ETAPE 1 — DETECTER SI LA REPONSE COUVRE PLUSIEURS MISSIONS/PERIMETRES DISTINCTS
+Si la reponse parle de 2+ missions ou perimetres differents (ex: "le CRM c'etait X, le B2B c'etait Y", "l'app mobile + le back-office"), cree UN bullet SEPARE pour chaque mission.
+ATTENTION : des competences transversales (design system, user research) ne sont PAS des missions distinctes. Une mission = un projet, un produit, un scope separe.
+Si la reponse parle d'un seul sujet, cree un seul bullet.
+
+ETAPE 2 — POUR CHAQUE BULLET :
+- Reformuler en bullet CV (verbe d'action, max 2-3 phrases, garde chiffres et contexte)
+- Tagger avec 3-6 mots-cles semantiques SPECIFIQUES a la mission de CE bullet
+- Ne melange PAS les tags de missions differentes
+
+ETAPE 3 — RELANCE
+- Si une des missions est vague → propose UNE relance courte (10 mots max)
+- Si tout est precis → isComplete = true
+
+EXPERIENCE :
+- Poste : ${exp.title}
+- Entreprise : ${exp.company}
+- Description : ${exp.description || ""}
+
+CONVERSATION :
+- Dimension exploree : ${dimension || "general"}
+- Question posee : ${question || "ajout libre"}
+- Reponse(s) : ${allAnswers}
+
+REGLES REFORMULATION :
+- Garde TOUS les chiffres et metriques
+- Garde le contexte specifique (type de projet, equipe, contraintes)
+- Commence par un verbe d'action
+- Ecris en francais
+
+REGLES TAGS :
+- Tags concrets pour matcher des offres : "paiement", "mobile-ios", "design-system", "b2b", "CRM", "retail"
+- PAS de tags vagues comme "experience" ou "travail"
+- Chaque bullet a ses propres tags lies a SA mission/perimetre
+
+Reponds UNIQUEMENT en JSON valide :
+{
+  "bullets": [
+    {"bullet": "Le bullet reformule", "tags": ["tag1", "tag2"]}
+  ],
+  "followUp": "La question de relance courte" ou null,
+  "isComplete": true ou false
+}
+
+IMPORTANT : "bullets" est TOUJOURS un tableau, meme s'il n'y a qu'un seul bullet.`;
+
+      const response = await openai.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.4,
+      });
+
+      let result;
+      try {
+        result = JSON.parse(response.choices[0].message.content || "{}");
+      } catch {
+        result = { bullets: [{ bullet: answer, tags: [dimension || "general"] }], followUp: null, isComplete: true };
+      }
+
+      // Handle new format (bullets array) with backward compat
+      const bulletsArray = result.bullets || (result.bullet ? [{ bullet: result.bullet, tags: result.tags }] : [{ bullet: answer, tags: [dimension || "general"] }]);
+      const firstBullet = bulletsArray[0] || { bullet: answer, tags: [dimension || "general"] };
+      const extraBullets = bulletsArray.slice(1);
+
+      // Ensure tags is always an array
+      if (!Array.isArray(firstBullet.tags)) firstBullet.tags = [dimension || "general"];
+
+      // Return first bullet in standard format + extra bullets if multi-topic
+      res.json({
+        bullet: firstBullet.bullet,
+        tags: firstBullet.tags,
+        followUp: result.followUp || null,
+        isComplete: result.isComplete !== false,
+        extraBullets: extraBullets.length > 0 ? extraBullets : undefined,
+      });
+    } catch (err: any) {
+      console.error("[ENRICH] Error:", err.message);
+      res.json({ bullet: req.body.answer || "", tags: ["general"], followUp: null, isComplete: true });
+    }
+  });
+
+  // Tailor — Pipeline V2
+  app.post(api.tailor.generate.path, async (req, res) => {
+    try {
+      const { url, text, mode, outputLength, customMaxChars, introMaxChars, bodyMaxChars } = api.tailor.generate.input.parse(req.body);
+
+      // Normalize LinkedIn URL
+      const normalizedUrl = url ? normalizeLinkedInUrl(url) : undefined;
+      let effectiveJobText = text || "";
+
+      if (!effectiveJobText && !normalizedUrl) {
+        return res.status(400).json({ message: "Please provide a job description or URL." });
+      }
+
+      // Scrape URL if needed
+      if (!effectiveJobText && normalizedUrl) {
+        try {
+          const jinaUrl = `https://r.jina.ai/${normalizedUrl}`;
+          const jinaRes = await fetch(jinaUrl, {
+            headers: { "Accept": "text/plain", "X-Return-Format": "text" },
+            signal: AbortSignal.timeout(15000),
+          });
+          if (jinaRes.ok) {
+            effectiveJobText = (await jinaRes.text()).slice(0, 6000).trim();
+            console.log("[TAILOR] Scraped", effectiveJobText.length, "chars");
+          }
+        } catch (e: any) {
+          console.warn("[TAILOR] Scrape failed:", e.message);
         }
       }
-    } catch {}
-  }, []);
 
-  const handleUrlChange = (value: string) => {
-    const { url: normalized, converted } = normalizeLinkedInUrl(value);
-    setUrl(normalized);
-    setUrlConverted(converted);
-  };
+      if (!effectiveJobText) {
+        effectiveJobText = `Job posting at: ${normalizedUrl}. Could not retrieve content. Please paste the job description.`;
+      }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!url && !text) {
-      toast({ title: "Champ requis", description: "Colle une URL ou le texte de l'annonce.", variant: "destructive" });
-      return;
-    }
-    try {
-      const introChars = introMaxChars ? parseInt(introMaxChars) : undefined;
-      const bodyChars = bodyMaxChars ? parseInt(bodyMaxChars) : undefined;
+      if (!openai) {
+        return res.status(500).json({ message: "AI service not configured. Please set GROQ_API_KEY." });
+      }
 
-      const run = await generate.mutateAsync({
-        url: url || undefined,
-        text: text || undefined,
-        mode: mode === "fidele" ? "original" : "polished",
-        introMaxChars: introChars && introChars >= 50 ? introChars : undefined,
-        bodyMaxChars: bodyChars && bodyChars >= 500 ? bodyChars : undefined,
+      // Load all data
+      const allExps = await storage.getExperiences();
+      const allBullets = await storage.getAllBullets();
+      const allSkills = await storage.getSkills();
+      const profileData = await storage.getProfile();
+      const formations = await storage.getFormations();
+      const langs = await storage.getLanguages();
+
+      if (allExps.length === 0) {
+        return res.status(400).json({ message: "Your CV library is empty. Please add experiences first." });
+      }
+
+      // Run Pipeline V2
+      const result = await runTailorPipeline({
+        jobText: effectiveJobText,
+        mode,
+        outputLength,
+        customMaxChars,
+        introMaxChars,
+        bodyMaxChars,
+        allExperiences: allExps,
+        allBullets: allBullets,
+        allSkills: allSkills,
+        profile: profileData ? { name: profileData.name, title: profileData.title, summary: profileData.summary } : undefined,
+        formations,
+        languages: langs,
+      }, openai);
+
+      // Save job post
+      const jobPost = await storage.createJobPost({
+        url: normalizedUrl,
+        rawText: effectiveJobText,
+        extractedJson: result.report as any,
       });
-      toast({ title: "CV genere", description: "Ton CV a ete optimise !" });
-      setLocation(`/results/${run.id}`);
-    } catch (err) {
-      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
+
+      // Save run
+      const run = await storage.createRun({
+        jobPostId: jobPost.id,
+        mode,
+        selectedExperienceIds: result.selectedExperienceIds,
+        selectedBulletIds: result.selectedBulletIds,
+        outputCvText: result.cvText,
+        outputReportJson: result.report as any,
+      });
+
+      res.status(201).json(run);
+    } catch (e) {
+      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
+      console.error("[TAILOR] Unexpected error:", e);
+      res.status(500).json({ message: "An unexpected error occurred during CV generation." });
     }
-  };
+  });
 
-  return (
-    <Layout>
-      <div className="max-w-3xl mx-auto flex flex-col gap-8 animate-in slide-in-from-bottom-4 duration-500">
-        <div className="text-center space-y-3 mt-4">
-          <div className="inline-flex items-center justify-center p-3 bg-primary/10 rounded-2xl mb-2 text-primary">
-            <WandSparkles className="w-8 h-8" />
-          </div>
-          <h1 className="text-4xl font-extrabold tracking-tight text-foreground">Tailor Your CV</h1>
-          <p className="text-lg text-muted-foreground max-w-xl mx-auto">
-            Colle une annonce et l'IA selectionne et optimise tes experiences.
-          </p>
-        </div>
+  app.get(api.tailor.getRun.path, async (req, res) => {
+    const run = await storage.getRun(req.params.id);
+    if (!run) return res.status(404).json({ message: "Not found" });
+    res.json(run);
+  });
 
-        <Card className="shadow-lg border-border/60 bg-card/50 backdrop-blur-sm overflow-hidden relative">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary via-accent to-primary" />
-
-          <CardContent className="p-6 md:p-10">
-            <form onSubmit={handleSubmit} className="space-y-8">
-
-              {/* ── TARGET ROLE ── */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2 border-b pb-2">
-                  <Target className="w-5 h-5 text-accent" /> Annonce
-                </h3>
-
-                <div className="space-y-3">
-                  <Label>URL de l'annonce</Label>
-                  <div className="relative">
-                    <LinkIcon className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
-                    <Input
-                      placeholder="https://linkedin.com/jobs/view/..."
-                      className="pl-10 py-6 bg-background text-base rounded-xl"
-                      value={url}
-                      onChange={e => handleUrlChange(e.target.value)}
-                    />
-                  </div>
-                  {urlConverted && (
-                    <div className="flex items-center gap-2 text-xs text-primary bg-primary/5 p-2 rounded-lg">
-                      <Info className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span>URL LinkedIn convertie automatiquement.</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="relative flex items-center py-2">
-                  <div className="flex-grow border-t border-border" />
-                  <span className="flex-shrink-0 mx-4 text-muted-foreground text-sm font-medium uppercase">Ou</span>
-                  <div className="flex-grow border-t border-border" />
-                </div>
-
-                <div className="space-y-3">
-                  <Label>Texte de l'annonce</Label>
-                  <div className="relative">
-                    <FileText className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
-                    <Textarea
-                      placeholder="Colle le texte brut de l'annonce ici..."
-                      className="pl-10 pt-3 min-h-[140px] bg-background text-base rounded-xl resize-y"
-                      value={text}
-                      onChange={e => setText(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* ── MODE ── */}
-              <div className="space-y-4 pt-2">
-                <h3 className="text-lg font-semibold flex items-center gap-2 border-b pb-2">
-                  <SlidersHorizontal className="w-5 h-5 text-primary" /> Mode
-                </h3>
-
-                <RadioGroup
-                  value={mode}
-                  onValueChange={v => setMode(v as Mode)}
-                  className="grid grid-cols-2 gap-3"
-                >
-                  <Label
-                    htmlFor="mode-fidele"
-                    className={`cursor-pointer flex flex-col gap-2 p-4 rounded-xl border-2 transition-all duration-200 ${
-                      mode === "fidele"
-                        ? "border-primary bg-primary/5 shadow-sm"
-                        : "border-border bg-background hover:border-primary/30"
-                    }`}
-                  >
-                    <RadioGroupItem value="fidele" id="mode-fidele" className="sr-only" />
-                    <div className="flex items-center gap-2">
-                      <FileText className={`w-5 h-5 ${mode === "fidele" ? "text-primary" : "text-muted-foreground"}`} />
-                      <span className="font-bold text-sm">Fidele</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground leading-relaxed">
-                      Selectionne et agence tes bullets tels quels. Aucune reecriture.
-                    </span>
-                  </Label>
-
-                  <Label
-                    htmlFor="mode-optimise"
-                    className={`relative cursor-pointer flex flex-col gap-2 p-4 rounded-xl border-2 transition-all duration-200 ${
-                      mode === "optimise"
-                        ? "border-primary bg-primary/5 shadow-sm"
-                        : "border-border bg-background hover:border-primary/30"
-                    }`}
-                  >
-                    <span className="absolute -top-2.5 left-3 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary text-primary-foreground">
-                      Recommande
-                    </span>
-                    <RadioGroupItem value="optimise" id="mode-optimise" className="sr-only" />
-                    <div className="flex items-center gap-2">
-                      <Sparkles className={`w-5 h-5 ${mode === "optimise" ? "text-primary" : "text-muted-foreground"}`} />
-                      <span className="font-bold text-sm">Optimise</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground leading-relaxed">
-                      Reformule tes bullets pour integrer les mots-cles de l'offre. Contenu identique, angle adapte.
-                    </span>
-                  </Label>
-                </RadioGroup>
-              </div>
-
-              {/* ── CHARACTER LIMITS ── */}
-              <div className="space-y-4 pt-2">
-                <h3 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground">
-                  Limites de caracteres <span className="text-xs font-normal">(optionnel — adapte a ton template CV)</span>
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Intro / Resume pro</Label>
-                    <Input
-                      type="number"
-                      placeholder="Ex: 300"
-                      value={introMaxChars}
-                      onChange={e => setIntroMaxChars(e.target.value)}
-                      className="h-9 text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Corps (experiences)</Label>
-                    <Input
-                      type="number"
-                      placeholder="Ex: 3400"
-                      value={bodyMaxChars}
-                      onChange={e => setBodyMaxChars(e.target.value)}
-                      className="h-9 text-sm"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* ── SUBMIT ── */}
-              <Button
-                type="submit"
-                size="lg"
-                className="w-full text-lg py-6 rounded-xl shadow-lg shadow-primary/20 transition-all hover:scale-[1.01]"
-                disabled={generate.isPending}
-              >
-                {generate.isPending ? (
-                  <><RefreshCw className="w-5 h-5 mr-2 animate-spin" /> Generation en cours...</>
-                ) : (
-                  <><WandSparkles className="w-5 h-5 mr-2" /> Generer le CV</>
-                )}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-    </Layout>
-  );
+  return httpServer;
 }
