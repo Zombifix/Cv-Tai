@@ -22,8 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Experience, Bullet } from "@shared/schema";
 
 /* ══════════════════════════════════════════════════════════════════
-   MOTEUR DE QUESTIONS ADAPTATIVES
-   En prod → appel LLM via API. Ici → pools contextuels.
+   QUESTIONS ADAPTATIVES — via API Groq
    ══════════════════════════════════════════════════════════════════ */
 interface SuggestedQuestion {
   id: string;
@@ -31,61 +30,11 @@ interface SuggestedQuestion {
   tag: string;
 }
 
-const QUESTION_POOLS: Record<string, SuggestedQuestion[]> = {
-  management: [
-    { id: "m1", question: "Combien de personnes managiez-vous directement et indirectement ?", tag: "scope" },
-    { id: "m2", question: "Quel a été le conflit le plus difficile dans l'équipe et comment l'avez-vous résolu ?", tag: "conflict-resolution" },
-    { id: "m3", question: "Avez-vous mis en place des rituels ou process d'équipe spécifiques ?", tag: "team-rituals" },
-    { id: "m4", question: "Un membre de votre équipe a-t-il évolué grâce à votre accompagnement ?", tag: "mentoring" },
-  ],
-  tech: [
-    { id: "t1", question: "Quelle stack technique avez-vous choisie et pourquoi cette décision ?", tag: "tech-stack" },
-    { id: "t2", question: "Avez-vous dû convaincre quelqu'un de changer d'approche technique ? Comment ?", tag: "tech-influence" },
-    { id: "t3", question: "Quel compromis technique avez-vous dû faire et quel en a été l'impact ?", tag: "tech-tradeoff" },
-    { id: "t4", question: "Y a-t-il eu de la dette technique ? Comment l'avez-vous gérée ?", tag: "tech-debt" },
-  ],
-  project: [
-    { id: "p1", question: "Quel était le budget du projet et l'avez-vous respecté ?", tag: "budget" },
-    { id: "p2", question: "Quels KPIs avez-vous définis pour mesurer le succès ?", tag: "kpis" },
-    { id: "p3", question: "Y a-t-il eu un pivot en cours de route ? Qu'est-ce qui l'a déclenché ?", tag: "pivot" },
-    { id: "p4", question: "Qui étaient vos parties prenantes clés et comment gériez-vous leurs attentes ?", tag: "stakeholders" },
-  ],
-  impact: [
-    { id: "i1", question: "Quel résultat chiffré ou mesurable pouvez-vous associer à cette expérience ?", tag: "metrics" },
-    { id: "i2", question: "Ce projet a-t-il changé votre façon de travailler ? En quoi ?", tag: "growth" },
-    { id: "i3", question: "Avez-vous présenté ce travail devant un CODIR ou des investisseurs ?", tag: "presentation" },
-    { id: "i4", question: "Quelle compétence inattendue avez-vous développée grâce à cette expérience ?", tag: "hidden-skill" },
-    { id: "i5", question: "Avez-vous formé d'autres personnes sur ce sujet ? Sous quelle forme ?", tag: "teaching" },
-  ],
-};
-
-function getAdaptiveQuestions(experience: Experience, existingBullets: Bullet[]): SuggestedQuestion[] {
-  const text = [experience.title, experience.description, experience.company, ...existingBullets.map(b => b.text)].filter(Boolean).join(" ").toLowerCase();
-  const existingTags = existingBullets.flatMap(b => b.tags || []);
-
-  let pool: SuggestedQuestion[] = [];
-
-  if (text.match(/équipe|manager|lead|encadr|direct|pilotage|team|managed|supervised/)) {
-    pool.push(...QUESTION_POOLS.management);
-  }
-  if (text.match(/develop|tech|code|architect|migration|api|stack|micro|infra|cloud|devops|fullstack|backend|frontend|engineer/)) {
-    pool.push(...QUESTION_POOLS.tech);
-  }
-  if (text.match(/projet|project|launch|livr|roadmap|sprint|budget|agile|scrum|deliver/)) {
-    pool.push(...QUESTION_POOLS.project);
-  }
-  pool.push(...QUESTION_POOLS.impact);
-
-  const seen = new Set<string>();
-  return pool
-    .filter(q => {
-      if (seen.has(q.id)) return false;
-      if (existingTags.includes(q.tag)) return false;
-      seen.add(q.id);
-      return true;
-    })
-    .slice(0, 3);
-}
+const FALLBACK_QUESTIONS: SuggestedQuestion[] = [
+  { id: "f1", question: "Quel a été votre plus grand défi dans ce rôle ?", tag: "challenge" },
+  { id: "f2", question: "Quel résultat mesurable avez-vous obtenu ?", tag: "metrics" },
+  { id: "f3", question: "Qu'avez-vous appris que vous n'auriez pas appris ailleurs ?", tag: "growth" },
+];
 
 /* ══════════════════════════════════════════════════════════════════
    DEPTH INDICATOR
@@ -287,11 +236,38 @@ function EnrichmentPanel({ experience, onClose }: { experience: Experience; onCl
   const [answerDraft, setAnswerDraft] = useState("");
   const [freeMode, setFreeMode] = useState(false);
   const [freeText, setFreeText] = useState("");
+  const [questions, setQuestions] = useState<SuggestedQuestion[]>([]);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
   const answerRef = useRef<HTMLTextAreaElement>(null);
   const freeRef = useRef<HTMLTextAreaElement>(null);
 
   const existingBullets = bullets || [];
-  const questions = getAdaptiveQuestions(experience, existingBullets);
+
+  // Fetch adaptive questions from API (re-fetches when bullets change)
+  const fetchQuestions = async () => {
+    setQuestionsLoading(true);
+    try {
+      const res = await fetch(`/api/experiences/${experience.id}/suggest-questions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setQuestions(Array.isArray(data.questions) ? data.questions : FALLBACK_QUESTIONS);
+      } else {
+        setQuestions(FALLBACK_QUESTIONS);
+      }
+    } catch {
+      setQuestions(FALLBACK_QUESTIONS);
+    } finally {
+      setQuestionsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchQuestions();
+  }, [experience.id, existingBullets.length]);
 
   useEffect(() => {
     if (activeQuestion && answerRef.current) answerRef.current.focus();
@@ -462,11 +438,23 @@ function EnrichmentPanel({ experience, onClose }: { experience: Experience; onCl
         {/* Questions suggérées */}
         {!activeQuestion && !freeMode && (
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-              <MessageSquare className="w-3.5 h-3.5" />
-              {questions.length > 0 ? "Questions suggérées" : "Exploration complète — ajoutez librement"}
-            </p>
-            {questions.map((q) => (
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <MessageSquare className="w-3.5 h-3.5" />
+                {questionsLoading ? "Génération des questions…" : questions.length > 0 ? "Questions suggérées" : "Ajoutez librement un élément"}
+              </p>
+              {!questionsLoading && (
+                <button onClick={fetchQuestions} className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1" title="Nouvelles questions">
+                  <RefreshCw className="w-3 h-3" /> Rafraîchir
+                </button>
+              )}
+            </div>
+            {questionsLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              questions.map((q) => (
               <button
                 key={q.id}
                 onClick={() => { setActiveQuestion(q); setAnswerDraft(""); }}
@@ -474,7 +462,8 @@ function EnrichmentPanel({ experience, onClose }: { experience: Experience; onCl
               >
                 {q.question}
               </button>
-            ))}
+            ))
+            )}
           </div>
         )}
 
