@@ -222,7 +222,8 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
   };
 
   return (
-    <div className="group">
+    <div className="exp-card-wrapper">
+    <style>{`.exp-card-wrapper .exp-actions { display: none; } .exp-card-wrapper:hover .exp-actions { display: flex; }`}</style>
     <AccordionItem value={experience.id} className="bg-card border rounded-xl shadow-sm overflow-hidden">
       <div className="flex items-center pr-4">
         <AccordionTrigger className="flex-1 hover:no-underline py-4 px-5 data-[state=open]:border-b data-[state=open]:border-border/50">
@@ -245,7 +246,7 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
             </div>
           </div>
         </AccordionTrigger>
-        <div className="hidden group-hover:flex items-center gap-1 pl-3">
+        <div className="exp-actions items-center gap-1 pl-3">
           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={onEdit}>
             <Pencil className="w-4 h-4" />
           </Button>
