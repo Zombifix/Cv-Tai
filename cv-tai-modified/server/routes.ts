@@ -280,7 +280,29 @@ ${text}`,
   app.post(api.bullets.create.path, async (req, res) => {
     try {
       const input = api.bullets.create.input.parse(req.body);
-      const bullet = await storage.createBullet({ ...input, experienceId: req.params.experienceId });
+      const expId = req.params.experienceId;
+
+      // Anti-duplicate: check if a very similar bullet already exists
+      const existing = await storage.getBulletsByExperience(expId);
+      const newTextLower = input.text.toLowerCase().trim();
+      const isDuplicate = existing.some(b => {
+        const existingLower = b.text.toLowerCase().trim();
+        // Check if first 50 chars match (likely a duplicate/reformulation)
+        if (newTextLower.slice(0, 50) === existingLower.slice(0, 50)) return true;
+        // Check high overlap (>80% of words in common)
+        const newWords = new Set(newTextLower.split(/\s+/).filter(w => w.length > 3));
+        const existingWords = new Set(existingLower.split(/\s+/).filter(w => w.length > 3));
+        if (newWords.size === 0) return false;
+        const overlap = [...newWords].filter(w => existingWords.has(w)).length;
+        return overlap / newWords.size > 0.8;
+      });
+
+      if (isDuplicate) {
+        console.log("[BULLETS] Duplicate detected, skipping:", input.text.slice(0, 60));
+        return res.status(409).json({ message: "Un bullet similaire existe deja pour cette experience." });
+      }
+
+      const bullet = await storage.createBullet({ ...input, experienceId: expId });
       getEmbedding(bullet.text).then(emb => storage.updateBulletEmbedding(bullet.id, emb));
       res.status(201).json(bullet);
     } catch (e) {
@@ -606,25 +628,30 @@ EXPERIENCE :
 ${existingBullets.length > 0 ? `\nBULLETS EXISTANTS :\n${bulletTexts}` : "\nAucun bullet existant."}
 
 ETAPE 2 — TROUVER LES LACUNES
-Pour CHAQUE mission/perimetre identifie, verifie ces dimensions :
-1. SCOPE — taille equipe, perimetre, nombre utilisateurs/clients
-2. IMPACT — resultats concrets, chiffres, ameliorations
-3. CONTEXTE — pourquoi ce projet existait, quel probleme
-4. METHODE — approche, process mis en place
-5. COLLABORATION — avec qui (equipes, stakeholders)
-6. DIFFICULTES — contraintes, obstacles
+Pour CHAQUE mission/perimetre, verifie ces dimensions. PRIORISE les dimensions qui donnent des CHIFFRES :
+1. SCOPE — combien ? (utilisateurs, marques, boutiques, equipe, budget)
+2. IMPACT — quel resultat mesurable ? (%, temps gagne, avant/apres, adoption)
+3. CONTEXTE — pourquoi ? quel probleme concret a resoudre ?
+4. METHODE — comment ? quelle approche specifique ?
+5. COLLABORATION — avec qui ? combien de personnes ?
+6. DIFFICULTES — quelles contraintes concretes ?
 
 REGLES :
-- Si plusieurs missions/perimetres, assure-toi que les questions couvrent TOUS les perimetres (pas juste un)
+- PRIORISE scope et impact (ce sont les dimensions qui produisent les meilleurs bullets CV)
+- Si plusieurs missions, couvre TOUS les perimetres
 - Max 4 questions au total
-- Chaque question PRECISE de quel perimetre/mission elle parle
+- Chaque question DEMANDE UN CHIFFRE ou UN FAIT CONCRET (pas "parle-moi de...")
 - Questions en 15 mots MAX, tutoiement, ton direct
-- Si tout est bien couvert, retourne un tableau vide
+- Si tout est couvert AVEC des chiffres, retourne un tableau vide
 
-Exemple pour Accor avec CRM + B2B :
-- "Le CRM Loyalty, c'est deploye pour combien de marques ?"
-- "L'outil B2B partenaires, ca a remplace quoi comme process ?"
-- "Tu bossais avec combien de personnes sur le CRM ?"
+BONS EXEMPLES :
+- "Le CRM, c'est utilise par combien de marques ?" (demande un chiffre)
+- "Le B2B, ca a remplace quel process ? Ca prenait combien de temps avant ?" (demande un avant/apres)
+- "Tu bossais avec combien de devs et PMs sur le CRM ?" (demande un chiffre)
+
+MAUVAIS EXEMPLES :
+- "Parle-moi du CRM" (trop vague)
+- "Comment c'etait ?" (pas de direction)
 
 Reponds UNIQUEMENT en JSON valide :
 {"gaps": [{"id": "g1", "dimension": "scope|impact|contexte|methode|collaboration|difficultes", "question": "...", "priority": 1}]}`;
@@ -674,21 +701,34 @@ Reponds UNIQUEMENT en JSON valide :
         });
       }
 
-      const prompt = `Tu es un assistant CV. Tu analyses la reponse et tu fais ceci :
+      const prompt = `Tu es un expert en redaction de CV. Tu transformes des reponses brutes en bullets CV percutants.
 
-ETAPE 1 — DETECTER SI LA REPONSE COUVRE PLUSIEURS MISSIONS/PERIMETRES DISTINCTS
-Si la reponse parle de 2+ missions ou perimetres differents (ex: "le CRM c'etait X, le B2B c'etait Y", "l'app mobile + le back-office"), cree UN bullet SEPARE pour chaque mission.
-ATTENTION : des competences transversales (design system, user research) ne sont PAS des missions distinctes. Une mission = un projet, un produit, un scope separe.
-Si la reponse parle d'un seul sujet, cree un seul bullet.
+ETAPE 1 — DETECTER PLUSIEURS MISSIONS
+Si la reponse couvre 2+ missions/perimetres distincts (ex: CRM + B2B, app mobile + back-office), cree un bullet SEPARE par mission.
+Une competence transversale (design system, user research) n'est PAS une mission distincte.
 
-ETAPE 2 — POUR CHAQUE BULLET :
-- Reformuler en bullet CV (verbe d'action, max 2-3 phrases, garde chiffres et contexte)
-- Tagger avec 3-6 mots-cles semantiques SPECIFIQUES a la mission de CE bullet
-- Ne melange PAS les tags de missions differentes
+ETAPE 2 — REFORMULER CHAQUE BULLET
+Un bon bullet CV suit la structure : ACTION + CONTEXTE + RESULTAT/IMPACT
+- ACTION : verbe fort au passe (Concu, Pilote, Deploye, Restructure, Optimise...)
+- CONTEXTE : pour qui, dans quel cadre, quelle echelle (equipe de X, Y utilisateurs, Z marques)
+- RESULTAT : impact mesurable, chiffre, amelioration concrete
 
-ETAPE 3 — RELANCE
-- Si une des missions est vague → propose UNE relance courte (10 mots max)
-- Si tout est precis → isComplete = true
+EXEMPLES DE BONS BULLETS :
+✅ "Concu et deploye un design system (40+ composants) pour 3 equipes produit, reduisant le temps de maquettage de 40%"
+✅ "Pilote la refonte du parcours loyalty B2C pour 10+ marques, avec une hausse de 25% du taux de conversion post-achat"
+✅ "Structure les pratiques UX (ateliers, cadrage, design review) pour une equipe de 8 personnes, en tant que premier designer CRM"
+
+EXEMPLES DE MAUVAIS BULLETS :
+❌ "Mise en place du design system" (pas de contexte, pas d'impact)
+❌ "Amelioration des parcours clients" (vague, pas de chiffre)
+❌ "Travail sur le CRM en tant que designer" (descriptif, pas d'action)
+
+ETAPE 3 — RELANCE OBLIGATOIRE SI QUALITE INSUFFISANTE
+La relance est OBLIGATOIRE si :
+- Aucun chiffre/metrique dans la reponse → demande un chiffre precis
+- Pas d'impact visible → demande "ca a change quoi concretement ?"
+- Trop vague → demande un detail specifique
+La relance est inutile SEULEMENT si la reponse contient deja un chiffre ET un impact concret.
 
 EXPERIENCE :
 - Poste : ${exp.title}
@@ -696,31 +736,23 @@ EXPERIENCE :
 - Description : ${exp.description || ""}
 
 CONVERSATION :
-- Dimension exploree : ${dimension || "general"}
-- Question posee : ${question || "ajout libre"}
+- Dimension : ${dimension || "general"}
+- Question : ${question || "ajout libre"}
 - Reponse(s) : ${allAnswers}
 
-REGLES REFORMULATION :
-- Garde TOUS les chiffres et metriques
-- Garde le contexte specifique (type de projet, equipe, contraintes)
-- Commence par un verbe d'action
+REGLES :
+- Si la reponse manque de substance, reformule au mieux MAIS propose une relance pour enrichir
+- Garde tous les chiffres mentionnes
+- Max 200 caracteres par bullet
+- Tags : 3-6 mots-cles concrets (CRM, b2b, design-system, mobile-ios, retail...)
 - Ecris en francais
 
-REGLES TAGS :
-- Tags concrets pour matcher des offres : "paiement", "mobile-ios", "design-system", "b2b", "CRM", "retail"
-- PAS de tags vagues comme "experience" ou "travail"
-- Chaque bullet a ses propres tags lies a SA mission/perimetre
-
-Reponds UNIQUEMENT en JSON valide :
+JSON UNIQUEMENT :
 {
-  "bullets": [
-    {"bullet": "Le bullet reformule", "tags": ["tag1", "tag2"]}
-  ],
-  "followUp": "La question de relance courte" ou null,
-  "isComplete": true ou false
-}
-
-IMPORTANT : "bullets" est TOUJOURS un tableau, meme s'il n'y a qu'un seul bullet.`;
+  "bullets": [{"bullet": "...", "tags": ["..."]}],
+  "followUp": "question courte 10 mots max" ou null,
+  "isComplete": false si relance necessaire, true sinon
+}`;
 
       const response = await openai.chat.completions.create({
         model: "llama-3.3-70b-versatile",
