@@ -434,6 +434,124 @@ Reponds UNIQUEMENT en JSON valide :
     }
   });
 
+  // ══════════════════════════════════════════════════════════════
+  // PROFILE
+  // ══════════════════════════════════════════════════════════════
+  app.get("/api/profile", async (_req, res) => {
+    const p = await storage.getProfile();
+    res.json(p || { name: "", title: "", summary: null, targetRole: null });
+  });
+  app.put("/api/profile", async (req, res) => {
+    try {
+      const p = await storage.upsertProfile(req.body);
+      res.json(p);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Role target check — analyze library against a target role
+  app.post("/api/profile/check-role", async (req, res) => {
+    try {
+      const { role } = req.body;
+      if (!role) return res.status(400).json({ message: "role required" });
+
+      const allExps = await storage.getExperiences();
+      const allBullets = await storage.getAllBullets();
+
+      if (allExps.length === 0) return res.json({ summary: "Ajoutez des experiences d'abord.", dimensions: [] });
+
+      if (!openai) return res.json({ summary: "Service IA non configure.", dimensions: [] });
+
+      const expSummaries = allExps.map(exp => {
+        const expBullets = allBullets.filter(b => b.experienceId === exp.id);
+        return `${exp.title} chez ${exp.company}:\n${expBullets.map(b => `- ${b.text} [tags: ${(b.tags || []).join(", ")}]`).join("\n")}`;
+      }).join("\n\n");
+
+      const prompt = `Analyse ce profil par rapport au poste vise : "${role}".
+
+EXPERIENCES :
+${expSummaries.slice(0, 5000)}
+
+Evalue 5-6 dimensions cles pour ce type de poste. Pour chaque dimension :
+- score de 0 a 100
+- status : "fort" (70+), "correct" (40-69), "leger" (15-39), "absent" (0-14)
+- bullets : combien de bullets couvrent cette dimension
+- Si le score est faible, propose un "tip" : soit un pont avec une experience existante, soit un constat de manque
+
+Termine par un "summary" : 2 phrases max, ton direct, qui resume les forces et les trous.
+
+Reponds UNIQUEMENT en JSON :
+{
+  "summary": "...",
+  "dimensions": [
+    {"name": "...", "score": 80, "status": "fort", "bullets": 3, "tip": null},
+    {"name": "...", "score": 20, "status": "leger", "bullets": 1, "tip": "Ton experience X peut se reformuler sous cet angle."}
+  ]
+}`;
+
+      const response = await openai.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.4,
+      });
+
+      let result;
+      try { result = JSON.parse(response.choices[0].message.content || "{}"); }
+      catch { result = { summary: "Impossible d'analyser.", dimensions: [] }; }
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("[CHECK-ROLE] Error:", err.message);
+      res.json({ summary: "Erreur lors de l'analyse.", dimensions: [] });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // FORMATIONS
+  // ══════════════════════════════════════════════════════════════
+  app.get("/api/formations", async (_req, res) => {
+    const f = await storage.getFormations();
+    res.json(f);
+  });
+  app.post("/api/formations", async (req, res) => {
+    try {
+      const { school, degree, year } = req.body;
+      if (!school || !degree) return res.status(400).json({ message: "school and degree required" });
+      const f = await storage.createFormation({ school, degree, year });
+      res.status(201).json(f);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app.delete("/api/formations/:id", async (req, res) => {
+    await storage.deleteFormation(req.params.id);
+    res.status(204).end();
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // LANGUAGES
+  // ══════════════════════════════════════════════════════════════
+  app.get("/api/languages", async (_req, res) => {
+    const l = await storage.getLanguages();
+    res.json(l);
+  });
+  app.post("/api/languages", async (req, res) => {
+    try {
+      const { name, level } = req.body;
+      if (!name) return res.status(400).json({ message: "name required" });
+      const l = await storage.createLanguage({ name, level });
+      res.status(201).json(l);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app.delete("/api/languages/:id", async (req, res) => {
+    await storage.deleteLanguage(req.params.id);
+    res.status(204).end();
+  });
+
   // Runs history
   app.get("/api/runs", async (_req, res) => {
     const allRuns = await storage.getRuns();
