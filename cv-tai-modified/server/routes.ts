@@ -543,6 +543,32 @@ Reponds UNIQUEMENT en JSON :
     res.status(204).end();
   });
 
+  // ══════════════════════════════════════════════════════════════
+  // SETTINGS — reset all data
+  // ══════════════════════════════════════════════════════════════
+  app.post("/api/settings/reset", async (_req, res) => {
+    try {
+      const client = await (await import("./db")).pool.connect();
+      try {
+        await client.query("DELETE FROM runs");
+        await client.query("DELETE FROM job_posts");
+        await client.query("DELETE FROM bullets");
+        await client.query("DELETE FROM experiences");
+        await client.query("DELETE FROM skills");
+        await client.query("DELETE FROM formations");
+        await client.query("DELETE FROM languages");
+        await client.query("DELETE FROM profile");
+        console.log("[SETTINGS] All data reset");
+        res.json({ success: true });
+      } finally {
+        client.release();
+      }
+    } catch (err: any) {
+      console.error("[SETTINGS] Reset failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Runs history
   app.get("/api/runs", async (_req, res) => {
     const allRuns = await storage.getRuns();
