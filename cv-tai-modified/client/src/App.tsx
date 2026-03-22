@@ -9,6 +9,7 @@ import Library from "./pages/library";
 import Tailor from "./pages/tailor";
 import Result from "./pages/result";
 import History from "./pages/history";
+import Settings from "./pages/settings";
 
 function Router() {
   return (
@@ -17,6 +18,7 @@ function Router() {
       <Route path="/library" component={Library} />
       <Route path="/tailor" component={Tailor} />
       <Route path="/history" component={History} />
+      <Route path="/settings" component={Settings} />
       <Route path="/results/:id" component={Result} />
       <Route component={NotFound} />
     </Switch>
