@@ -229,6 +229,75 @@ ${text}`,
     res.json(allRuns);
   });
 
+  // Adaptive enrichment questions (LLM-powered)
+  app.post("/api/experiences/:id/suggest-questions", async (req, res) => {
+    try {
+      const exp = await storage.getExperience(req.params.id);
+      if (!exp) return res.status(404).json({ message: "Experience not found" });
+
+      const existingBullets = await storage.getBulletsByExperience(exp.id);
+      const bulletTexts = existingBullets.map(b => b.text).join("\n- ");
+
+      if (!openai) {
+        // Fallback sans LLM
+        return res.json({ questions: [
+          { id: "f1", question: "Quel a été votre plus grand défi dans ce rôle ?", tag: "challenge" },
+          { id: "f2", question: "Quel résultat mesurable avez-vous obtenu ?", tag: "metrics" },
+          { id: "f3", question: "Qu'avez-vous appris que vous n'auriez pas appris ailleurs ?", tag: "growth" },
+        ]});
+      }
+
+      const prompt = `Tu es un coach carrière expert. Tu aides quelqu'un à enrichir son CV en posant des questions ciblées pour faire émerger des compétences, résultats et expériences valorisables.
+
+Contexte de l'expérience :
+- Titre : ${exp.title}
+- Entreprise : ${exp.company}
+- Description : ${exp.description || "Non renseignée"}
+${existingBullets.length > 0 ? `- Éléments déjà capturés :\n- ${bulletTexts}` : "- Aucun élément capturé pour l'instant."}
+
+Génère exactement 3 questions personnalisées qui :
+1. Sont adaptées au RÔLE spécifique (${exp.title}) et au CONTEXTE (${exp.company})
+2. Cherchent à faire émerger des éléments valorisables pour un CV (résultats chiffrés, compétences transférables, leadership, impact business)
+3. Ne répètent PAS ce qui est déjà capturé
+4. Sont formulées de manière conversationnelle et bienveillante, en français
+
+Réponds UNIQUEMENT en JSON valide, sans markdown :
+[
+  {"id": "q1", "question": "...", "tag": "mot-clé-court"},
+  {"id": "q2", "question": "...", "tag": "mot-clé-court"},
+  {"id": "q3", "question": "...", "tag": "mot-clé-court"}
+]`;
+
+      const response = await openai.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.7,
+      });
+
+      let questions;
+      try {
+        const parsed = JSON.parse(response.choices[0].message.content || "[]");
+        questions = Array.isArray(parsed) ? parsed : parsed.questions || parsed;
+      } catch {
+        questions = [
+          { id: "f1", question: "Quel a été votre plus grand défi dans ce rôle ?", tag: "challenge" },
+          { id: "f2", question: "Quel résultat mesurable avez-vous obtenu ?", tag: "metrics" },
+          { id: "f3", question: "Qu'avez-vous appris que vous n'auriez pas appris ailleurs ?", tag: "growth" },
+        ];
+      }
+
+      res.json({ questions });
+    } catch (err: any) {
+      console.error("[SUGGEST] Error:", err.message);
+      res.json({ questions: [
+        { id: "f1", question: "Quel a été votre plus grand défi dans ce rôle ?", tag: "challenge" },
+        { id: "f2", question: "Quel résultat mesurable avez-vous obtenu ?", tag: "metrics" },
+        { id: "f3", question: "Qu'avez-vous appris que vous n'auriez pas appris ailleurs ?", tag: "growth" },
+      ]});
+    }
+  });
+
   // Tailor
   app.post(api.tailor.generate.path, async (req, res) => {
     try {
