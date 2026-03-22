@@ -433,6 +433,61 @@ Réponds UNIQUEMENT en JSON valide, sans markdown ni backticks :
     }
   });
 
+  // Reformulate raw answer into a CV-ready bullet
+  app.post("/api/experiences/:id/reformulate", async (req, res) => {
+    try {
+      const exp = await storage.getExperience(req.params.id);
+      if (!exp) return res.status(404).json({ message: "Experience not found" });
+
+      const { question, answer, context } = req.body;
+      if (!answer) return res.status(400).json({ message: "answer required" });
+
+      if (!openai) {
+        return res.json({ bullet: answer });
+      }
+
+      const prompt = `Tu es un expert en rédaction de CV. Tu transformes des réponses brutes en lignes de CV percutantes.
+
+Contexte :
+- Poste : ${exp.title}
+- Entreprise : ${exp.company}
+${context ? `- Contexte du rôle : ${context}` : ""}
+${question ? `- Question posée : ${question}` : ""}
+- Réponse brute : ${answer}
+
+Transforme cette réponse en UNE SEULE ligne de CV qui :
+- Commence par un verbe d'action
+- Inclut les chiffres/métriques si mentionnés
+- Est concise (max 25 mots)
+- Est valorisante et professionnelle
+- Garde le sens exact de ce que la personne a dit
+
+Si la réponse est trop vague pour faire un bon bullet CV, renvoie quand même ta meilleure reformulation mais ajoute un champ "tip" avec un conseil court pour améliorer (ex: "Ajoute un chiffre : combien d'utilisateurs ?")
+
+Réponds UNIQUEMENT en JSON valide :
+{"bullet": "...", "tip": "..." ou null}`;
+
+      const response = await openai.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.4,
+      });
+
+      let result;
+      try {
+        result = JSON.parse(response.choices[0].message.content || "{}");
+      } catch {
+        result = { bullet: answer, tip: null };
+      }
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("[REFORMULATE] Error:", err.message);
+      res.json({ bullet: req.body.answer || "", tip: null });
+    }
+  });
+
   // Tailor
   app.post(api.tailor.generate.path, async (req, res) => {
     try {
