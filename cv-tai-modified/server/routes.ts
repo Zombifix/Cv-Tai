@@ -21,6 +21,9 @@ import {
   type ScoredBullet,
   type CompositionPlan,
 } from "./tailoring-engine";
+import multer from "multer";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 let openai: OpenAI | null = null;
 if (process.env.GROQ_API_KEY) {
@@ -78,6 +81,132 @@ export async function registerRoutes(
   app.get("/api/llm/health", async (_req, res) => {
     const result = await checkLLMHealth(openai);
     res.status(result.success ? 200 : 503).json(result);
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // CV IMPORT — PDF upload or text paste → parse ALL experiences
+  // ══════════════════════════════════════════════════════════════
+  app.post("/api/import/cv", upload.single("file"), async (req: any, res) => {
+    try {
+      let rawText = "";
+
+      // PDF file uploaded
+      if (req.file) {
+        try {
+          const pdfParse = (await import("pdf-parse")).default;
+          const data = await pdfParse(req.file.buffer);
+          rawText = data.text;
+          console.log("[IMPORT] PDF parsed:", rawText.length, "chars");
+        } catch (pdfErr: any) {
+          console.error("[IMPORT] PDF parse error:", pdfErr.message);
+          return res.status(400).json({ message: "Impossible de lire ce PDF. Essayez de coller le texte directement." });
+        }
+      } else if (req.body?.text) {
+        rawText = req.body.text;
+      } else {
+        return res.status(400).json({ message: "Envoyez un fichier PDF ou du texte." });
+      }
+
+      if (rawText.trim().length < 20) {
+        return res.status(400).json({ message: "Pas assez de contenu à analyser." });
+      }
+
+      // Truncate to avoid token limits
+      const truncated = rawText.slice(0, 8000);
+
+      if (!openai) {
+        return res.status(500).json({ message: "Service IA non configuré (GROQ_API_KEY manquant)." });
+      }
+
+      const prompt = `Analyse ce CV et extrais TOUTES les expériences professionnelles.
+
+Pour chaque expérience, extrais :
+- title : intitulé du poste
+- company : nom de l'entreprise
+- startDate : date de début au format YYYY-MM-DD (estime si besoin, ex: "2020" → "2020-01-01")
+- endDate : date de fin au format YYYY-MM-DD (null si poste actuel)
+- description : résumé court du rôle en 1-2 phrases
+- bullets : liste des réalisations/responsabilités (chaque bullet = une ligne du CV)
+
+Réponds UNIQUEMENT en JSON valide, sans markdown ni backticks :
+{
+  "experiences": [
+    {
+      "title": "...",
+      "company": "...",
+      "startDate": "...",
+      "endDate": "..." ou null,
+      "description": "...",
+      "bullets": ["...", "..."]
+    }
+  ]
+}
+
+CV à analyser :
+${truncated}`;
+
+      const response = await openai.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+      });
+
+      let parsed;
+      try {
+        parsed = JSON.parse(response.choices[0].message.content || "{}");
+      } catch {
+        return res.status(500).json({ message: "L'IA n'a pas pu analyser le contenu." });
+      }
+
+      const experiences = parsed.experiences || [];
+      console.log("[IMPORT] Parsed", experiences.length, "experiences");
+
+      res.json({ experiences, rawTextLength: rawText.length });
+    } catch (err: any) {
+      console.error("[IMPORT] Error:", err.message);
+      res.status(500).json({ message: "Erreur lors de l'import: " + err.message });
+    }
+  });
+
+  // Bulk create experiences from import
+  app.post("/api/import/save", async (req, res) => {
+    try {
+      const { experiences: exps } = req.body;
+      if (!exps || !Array.isArray(exps)) {
+        return res.status(400).json({ message: "experiences array required" });
+      }
+
+      const created = [];
+      for (const exp of exps) {
+        const newExp = await storage.createExperience({
+          title: exp.title || "Sans titre",
+          company: exp.company || "Non renseigné",
+          startDate: exp.startDate || undefined,
+          endDate: exp.endDate || undefined,
+          description: exp.description || "",
+        });
+
+        if (exp.bullets && Array.isArray(exp.bullets)) {
+          for (const bulletText of exp.bullets) {
+            if (bulletText.trim()) {
+              await storage.createBullet({
+                experienceId: newExp.id,
+                text: bulletText.trim(),
+                tags: [],
+              });
+            }
+          }
+        }
+
+        created.push(newExp);
+      }
+
+      res.status(201).json({ created: created.length });
+    } catch (err: any) {
+      console.error("[IMPORT] Save error:", err.message);
+      res.status(500).json({ message: "Erreur lors de la sauvegarde." });
+    }
   });
 
   // Parse experience from raw text
