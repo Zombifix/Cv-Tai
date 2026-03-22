@@ -595,30 +595,36 @@ Reponds UNIQUEMENT en JSON :
 
       const prompt = `Tu analyses un CV pour trouver ce qui MANQUE. Tu dois identifier les lacunes et poser UNE question par lacune.
 
+ETAPE 1 — IDENTIFIER LES MISSIONS/PERIMETRES DISTINCTS
+Regarde la description et les bullets. S'il y a plusieurs MISSIONS ou PERIMETRES de travail differents (ex: CRM + B2B, app mobile + back-office, produit client + produit interne), identifie-les.
+ATTENTION : une competence transversale (design system, user research, figma) n'est PAS un perimetre distinct. Un perimetre = un projet, un produit, ou un scope de responsabilite separe.
+
 EXPERIENCE :
 - Poste : ${exp.title}
 - Entreprise : ${exp.company}
 - Description : ${exp.description || "Aucune"}
 ${existingBullets.length > 0 ? `\nBULLETS EXISTANTS :\n${bulletTexts}` : "\nAucun bullet existant."}
 
-DIMENSIONS A VERIFIER (universel, tous metiers) :
-1. SCOPE — taille equipe, perimetre, nombre utilisateurs/clients concernes
-2. IMPACT — resultats concrets, chiffres avant/apres, ameliorations mesurees
-3. CONTEXTE — pourquoi ce projet/role existait, quel probleme a resoudre
-4. METHODE — comment tu as fait, approche, process mis en place
-5. COLLABORATION — avec qui (equipes, stakeholders, externes)
-6. DIFFICULTES — contraintes, obstacles surmontes, compromis faits
+ETAPE 2 — TROUVER LES LACUNES
+Pour CHAQUE mission/perimetre identifie, verifie ces dimensions :
+1. SCOPE — taille equipe, perimetre, nombre utilisateurs/clients
+2. IMPACT — resultats concrets, chiffres, ameliorations
+3. CONTEXTE — pourquoi ce projet existait, quel probleme
+4. METHODE — approche, process mis en place
+5. COLLABORATION — avec qui (equipes, stakeholders)
+6. DIFFICULTES — contraintes, obstacles
 
 REGLES :
-- Analyse chaque dimension : est-elle couverte par la description ou les bullets ?
-- Ne retourne QUE les dimensions manquantes (max 3)
-- Chaque question CITE un element specifique de la description ou des bullets
+- Si plusieurs missions/perimetres, assure-toi que les questions couvrent TOUS les perimetres (pas juste un)
+- Max 4 questions au total
+- Chaque question PRECISE de quel perimetre/mission elle parle
 - Questions en 15 mots MAX, tutoiement, ton direct
 - Si tout est bien couvert, retourne un tableau vide
 
-Exemple pour Chanel / app vendeur :
-- Si pas de scope : "L'app My Little Black Book, c'est deploye dans combien de boutiques ?"
-- Si pas d'impact : "Ca a change quoi concretement pour les vendeurs au quotidien ?"
+Exemple pour Accor avec CRM + B2B :
+- "Le CRM Loyalty, c'est deploye pour combien de marques ?"
+- "L'outil B2B partenaires, ca a remplace quoi comme process ?"
+- "Tu bossais avec combien de personnes sur le CRM ?"
 
 Reponds UNIQUEMENT en JSON valide :
 {"gaps": [{"id": "g1", "dimension": "scope|impact|contexte|methode|collaboration|difficultes", "question": "...", "priority": 1}]}`;
@@ -668,18 +674,21 @@ Reponds UNIQUEMENT en JSON valide :
         });
       }
 
-      const prompt = `Tu es un assistant CV. Tu fais 3 choses en une seule reponse :
+      const prompt = `Tu es un assistant CV. Tu analyses la reponse et tu fais ceci :
 
-1. REFORMULER toute la matiere en UN bullet CV (verbe d'action, max 2-3 phrases, garde les chiffres et le contexte specifique)
-2. TAGGER avec des mots-cles semantiques pour le matching futur (3-6 tags)
-3. DECIDER si une RELANCE est necessaire pour creuser davantage (1 relance max)
+ETAPE 1 — DETECTER SI LA REPONSE COUVRE PLUSIEURS MISSIONS/PERIMETRES DISTINCTS
+Si la reponse parle de 2+ missions ou perimetres differents (ex: "le CRM c'etait X, le B2B c'etait Y", "l'app mobile + le back-office"), cree UN bullet SEPARE pour chaque mission.
+ATTENTION : des competences transversales (design system, user research) ne sont PAS des missions distinctes. Une mission = un projet, un produit, un scope separe.
+Si la reponse parle d'un seul sujet, cree un seul bullet.
 
-REGLES REFORMULATION :
-- Garde TOUS les chiffres et metriques mentionnes
-- Garde le contexte specifique (type de projet, equipe, contraintes)
-- Ne simplifie PAS a l'exces — un bullet peut faire 2-3 phrases si la matiere le justifie
-- Commence par un verbe d'action
-- Ecris en francais
+ETAPE 2 — POUR CHAQUE BULLET :
+- Reformuler en bullet CV (verbe d'action, max 2-3 phrases, garde chiffres et contexte)
+- Tagger avec 3-6 mots-cles semantiques SPECIFIQUES a la mission de CE bullet
+- Ne melange PAS les tags de missions differentes
+
+ETAPE 3 — RELANCE
+- Si une des missions est vague → propose UNE relance courte (10 mots max)
+- Si tout est precis → isComplete = true
 
 EXPERIENCE :
 - Poste : ${exp.title}
@@ -691,24 +700,27 @@ CONVERSATION :
 - Question posee : ${question || "ajout libre"}
 - Reponse(s) : ${allAnswers}
 
-REGLES RELANCE :
-- Si la reponse est vague (pas de chiffre, pas de detail concret) → propose UNE relance courte (10 mots max)
-- Si la reponse est deja precise et actionnable → pas de relance, isComplete = true
-- Max 1 relance, pas plus
-- La relance doit creuser la MEME dimension, pas changer de sujet
+REGLES REFORMULATION :
+- Garde TOUS les chiffres et metriques
+- Garde le contexte specifique (type de projet, equipe, contraintes)
+- Commence par un verbe d'action
+- Ecris en francais
 
 REGLES TAGS :
-- Tags concrets et utiles pour matcher avec des offres d'emploi
-- Exemples : "paiement", "mobile-ios", "design-system", "b2b", "retail", "user-research", "deploiement"
+- Tags concrets pour matcher des offres : "paiement", "mobile-ios", "design-system", "b2b", "CRM", "retail"
 - PAS de tags vagues comme "experience" ou "travail"
+- Chaque bullet a ses propres tags lies a SA mission/perimetre
 
 Reponds UNIQUEMENT en JSON valide :
 {
-  "bullet": "Le bullet CV reformule avec toute la matiere",
-  "tags": ["tag1", "tag2", "tag3"],
+  "bullets": [
+    {"bullet": "Le bullet reformule", "tags": ["tag1", "tag2"]}
+  ],
   "followUp": "La question de relance courte" ou null,
   "isComplete": true ou false
-}`;
+}
+
+IMPORTANT : "bullets" est TOUJOURS un tableau, meme s'il n'y a qu'un seul bullet.`;
 
       const response = await openai.chat.completions.create({
         model: "llama-3.3-70b-versatile",
@@ -721,13 +733,25 @@ Reponds UNIQUEMENT en JSON valide :
       try {
         result = JSON.parse(response.choices[0].message.content || "{}");
       } catch {
-        result = { bullet: answer, tags: [dimension || "general"], followUp: null, isComplete: true };
+        result = { bullets: [{ bullet: answer, tags: [dimension || "general"] }], followUp: null, isComplete: true };
       }
 
-      // Ensure tags is always an array
-      if (!Array.isArray(result.tags)) result.tags = [dimension || "general"];
+      // Handle new format (bullets array) with backward compat
+      const bulletsArray = result.bullets || (result.bullet ? [{ bullet: result.bullet, tags: result.tags }] : [{ bullet: answer, tags: [dimension || "general"] }]);
+      const firstBullet = bulletsArray[0] || { bullet: answer, tags: [dimension || "general"] };
+      const extraBullets = bulletsArray.slice(1);
 
-      res.json(result);
+      // Ensure tags is always an array
+      if (!Array.isArray(firstBullet.tags)) firstBullet.tags = [dimension || "general"];
+
+      // Return first bullet in standard format + extra bullets if multi-topic
+      res.json({
+        bullet: firstBullet.bullet,
+        tags: firstBullet.tags,
+        followUp: result.followUp || null,
+        isComplete: result.isComplete !== false,
+        extraBullets: extraBullets.length > 0 ? extraBullets : undefined,
+      });
     } catch (err: any) {
       console.error("[ENRICH] Error:", err.message);
       res.json({ bullet: req.body.answer || "", tags: ["general"], followUp: null, isComplete: true });
