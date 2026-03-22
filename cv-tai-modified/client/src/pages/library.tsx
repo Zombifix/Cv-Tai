@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { format } from "date-fns";
 import { Layout } from "@/components/layout";
 import { useExperiences, useCreateExperience, useUpdateExperience, useDeleteExperience } from "@/hooks/use-experiences";
-import { useBullets, useCreateBullet, useUpdateBullet, useDeleteBullet, useReEmbedBullets } from "@/hooks/use-bullets";
+import { useBullets, useCreateBullet, useUpdateBullet, useDeleteBullet } from "@/hooks/use-bullets";
 import { useSkills, useCreateSkill, useUpdateSkill, useDeleteSkill } from "@/hooks/use-skills";
 import { useParseExperience } from "@/hooks/use-parse-experience";
 import { detectAndParseFormat, type ParsedExperience } from "@/lib/parse-experience-format";
@@ -50,30 +50,12 @@ function getDepthInfo(bulletCount: number) {
    MAIN PAGE
    ══════════════════════════════════════════════════════════════════ */
 export default function Library() {
-  const { toast } = useToast();
-  const reEmbed = useReEmbedBullets();
-
-  const handleReEmbed = async () => {
-    try {
-      const res = await reEmbed.mutateAsync();
-      toast({ title: "Re-embedding Successful", description: `Successfully processed ${res.count} bullets.` });
-    } catch (err) {
-      toast({ title: "Failed to re-embed", description: (err as Error).message, variant: "destructive" });
-    }
-  };
-
   return (
     <Layout>
       <div className="flex flex-col gap-8">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Super-CV Library</h1>
-            <p className="text-muted-foreground mt-1">Explorez et enrichissez vos expériences professionnelles.</p>
-          </div>
-          <Button variant="outline" onClick={handleReEmbed} disabled={reEmbed.isPending} className="shadow-sm border-border">
-            <RefreshCw className={`w-4 h-4 mr-2 ${reEmbed.isPending ? 'animate-spin' : ''}`} />
-            {reEmbed.isPending ? "Re-embedding..." : "Re-embed All"}
-          </Button>
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Super-CV Library</h1>
+          <p className="text-muted-foreground mt-1">Explorez et enrichissez vos expériences professionnelles.</p>
         </div>
 
         <Tabs defaultValue="experiences" className="w-full">
@@ -189,7 +171,7 @@ function ExperienceCard({ experience, isExploring, onExplore, onEdit }: {
             </div>
             <h3 className="font-bold text-lg leading-tight mb-2">{experience.title}</h3>
             {experience.description && (
-              <p className="text-sm text-foreground/70 line-clamp-2">{experience.description}</p>
+              <p className="text-sm text-foreground/70 line-clamp-3 whitespace-pre-line">{experience.description}</p>
             )}
             <div className="flex items-center gap-3 mt-3">
               <Badge variant={depth.variant} className="text-xs">
@@ -334,7 +316,7 @@ function EnrichmentPanel({ experience, onClose }: { experience: Experience; onCl
         </div>
         <SheetTitle className="text-xl font-bold">{experience.title}</SheetTitle>
         {experience.description && (
-          <p className="text-sm text-foreground/70 mt-1">{experience.description}</p>
+          <p className="text-sm text-foreground/70 mt-1 whitespace-pre-line">{experience.description}</p>
         )}
       </SheetHeader>
 
@@ -611,7 +593,6 @@ function SkillsSection() {
             {skills.map(skill => (
               <div key={skill.id} onClick={() => { setEditingSkill(skill); setOpen(true); }} className="group cursor-pointer flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-full border border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all">
                 <span className="font-medium text-sm">{skill.name}</span>
-                {skill.level && <span className="w-5 h-5 flex items-center justify-center rounded-full bg-background text-[10px] text-muted-foreground shadow-sm">{skill.level}</span>}
               </div>
             ))}
           </div>
@@ -631,17 +612,16 @@ function SkillDialog({ open, onOpenChange, skill, onClose }: any) {
   const { toast } = useToast();
 
   const [name, setName] = useState("");
-  const [level, setLevel] = useState("");
 
   useState(() => {
-    if (skill && open) { setName(skill.name); setLevel(skill.level?.toString() || ""); }
-    else if (open && !skill) { setName(""); setLevel(""); }
+    if (skill && open) { setName(skill.name); }
+    else if (open && !skill) { setName(""); }
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload = { name, level: level ? parseInt(level) : undefined };
+      const payload = { name };
       if (skill) await updateSkill.mutateAsync({ id: skill.id, ...payload });
       else await createSkill.mutateAsync(payload);
       onOpenChange(false);
@@ -673,11 +653,7 @@ function SkillDialog({ open, onOpenChange, skill, onClose }: any) {
         <form onSubmit={handleSubmit} className="space-y-4 py-4">
           <div className="space-y-2">
             <Label>Skill Name</Label>
-            <Input required value={name} onChange={e => setName(e.target.value)} placeholder="e.g. React, Python, Project Management" />
-          </div>
-          <div className="space-y-2">
-            <Label>Proficiency Level (1-5)</Label>
-            <Input type="number" min="1" max="5" value={level} onChange={e => setLevel(e.target.value)} placeholder="Optional" />
+            <Input required value={name} onChange={e => setName(e.target.value)} placeholder="e.g. React, Figma, User Testing" />
           </div>
           <DialogFooter className="flex justify-between sm:justify-between pt-4">
             {skill ? <Button type="button" variant="destructive" onClick={handleDelete}>Delete</Button> : <div/>}
