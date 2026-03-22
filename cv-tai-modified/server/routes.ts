@@ -361,111 +361,133 @@ ${text}`,
     res.json(allRuns);
   });
 
-  // Adaptive enrichment questions (LLM-powered)
-  app.post("/api/experiences/:id/suggest-questions", async (req, res) => {
+  // ══════════════════════════════════════════════════════════════
+  // GAP DETECTION — analyze experience + bullets, find what's missing
+  // ══════════════════════════════════════════════════════════════
+  app.post("/api/experiences/:id/detect-gaps", async (req, res) => {
     try {
       const exp = await storage.getExperience(req.params.id);
       if (!exp) return res.status(404).json({ message: "Experience not found" });
 
       const existingBullets = await storage.getBulletsByExperience(exp.id);
-      const bulletTexts = existingBullets.map(b => b.text).join("\n- ");
+      const bulletTexts = existingBullets.map(b => `- ${b.text} [tags: ${(b.tags || []).join(", ")}]`).join("\n");
 
       if (!openai) {
-        // Fallback sans LLM
-        return res.json({ questions: [
-          { id: "f1", question: "Quel a été votre plus grand défi dans ce rôle ?", tag: "challenge" },
-          { id: "f2", question: "Quel résultat mesurable avez-vous obtenu ?", tag: "metrics" },
-          { id: "f3", question: "Qu'avez-vous appris que vous n'auriez pas appris ailleurs ?", tag: "growth" },
+        return res.json({ gaps: [
+          { id: "g1", dimension: "scope", question: "Tu travaillais avec combien de personnes ?", priority: 1 },
+          { id: "g2", dimension: "impact", question: "Quel resultat concret ca a donne ?", priority: 2 },
         ]});
       }
 
-      const prompt = `Tu es un coach carrière. Tu poses des questions COURTES pour aider quelqu'un à enrichir son CV avec des éléments concrets et valorisables.
+      const prompt = `Tu analyses un CV pour trouver ce qui MANQUE. Tu dois identifier les lacunes et poser UNE question par lacune.
 
-Expérience :
+EXPERIENCE :
 - Poste : ${exp.title}
 - Entreprise : ${exp.company}
 - Description : ${exp.description || "Aucune"}
-${existingBullets.length > 0 ? `- Déjà capturé :\n- ${bulletTexts}` : "- Rien capturé encore."}
+${existingBullets.length > 0 ? `\nBULLETS EXISTANTS :\n${bulletTexts}` : "\nAucun bullet existant."}
 
-RÈGLES STRICTES :
-- Exactement 3 questions
-- Chaque question fait MAX 15 mots
-- Ton direct et simple, tutoiement, comme un ami
-- Orienté : résultats concrets, chiffres, impact, décisions prises, problèmes résolus
-- PAS de jargon technique, PAS de questions sur le code ou la stack
-- Adapté au métier (ici : ${exp.title}) — pense impact business, utilisateurs, process, collaboration
-- Ne répète pas ce qui est déjà capturé
+DIMENSIONS A VERIFIER (universel, tous metiers) :
+1. SCOPE — taille equipe, perimetre, nombre utilisateurs/clients concernes
+2. IMPACT — resultats concrets, chiffres avant/apres, ameliorations mesurees
+3. CONTEXTE — pourquoi ce projet/role existait, quel probleme a resoudre
+4. METHODE — comment tu as fait, approche, process mis en place
+5. COLLABORATION — avec qui (equipes, stakeholders, externes)
+6. DIFFICULTES — contraintes, obstacles surmontes, compromis faits
 
-Réponds UNIQUEMENT en JSON valide, sans markdown ni backticks :
-[
-  {"id": "q1", "question": "...", "tag": "mot-clé"},
-  {"id": "q2", "question": "...", "tag": "mot-clé"},
-  {"id": "q3", "question": "...", "tag": "mot-clé"}
-]`;
+REGLES :
+- Analyse chaque dimension : est-elle couverte par la description ou les bullets ?
+- Ne retourne QUE les dimensions manquantes (max 3)
+- Chaque question CITE un element specifique de la description ou des bullets
+- Questions en 15 mots MAX, tutoiement, ton direct
+- Si tout est bien couvert, retourne un tableau vide
+
+Exemple pour Chanel / app vendeur :
+- Si pas de scope : "L'app My Little Black Book, c'est deploye dans combien de boutiques ?"
+- Si pas d'impact : "Ca a change quoi concretement pour les vendeurs au quotidien ?"
+
+Reponds UNIQUEMENT en JSON valide :
+{"gaps": [{"id": "g1", "dimension": "scope|impact|contexte|methode|collaboration|difficultes", "question": "...", "priority": 1}]}`;
 
       const response = await openai.chat.completions.create({
         model: "llama-3.3-70b-versatile",
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
-        temperature: 0.7,
+        temperature: 0.5,
       });
 
-      let questions;
+      let result;
       try {
-        const parsed = JSON.parse(response.choices[0].message.content || "[]");
-        questions = Array.isArray(parsed) ? parsed : parsed.questions || parsed;
+        result = JSON.parse(response.choices[0].message.content || "{}");
       } catch {
-        questions = [
-          { id: "f1", question: "Quel a été votre plus grand défi dans ce rôle ?", tag: "challenge" },
-          { id: "f2", question: "Quel résultat mesurable avez-vous obtenu ?", tag: "metrics" },
-          { id: "f3", question: "Qu'avez-vous appris que vous n'auriez pas appris ailleurs ?", tag: "growth" },
-        ];
+        result = { gaps: [] };
       }
 
-      res.json({ questions });
+      res.json(result);
     } catch (err: any) {
-      console.error("[SUGGEST] Error:", err.message);
-      res.json({ questions: [
-        { id: "f1", question: "Quel a été votre plus grand défi dans ce rôle ?", tag: "challenge" },
-        { id: "f2", question: "Quel résultat mesurable avez-vous obtenu ?", tag: "metrics" },
-        { id: "f3", question: "Qu'avez-vous appris que vous n'auriez pas appris ailleurs ?", tag: "growth" },
-      ]});
+      console.error("[GAPS] Error:", err.message);
+      res.json({ gaps: [] });
     }
   });
 
-  // Reformulate raw answer into a CV-ready bullet
-  app.post("/api/experiences/:id/reformulate", async (req, res) => {
+  // ══════════════════════════════════════════════════════════════
+  // MICRO-THREAD — follow-up + progressive reformulation + auto-tags
+  // ══════════════════════════════════════════════════════════════
+  app.post("/api/experiences/:id/enrich", async (req, res) => {
     try {
       const exp = await storage.getExperience(req.params.id);
       if (!exp) return res.status(404).json({ message: "Experience not found" });
 
-      const { question, answer, context } = req.body;
+      const { dimension, question, answer, previousAnswers } = req.body;
       if (!answer) return res.status(400).json({ message: "answer required" });
 
+      // Build conversation history for micro-thread
+      const history = previousAnswers || [];
+      const allAnswers = [...history, answer].join(" | ");
+
       if (!openai) {
-        return res.json({ bullet: answer });
+        return res.json({
+          bullet: answer,
+          tags: [dimension || "general"],
+          followUp: null,
+          isComplete: true,
+        });
       }
 
-      const prompt = `Tu es un expert en rédaction de CV. Tu transformes des réponses brutes en lignes de CV percutantes.
+      const prompt = `Tu es un assistant CV. Tu fais 3 choses en une seule reponse :
 
-Contexte :
+1. REFORMULER toute la matiere en UN bullet CV (verbe d'action, concis, max 30 mots, chiffres si dispo)
+2. TAGGER avec des mots-cles semantiques pour le matching futur (3-6 tags)
+3. DECIDER si une RELANCE est necessaire pour creuser davantage (1 relance max)
+
+EXPERIENCE :
 - Poste : ${exp.title}
 - Entreprise : ${exp.company}
-${context ? `- Contexte du rôle : ${context}` : ""}
-${question ? `- Question posée : ${question}` : ""}
-- Réponse brute : ${answer}
+- Description : ${exp.description || ""}
 
-Transforme cette réponse en UNE SEULE ligne de CV qui :
-- Commence par un verbe d'action
-- Inclut les chiffres/métriques si mentionnés
-- Est concise (max 25 mots)
-- Est valorisante et professionnelle
-- Garde le sens exact de ce que la personne a dit
+CONVERSATION :
+- Dimension exploree : ${dimension || "general"}
+- Question posee : ${question || "ajout libre"}
+- Reponse(s) : ${allAnswers}
 
-Si la réponse est trop vague pour faire un bon bullet CV, renvoie quand même ta meilleure reformulation mais ajoute un champ "tip" avec un conseil court pour améliorer (ex: "Ajoute un chiffre : combien d'utilisateurs ?")
+REGLES RELANCE :
+- Si la reponse est vague (pas de chiffre, pas de detail concret) → propose UNE relance courte (10 mots max)
+- Si la reponse est deja precise et actionnable → pas de relance, isComplete = true
+- Max 1 relance, pas plus
+- La relance doit creuser la MEME dimension, pas changer de sujet
 
-Réponds UNIQUEMENT en JSON valide :
-{"bullet": "...", "tip": "..." ou null}`;
+REGLES TAGS :
+- Tags concrets et utiles pour matcher avec des offres d'emploi
+- Exemples : "paiement", "mobile-ios", "design-system", "b2b", "retail", "user-research", "deploiement"
+- PAS de tags vagues comme "experience" ou "travail"
+
+Reponds UNIQUEMENT en JSON valide :
+{
+  "bullet": "Le bullet CV reformule avec toute la matiere",
+  "tags": ["tag1", "tag2", "tag3"],
+  "followUp": "La question de relance courte" ou null,
+  "isComplete": true ou false
+}`;
 
       const response = await openai.chat.completions.create({
         model: "llama-3.3-70b-versatile",
@@ -478,13 +500,16 @@ Réponds UNIQUEMENT en JSON valide :
       try {
         result = JSON.parse(response.choices[0].message.content || "{}");
       } catch {
-        result = { bullet: answer, tip: null };
+        result = { bullet: answer, tags: [dimension || "general"], followUp: null, isComplete: true };
       }
+
+      // Ensure tags is always an array
+      if (!Array.isArray(result.tags)) result.tags = [dimension || "general"];
 
       res.json(result);
     } catch (err: any) {
-      console.error("[REFORMULATE] Error:", err.message);
-      res.json({ bullet: req.body.answer || "", tip: null });
+      console.error("[ENRICH] Error:", err.message);
+      res.json({ bullet: req.body.answer || "", tags: ["general"], followUp: null, isComplete: true });
     }
   });
 
