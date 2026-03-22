@@ -9,17 +9,8 @@ import { bullets } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import {
   normalizeLinkedInUrl,
-  parseJobDescription,
-  scoreExperiences,
-  scoreBulletsInExperiences,
-  buildCompositionPlan,
-  generateTailoredCV,
-  generateOptimizationReport,
   checkLLMHealth,
-  type ParsedJob,
-  type ScoredExperience,
-  type ScoredBullet,
-  type CompositionPlan,
+  runTailorPipeline,
 } from "./tailoring-engine";
 
 let openai: OpenAI | null = null;
@@ -710,68 +701,45 @@ Reponds UNIQUEMENT en JSON valide :
     }
   });
 
-  // Tailor
+  // Tailor — Pipeline V2
   app.post(api.tailor.generate.path, async (req, res) => {
     try {
       const { url, text, mode, outputLength, customMaxChars } = api.tailor.generate.input.parse(req.body);
 
-      // Step 1: Normalize LinkedIn URL
+      // Normalize LinkedIn URL
       const normalizedUrl = url ? normalizeLinkedInUrl(url) : undefined;
-      const jobText = text || "";
+      let effectiveJobText = text || "";
 
-      if (!jobText && !normalizedUrl) {
+      if (!effectiveJobText && !normalizedUrl) {
         return res.status(400).json({ message: "Please provide a job description or URL." });
       }
 
-      // If only URL provided, scrape the page content via Jina.ai Reader (free, no auth needed)
-      let effectiveJobText = jobText;
+      // Scrape URL if needed
       if (!effectiveJobText && normalizedUrl) {
         try {
-          console.log("[TAILOR] Fetching job page via Jina.ai:", normalizedUrl);
           const jinaUrl = `https://r.jina.ai/${normalizedUrl}`;
           const jinaRes = await fetch(jinaUrl, {
-            headers: {
-              "Accept": "text/plain",
-              "X-Return-Format": "text",
-            },
+            headers: { "Accept": "text/plain", "X-Return-Format": "text" },
             signal: AbortSignal.timeout(15000),
           });
           if (jinaRes.ok) {
-            const scraped = await jinaRes.text();
-            // Keep only the first 6000 chars to avoid token overload
-            effectiveJobText = scraped.slice(0, 6000).trim();
-            console.log("[TAILOR] Jina.ai scraped", effectiveJobText.length, "chars");
-          } else {
-            console.warn("[TAILOR] Jina.ai returned", jinaRes.status, "— falling back to URL hint");
+            effectiveJobText = (await jinaRes.text()).slice(0, 6000).trim();
+            console.log("[TAILOR] Scraped", effectiveJobText.length, "chars");
           }
-        } catch (fetchErr: any) {
-          console.warn("[TAILOR] Jina.ai fetch failed:", fetchErr.message);
+        } catch (e: any) {
+          console.warn("[TAILOR] Scrape failed:", e.message);
         }
       }
 
-      // Final fallback if scraping also failed
       if (!effectiveJobText) {
-        effectiveJobText = `Job posting at: ${normalizedUrl}. The page content could not be retrieved automatically. Please paste the job description text for accurate results.`;
+        effectiveJobText = `Job posting at: ${normalizedUrl}. Could not retrieve content. Please paste the job description.`;
       }
 
       if (!openai) {
-        return res.status(500).json({ message: "AI service not configured. Please set the GROQ_API_KEY." });
+        return res.status(500).json({ message: "AI service not configured. Please set GROQ_API_KEY." });
       }
 
-      console.log("[TAILOR] ══════════════════════════════════════════");
-      console.log("[TAILOR] Starting CV Tailoring Pipeline");
-      console.log("[TAILOR] ══════════════════════════════════════════");
-
-      // Step 1: Parse job description
-      let parsedJob: ParsedJob;
-      try {
-        parsedJob = await parseJobDescription(effectiveJobText, openai);
-      } catch (err: any) {
-        console.error("[TAILOR] FAILED parseJobDescription:", err.message);
-        return res.status(500).json({ message: `Failed to parse job description: ${err.message}` });
-      }
-
-      // Step 2: Load all data
+      // Load all data
       const allExps = await storage.getExperiences();
       const allBullets = await storage.getAllBullets();
       const allSkills = await storage.getSkills();
@@ -783,84 +751,37 @@ Reponds UNIQUEMENT en JSON valide :
         return res.status(400).json({ message: "Your CV library is empty. Please add experiences first." });
       }
 
-      // Build bullets map (used for both experience scoring and bullet scoring)
-      const bulletsByExp = new Map<string, typeof allBullets>();
-      for (const b of allBullets) {
-        if (!bulletsByExp.has(b.experienceId)) bulletsByExp.set(b.experienceId, []);
-        bulletsByExp.get(b.experienceId)!.push(b);
-      }
-
-      // Step 3: Score experiences — now includes bullet tags for better matching
-      let scoredExps: ScoredExperience[];
-      try {
-        scoredExps = await scoreExperiences(parsedJob, allExps, openai, bulletsByExp);
-      } catch (err: any) {
-        console.error("[TAILOR] FAILED scoreExperiences:", err.message);
-        return res.status(500).json({ message: `Failed to score experiences: ${err.message}` });
-      }
-
-      // Step 4: Score bullets from ALL experiences (not just top 3)
-      // Tags allow precise matching across the whole library
-      const topExps = scoredExps.filter(se => se.score >= 15);
-
-      let scoredBullets: ScoredBullet[];
-      try {
-        scoredBullets = await scoreBulletsInExperiences(parsedJob, topExps, bulletsByExp, openai);
-      } catch (err: any) {
-        console.error("[TAILOR] FAILED scoreBulletsInExperiences:", err.message);
-        return res.status(500).json({ message: `Failed to score bullets: ${err.message}` });
-      }
-
-      // Step 5: Build composition plan
-      let plan: CompositionPlan;
-      try {
-        plan = await buildCompositionPlan(parsedJob, scoredExps, scoredBullets, allSkills, mode, openai, outputLength ?? "balanced");
-      } catch (err: any) {
-        console.error("[TAILOR] FAILED buildCompositionPlan:", err.message);
-        return res.status(500).json({ message: `Failed to build CV composition: ${err.message}` });
-      }
-
-      // Step 6: Generate tailored CV text — now includes profile, formations, languages
-      let outputCvText: string;
-      try {
-        outputCvText = await generateTailoredCV(plan, parsedJob, mode, openai, outputLength ?? "balanced", customMaxChars, {
-          profileName: profileData?.name,
-          profileTitle: profileData?.title,
-          profileSummary: profileData?.summary || undefined,
-          formations,
-          languages: langs,
-        });
-      } catch (err: any) {
-        console.error("[TAILOR] FAILED generateTailoredCV:", err.message);
-        return res.status(500).json({ message: `Failed to generate CV text: ${err.message}` });
-      }
-
-      // Step 7: Generate optimization report
-      const reportData = generateOptimizationReport(parsedJob, plan, scoredExps, allSkills);
+      // Run Pipeline V2
+      const result = await runTailorPipeline({
+        jobText: effectiveJobText,
+        mode,
+        outputLength,
+        customMaxChars,
+        allExperiences: allExps,
+        allBullets: allBullets,
+        allSkills: allSkills,
+        profile: profileData ? { name: profileData.name, title: profileData.title, summary: profileData.summary } : undefined,
+        formations,
+        languages: langs,
+      }, openai);
 
       // Save job post
       const jobPost = await storage.createJobPost({
         url: normalizedUrl,
         rawText: effectiveJobText,
-        extractedJson: parsedJob as any,
+        extractedJson: result.report as any,
       });
 
       // Save run
-      const selectedBulletIds = plan.sections.flatMap(s => s.bullets.map(b => b.bullet.id));
-      const selectedExpIds = plan.sections.map(s => s.experience.id);
-
       const run = await storage.createRun({
         jobPostId: jobPost.id,
         mode,
-        selectedExperienceIds: selectedExpIds,
-        selectedBulletIds: selectedBulletIds,
-        outputCvText,
-        outputReportJson: reportData as any,
+        selectedExperienceIds: result.selectedExperienceIds,
+        selectedBulletIds: result.selectedBulletIds,
+        outputCvText: result.cvText,
+        outputReportJson: result.report as any,
       });
 
-      console.log("[TAILOR] ══════════════════════════════════════════");
-      console.log("[TAILOR] Pipeline Complete — Confidence:", reportData.confidence);
-      console.log("[TAILOR] ══════════════════════════════════════════");
       res.status(201).json(run);
     } catch (e) {
       if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
