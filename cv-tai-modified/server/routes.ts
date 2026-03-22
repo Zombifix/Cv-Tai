@@ -355,6 +355,85 @@ ${text}`,
     res.status(204).end();
   });
 
+  // Extract skills from all experiences + bullets via LLM
+  app.post("/api/skills/extract", async (req, res) => {
+    try {
+      const allExps = await storage.getExperiences();
+      const allBullets = await storage.getAllBullets();
+      const existingSkills = await storage.getSkills();
+
+      if (allExps.length === 0) {
+        return res.status(400).json({ message: "Ajoutez des experiences d'abord." });
+      }
+
+      // Build a summary of all experiences + bullets
+      const expSummaries = allExps.map(exp => {
+        const expBullets = allBullets.filter(b => b.experienceId === exp.id);
+        return `${exp.title} chez ${exp.company}:\n${exp.description || ""}\n${expBullets.map(b => "- " + b.text).join("\n")}`;
+      }).join("\n\n");
+
+      const existingNames = existingSkills.map(s => s.name.toLowerCase());
+
+      if (!openai) {
+        return res.json({ skills: [] });
+      }
+
+      const prompt = `Analyse ces experiences professionnelles et extrais TOUTES les competences (skills).
+
+EXPERIENCES :
+${expSummaries.slice(0, 6000)}
+
+COMPETENCES DEJA ENREGISTREES (ne pas dupliquer) :
+${existingNames.join(", ") || "aucune"}
+
+REGLES :
+- Extrais les competences explicites ET implicites
+- Classe chaque competence dans UNE categorie parmi : "Outils", "Methodologies", "Soft Skills", "Domaines", "Techniques"
+- "Outils" = logiciels, apps, plateformes (Figma, Jira, Salesforce...)
+- "Methodologies" = methodes de travail (User Research, Design Thinking, Agile, A/B Testing...)
+- "Soft Skills" = competences humaines (Leadership, Communication, Gestion de stakeholders...)
+- "Domaines" = expertises metier (E-commerce, CRM, B2B, Luxury, Retail...)
+- "Techniques" = competences techniques (Design System, Prototypage, Data Visualization...)
+- NE PAS inclure les competences deja enregistrees
+- Max 20 nouvelles competences
+- Nom court (1-3 mots max)
+
+Reponds UNIQUEMENT en JSON valide :
+{
+  "skills": [
+    {"name": "...", "category": "Outils"},
+    {"name": "...", "category": "Methodologies"}
+  ]
+}`;
+
+      const response = await openai.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+      });
+
+      let result;
+      try {
+        result = JSON.parse(response.choices[0].message.content || "{}");
+      } catch {
+        return res.json({ skills: [] });
+      }
+
+      const extracted = result.skills || [];
+      // Filter out duplicates
+      const filtered = extracted.filter((s: any) =>
+        s.name && !existingNames.includes(s.name.toLowerCase())
+      );
+
+      console.log("[SKILLS] Extracted", filtered.length, "new skills");
+      res.json({ skills: filtered });
+    } catch (err: any) {
+      console.error("[SKILLS] Extract error:", err.message);
+      res.json({ skills: [] });
+    }
+  });
+
   // Runs history
   app.get("/api/runs", async (_req, res) => {
     const allRuns = await storage.getRuns();
