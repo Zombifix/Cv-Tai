@@ -247,25 +247,28 @@ ${text}`,
         ]});
       }
 
-      const prompt = `Tu es un coach carrière expert. Tu aides quelqu'un à enrichir son CV en posant des questions ciblées pour faire émerger des compétences, résultats et expériences valorisables.
+      const prompt = `Tu es un coach carrière. Tu poses des questions COURTES pour aider quelqu'un à enrichir son CV avec des éléments concrets et valorisables.
 
-Contexte de l'expérience :
-- Titre : ${exp.title}
+Expérience :
+- Poste : ${exp.title}
 - Entreprise : ${exp.company}
-- Description : ${exp.description || "Non renseignée"}
-${existingBullets.length > 0 ? `- Éléments déjà capturés :\n- ${bulletTexts}` : "- Aucun élément capturé pour l'instant."}
+- Description : ${exp.description || "Aucune"}
+${existingBullets.length > 0 ? `- Déjà capturé :\n- ${bulletTexts}` : "- Rien capturé encore."}
 
-Génère exactement 3 questions personnalisées qui :
-1. Sont adaptées au RÔLE spécifique (${exp.title}) et au CONTEXTE (${exp.company})
-2. Cherchent à faire émerger des éléments valorisables pour un CV (résultats chiffrés, compétences transférables, leadership, impact business)
-3. Ne répètent PAS ce qui est déjà capturé
-4. Sont formulées de manière conversationnelle et bienveillante, en français
+RÈGLES STRICTES :
+- Exactement 3 questions
+- Chaque question fait MAX 15 mots
+- Ton direct et simple, tutoiement, comme un ami
+- Orienté : résultats concrets, chiffres, impact, décisions prises, problèmes résolus
+- PAS de jargon technique, PAS de questions sur le code ou la stack
+- Adapté au métier (ici : ${exp.title}) — pense impact business, utilisateurs, process, collaboration
+- Ne répète pas ce qui est déjà capturé
 
-Réponds UNIQUEMENT en JSON valide, sans markdown :
+Réponds UNIQUEMENT en JSON valide, sans markdown ni backticks :
 [
-  {"id": "q1", "question": "...", "tag": "mot-clé-court"},
-  {"id": "q2", "question": "...", "tag": "mot-clé-court"},
-  {"id": "q3", "question": "...", "tag": "mot-clé-court"}
+  {"id": "q1", "question": "...", "tag": "mot-clé"},
+  {"id": "q2", "question": "...", "tag": "mot-clé"},
+  {"id": "q3", "question": "...", "tag": "mot-clé"}
 ]`;
 
       const response = await openai.chat.completions.create({
