@@ -4,8 +4,6 @@ import { Layout } from "@/components/layout";
 import { useExperiences, useCreateExperience, useUpdateExperience, useDeleteExperience } from "@/hooks/use-experiences";
 import { useBullets, useCreateBullet, useUpdateBullet, useDeleteBullet } from "@/hooks/use-bullets";
 import { useSkills, useCreateSkill, useUpdateSkill, useDeleteSkill } from "@/hooks/use-skills";
-import { useParseExperience } from "@/hooks/use-parse-experience";
-import { detectAndParseFormat, type ParsedExperience } from "@/lib/parse-experience-format";
 import { 
   Card, CardContent, CardDescription, CardHeader, CardTitle 
 } from "@/components/ui/card";
@@ -17,8 +15,9 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Building, Calendar, Pencil, Trash2, Tag, RefreshCw, Briefcase, Zap, Download, Sparkles, AlertCircle, Check, X, MessageSquare, PenLine, ChevronRight, Lightbulb } from "lucide-react";
+import { Plus, Building, Calendar, Pencil, Trash2, Tag, RefreshCw, Briefcase, Zap, Upload, Sparkles, AlertCircle, Check, X, MessageSquare, PenLine, ChevronRight, Lightbulb } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 import type { Experience, Bullet } from "@shared/schema";
 
 /* ══════════════════════════════════════════════════════════════════
@@ -100,7 +99,7 @@ function ExperiencesSection() {
           <Briefcase className="w-5 h-5 text-primary" /> Work History
         </h2>
         <div className="flex gap-2">
-          <SmartImportDialog open={importOpen} onOpenChange={setImportOpen} />
+          <CVImportDialog open={importOpen} onOpenChange={setImportOpen} />
           <ExperienceDialog open={open} onOpenChange={setOpen} experience={editingExp} onClose={() => setEditingExp(null)} />
         </div>
       </div>
@@ -109,11 +108,14 @@ function ExperiencesSection() {
         <Card className="border-dashed border-2 bg-transparent shadow-none">
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <div className="w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-4">
-              <Briefcase className="w-6 h-6" />
+              <Upload className="w-6 h-6" />
             </div>
-            <h3 className="font-semibold text-lg">No experiences yet</h3>
-            <p className="text-muted-foreground mt-1 mb-4 max-w-sm">Add your past roles to start building your Super-CV library.</p>
-            <Button onClick={() => setOpen(true)}><Plus className="w-4 h-4 mr-2" /> Add Experience</Button>
+            <h3 className="font-semibold text-lg">Importez votre CV</h3>
+            <p className="text-muted-foreground mt-1 mb-4 max-w-sm">Uploadez un PDF ou collez le texte de votre CV pour pré-remplir vos expériences automatiquement.</p>
+            <div className="flex gap-2">
+              <Button onClick={() => setImportOpen(true)}><Upload className="w-4 h-4 mr-2" /> Importer un CV</Button>
+              <Button variant="outline" onClick={() => setOpen(true)}><Plus className="w-4 h-4 mr-2" /> Ajouter manuellement</Button>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -668,185 +670,257 @@ function SkillDialog({ open, onOpenChange, skill, onClose }: any) {
 /* ══════════════════════════════════════════════════════════════════
    SMART IMPORT DIALOG (inchangé)
    ══════════════════════════════════════════════════════════════════ */
-function SmartImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (val: boolean) => void }) {
+/* ══════════════════════════════════════════════════════════════════
+   CV IMPORT DIALOG — PDF upload + text paste → multi-experience
+   ══════════════════════════════════════════════════════════════════ */
+interface ParsedExp {
+  title: string;
+  company: string;
+  startDate?: string;
+  endDate?: string | null;
+  description?: string;
+  bullets?: string[];
+  selected?: boolean;
+}
+
+function CVImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (val: boolean) => void }) {
   const { toast } = useToast();
-  const createExp = useCreateExperience();
-  const createBullet = useCreateBullet();
-  const parse = useParseExperience();
+  const queryClient = useQueryClient();
 
+  const [step, setStep] = useState<"input" | "loading" | "review">("input");
   const [rawText, setRawText] = useState("");
-  const [detectionResult, setDetectionResult] = useState<any>(null);
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const [editData, setEditData] = useState<ParsedExperience | null>(null);
-  const [step, setStep] = useState<"input" | "select" | "edit">("input");
+  const [parsedExps, setParsedExps] = useState<ParsedExp[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleDetectFormat = () => {
-    if (!rawText.trim()) {
-      toast({ title: "Please paste some content", variant: "destructive" });
+  const reset = () => {
+    setStep("input");
+    setRawText("");
+    setParsedExps([]);
+    setSaving(false);
+    setDragOver(false);
+  };
+
+  const handleFile = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      toast({ title: "Format non supporté", description: "Seuls les fichiers PDF sont acceptés.", variant: "destructive" });
       return;
     }
-    const result = detectAndParseFormat(rawText);
-    setDetectionResult(result);
-    if (result.error) {
-      toast({ title: "Format issue", description: result.error, variant: "destructive" });
-      return;
-    }
-    if (result.format === "json-multi") {
-      setStep("select");
-      setSelectedIdx(0);
-    } else if (result.format === "json-single" || result.format === "text") {
-      if (result.format === "json-single") {
-        setEditData(result.data as ParsedExperience);
-        setStep("edit");
-      } else {
-        handleLLMParse();
+    setStep("loading");
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("/api/import/cv", { method: "POST", body: formData, credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      if (!data.experiences?.length) {
+        toast({ title: "Aucune expérience trouvée", description: "L'IA n'a pas pu extraire d'expériences de ce document.", variant: "destructive" });
+        setStep("input");
+        return;
       }
-    }
-  };
-
-  const handleLLMParse = async () => {
-    try {
-      const result = await parse.mutateAsync(rawText);
-      setEditData(result);
-      setStep("edit");
+      setParsedExps(data.experiences.map((e: any) => ({ ...e, selected: true })));
+      setStep("review");
     } catch (err) {
-      toast({ title: "Parse failed", description: (err as Error).message, variant: "destructive" });
+      toast({ title: "Erreur d'import", description: (err as Error).message, variant: "destructive" });
+      setStep("input");
     }
   };
 
-  const handleSelectExperience = (idx: number) => {
-    const experiences = detectionResult.data as ParsedExperience[];
-    setEditData(experiences[idx]);
-    setStep("edit");
-  };
+  const handleTextSubmit = async () => {
+    if (!rawText.trim()) return;
+    setStep("loading");
 
-  const handleSave = async () => {
-    if (!editData?.title || !editData?.company) {
-      toast({ title: "Title and company are required", variant: "destructive" });
-      return;
-    }
     try {
-      const exp = await createExp.mutateAsync({
-        title: editData.title, company: editData.company,
-        startDate: editData.startDate, endDate: editData.endDate,
-        description: editData.summary || "",
+      const res = await fetch("/api/import/cv", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: rawText }),
+        credentials: "include",
       });
-      const bulletsToCreate = [...(editData.responsibilities || []), ...(editData.achievements || [])];
-      for (const bulletText of bulletsToCreate) {
-        await createBullet.mutateAsync({ experienceId: exp.id, text: bulletText });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      if (!data.experiences?.length) {
+        toast({ title: "Aucune expérience trouvée", description: "L'IA n'a pas pu extraire d'expériences de ce texte.", variant: "destructive" });
+        setStep("input");
+        return;
       }
-      toast({ title: "Experience imported successfully!" });
-      onOpenChange(false);
-      setRawText(""); setDetectionResult(null); setEditData(null); setStep("input");
+      setParsedExps(data.experiences.map((e: any) => ({ ...e, selected: true })));
+      setStep("review");
     } catch (err) {
-      toast({ title: "Error", description: (err as Error).message, variant: "destructive" });
+      toast({ title: "Erreur d'import", description: (err as Error).message, variant: "destructive" });
+      setStep("input");
     }
   };
+
+  const toggleExp = (idx: number) => {
+    setParsedExps(prev => prev.map((e, i) => i === idx ? { ...e, selected: !e.selected } : e));
+  };
+
+  const handleSaveAll = async () => {
+    const toSave = parsedExps.filter(e => e.selected);
+    if (!toSave.length) return;
+    setSaving(true);
+
+    try {
+      const res = await fetch("/api/import/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ experiences: toSave }),
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      toast({ title: `${data.created} expérience${data.created > 1 ? "s" : ""} importée${data.created > 1 ? "s" : ""}` });
+      queryClient.invalidateQueries({ queryKey: ["/api/experiences"] });
+      onOpenChange(false);
+      reset();
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
+      setSaving(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  };
+
+  const selectedCount = parsedExps.filter(e => e.selected).length;
 
   return (
-    <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); if (!val) { setStep("input"); setRawText(""); } }}>
+    <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); if (!val) reset(); }}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="gap-2">
-          <Download className="w-4 h-4" /> Import from text
+        <Button className="gap-2">
+          <Upload className="w-4 h-4" /> Importer un CV
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[650px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-accent" /> Smart Import Experience
+            <Sparkles className="w-5 h-5 text-primary" /> Importer votre CV
           </DialogTitle>
         </DialogHeader>
 
+        {/* STEP 1: Input */}
         {step === "input" && (
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Paste experience content</Label>
-              <Textarea
-                value={rawText} onChange={e => setRawText(e.target.value)}
-                placeholder={"Free text, JSON object, or array of experiences...\nExamples:\n- Senior Engineer at TechCorp 2020-2023\n- JSON object with title, company, dates\n- Array with experiences field"}
-                className="h-40 text-sm"
+            {/* PDF Upload zone */}
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+                dragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf"
+                className="hidden"
+                onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }}
               />
-              <p className="text-xs text-muted-foreground">Supports free text, single JSON objects, or experiences array format</p>
+              <Upload className="w-8 h-8 mx-auto mb-3 text-muted-foreground" />
+              <p className="font-medium text-sm">Déposez votre CV ici ou cliquez pour parcourir</p>
+              <p className="text-xs text-muted-foreground mt-1">PDF uniquement · 10 Mo max</p>
             </div>
+
+            {/* Separator */}
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-border" />
+              <span className="text-xs text-muted-foreground font-medium">ou collez le texte</span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+
+            {/* Text paste */}
+            <Textarea
+              value={rawText}
+              onChange={e => setRawText(e.target.value)}
+              placeholder="Collez le contenu de votre CV ou profil LinkedIn ici…"
+              className="h-32 text-sm"
+            />
             <DialogFooter>
-              <Button onClick={handleDetectFormat} disabled={!rawText.trim()}>Parse & Continue</Button>
+              <Button onClick={handleTextSubmit} disabled={!rawText.trim()}>
+                Analyser
+              </Button>
             </DialogFooter>
           </div>
         )}
 
-        {step === "select" && detectionResult?.data && Array.isArray(detectionResult.data) && (
-          <div className="space-y-4 py-4">
-            <div className="text-sm text-muted-foreground mb-4">
-              Found {detectionResult.data.length} experiences. Select one to import:
+        {/* STEP 2: Loading */}
+        {step === "loading" && (
+          <div className="py-12 text-center space-y-4">
+            <RefreshCw className="w-8 h-8 animate-spin mx-auto text-primary" />
+            <div>
+              <p className="font-medium">Analyse en cours…</p>
+              <p className="text-sm text-muted-foreground mt-1">L'IA extrait vos expériences</p>
             </div>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {(detectionResult.data as ParsedExperience[]).map((exp, idx) => (
-                <div key={idx} onClick={() => handleSelectExperience(idx)}
-                  className={`p-4 rounded-lg border cursor-pointer transition-all ${selectedIdx === idx ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}>
+          </div>
+        )}
+
+        {/* STEP 3: Review */}
+        {step === "review" && (
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              {parsedExps.length} expérience{parsedExps.length > 1 ? "s" : ""} trouvée{parsedExps.length > 1 ? "s" : ""}. Décochez celles que vous ne voulez pas importer.
+            </p>
+
+            <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+              {parsedExps.map((exp, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => toggleExp(idx)}
+                  className={`p-4 rounded-lg border cursor-pointer transition-all ${
+                    exp.selected ? "border-primary/50 bg-primary/5" : "border-border opacity-50"
+                  }`}
+                >
                   <div className="flex items-start gap-3">
-                    <div className="flex-1">
-                      <div className="font-semibold">{exp.title}</div>
-                      <div className="text-sm text-muted-foreground">{exp.company}</div>
-                      {exp.startDate && <div className="text-xs text-muted-foreground mt-1">{exp.startDate} → {exp.endDate || "Present"}</div>}
+                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center mt-0.5 shrink-0 transition-colors ${
+                      exp.selected ? "bg-primary border-primary" : "border-border"
+                    }`}>
+                      {exp.selected && <Check className="w-3 h-3 text-primary-foreground" />}
                     </div>
-                    {selectedIdx === idx && <Check className="w-5 h-5 text-primary mt-1" />}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sm">{exp.title}</div>
+                      <div className="text-sm text-muted-foreground">{exp.company}</div>
+                      {exp.startDate && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {exp.startDate} → {exp.endDate || "Présent"}
+                        </div>
+                      )}
+                      {exp.description && (
+                        <p className="text-xs text-foreground/70 mt-2">{exp.description}</p>
+                      )}
+                      {exp.bullets && exp.bullets.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {exp.bullets.map((b, i) => (
+                            <div key={i} className="text-xs text-foreground/60 pl-3 border-l-2 border-border">
+                              {b}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
-            <DialogFooter className="flex gap-2 pt-4">
-              <Button variant="outline" onClick={() => setStep("input")}>Back</Button>
-              <Button onClick={() => handleSelectExperience(selectedIdx)}>Import Selected</Button>
-            </DialogFooter>
-          </div>
-        )}
 
-        {step === "edit" && editData && (
-          <div className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Title *</Label>
-                <Input value={editData.title} onChange={e => setEditData({ ...editData, title: e.target.value })} className={!editData.title ? "border-destructive" : ""} />
-              </div>
-              <div className="space-y-2">
-                <Label>Company *</Label>
-                <Input value={editData.company} onChange={e => setEditData({ ...editData, company: e.target.value })} className={!editData.company ? "border-destructive" : ""} />
-              </div>
-              <div className="space-y-2">
-                <Label>Start Date</Label>
-                <Input type="date" value={editData.startDate || ""} onChange={e => setEditData({ ...editData, startDate: e.target.value || undefined })} />
-              </div>
-              <div className="space-y-2">
-                <Label>End Date</Label>
-                <Input type="date" value={editData.endDate || ""} onChange={e => setEditData({ ...editData, endDate: e.target.value || undefined })} />
-              </div>
-            </div>
-            {editData.summary && (
-              <div className="space-y-2">
-                <Label>Summary</Label>
-                <Textarea value={editData.summary} onChange={e => setEditData({ ...editData, summary: e.target.value })} className="h-16" />
-              </div>
-            )}
-            {editData.responsibilities?.length ? (
-              <div className="space-y-2">
-                <Label>Responsibilities</Label>
-                <div className="space-y-2 bg-muted/30 p-3 rounded-lg max-h-24 overflow-y-auto">
-                  {editData.responsibilities.map((r, i) => <div key={i} className="text-sm p-2 bg-background rounded border">{r}</div>)}
-                </div>
-              </div>
-            ) : null}
-            {editData.achievements?.length ? (
-              <div className="space-y-2">
-                <Label>Achievements</Label>
-                <div className="space-y-2 bg-muted/30 p-3 rounded-lg max-h-24 overflow-y-auto">
-                  {editData.achievements.map((a, i) => <div key={i} className="text-sm p-2 bg-background rounded border">{a}</div>)}
-                </div>
-              </div>
-            ) : null}
             <DialogFooter className="flex gap-2 pt-4">
-              <Button variant="outline" onClick={() => { setStep("input"); setEditData(null); }}>Back</Button>
-              <Button onClick={handleSave} disabled={createExp.isPending || createBullet.isPending || !editData.title || !editData.company}>
-                {createExp.isPending ? "Saving..." : "Save Experience"}
+              <Button variant="outline" onClick={() => { setStep("input"); setParsedExps([]); }}>
+                Retour
+              </Button>
+              <Button onClick={handleSaveAll} disabled={saving || selectedCount === 0}>
+                {saving ? (
+                  <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Import en cours…</>
+                ) : (
+                  `Importer ${selectedCount} expérience${selectedCount > 1 ? "s" : ""}`
+                )}
               </Button>
             </DialogFooter>
           </div>
