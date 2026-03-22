@@ -77,15 +77,8 @@ export class DatabaseStorage implements IStorage {
     await db.delete(bullets).where(eq(bullets.id, id));
   }
   async updateBulletEmbedding(id: string, embedding: number[]) {
-    try {
-      await db.update(bullets).set({ embedding }).where(eq(bullets.id, id));
-    } catch (err: any) {
-      // Silently ignore if embedding column doesn't exist (pgvector not installed)
-      if (err.message?.includes("embedding")) {
-        return;
-      }
-      throw err;
-    }
+    // pgvector not available — embedding disabled
+    return;
   }
   async getAllBullets() {
     return await db.select().from(bullets);
