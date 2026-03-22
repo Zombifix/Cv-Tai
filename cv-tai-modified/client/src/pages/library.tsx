@@ -341,6 +341,7 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
   // Free add
   const [freeMode, setFreeMode] = useState(false);
   const [freeText, setFreeText] = useState("");
+  const [extraBullets, setExtraBullets] = useState<Array<{bullet: string; tags: string[]}>>([]);
 
   const answerRef = useRef<HTMLTextAreaElement>(null);
 
@@ -385,6 +386,7 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
 
       setCurrentBullet(data.bullet || answerDraft.trim());
       setCurrentTags(data.tags || []);
+      setExtraBullets(data.extraBullets || []);
       setPreviousAnswers(allPrevious);
       setAnswerDraft("");
 
@@ -401,16 +403,28 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
     }
   };
 
-  // Accept and save bullet
+  // Accept and save bullet(s)
   const handleAcceptBullet = async () => {
     if (!currentBullet) return;
     try {
+      // Save main bullet
       await createBullet.mutateAsync({
         experienceId: experience.id,
         text: currentBullet.trim(),
         tags: currentTags,
       });
-      toast({ title: "Bullet CV enregistre" });
+      // Auto-save extra bullets (multi-topic split)
+      for (const extra of extraBullets) {
+        if (extra.bullet && extra.bullet.trim()) {
+          await createBullet.mutateAsync({
+            experienceId: experience.id,
+            text: extra.bullet.trim(),
+            tags: extra.tags || [],
+          });
+        }
+      }
+      const count = 1 + extraBullets.length;
+      toast({ title: count > 1 ? `${count} bullets enregistres` : "Bullet CV enregistre" });
       resetThread();
     } catch (err) {
       toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
@@ -424,6 +438,7 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
     setPreviousAnswers([]);
     setCurrentBullet(null);
     setCurrentTags([]);
+    setExtraBullets([]);
     setFollowUp(null);
     setFreeMode(false);
     setFreeText("");
@@ -443,11 +458,13 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
       const data = await res.json();
       setCurrentBullet(data.bullet || freeText.trim());
       setCurrentTags(data.tags || ["libre"]);
+      setExtraBullets(data.extraBullets || []);
       setFreeText("");
       setActiveGap({ id: "free", dimension: "libre", question: "Ajout libre", priority: 0 });
     } catch {
       setCurrentBullet(freeText.trim());
       setCurrentTags(["libre"]);
+      setExtraBullets([]);
     } finally { setProcessing(false); }
   };
 
@@ -491,6 +508,24 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
                 </div>
               )}
             </div>
+            {/* Extra bullets (multi-topic split) */}
+            {extraBullets.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">+ {extraBullets.length} bullet{extraBullets.length > 1 ? "s" : ""} supplementaire{extraBullets.length > 1 ? "s" : ""} (mission distincte)</p>
+                {extraBullets.map((eb, i) => (
+                  <div key={i} className="bg-primary/5 border border-primary/10 rounded-lg p-3">
+                    <p className="text-sm font-medium">{eb.bullet}</p>
+                    {eb.tags?.length > 0 && (
+                      <div className="flex gap-1 mt-1.5 flex-wrap">
+                        {eb.tags.map((tag: string, j: number) => (
+                          <Badge key={j} variant="secondary" className="text-[9px] px-1.5 py-0">{tag}</Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             {/* Previous answers */}
             {previousAnswers.length > 0 && (
               <div className="space-y-1">
@@ -540,7 +575,7 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
           <div className="flex gap-2 animate-in fade-in-50">
             <Button size="sm" onClick={handleAcceptBullet} disabled={createBullet.isPending} className="flex-1 h-9">
               {createBullet.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin mr-1" /> : <Check className="w-3.5 h-3.5 mr-1" />}
-              Valider ce bullet
+              Valider {extraBullets.length > 0 ? `${1 + extraBullets.length} bullets` : "ce bullet"}
             </Button>
             <Button size="sm" variant="outline" onClick={resetThread} className="h-9">Annuler</Button>
           </div>
