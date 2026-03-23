@@ -329,15 +329,20 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
   const createBullet = useCreateBullet();
   const { toast } = useToast();
 
-  // Flow state
   type Step = "loading" | "axes" | "deepen" | "done";
   const [step, setStep] = useState<Step>("loading");
   const [axes, setAxes] = useState<Array<{id: string; text: string}>>([]);
   const [newAxisText, setNewAxisText] = useState("");
+  const [editingAxisId, setEditingAxisId] = useState<string | null>(null);
+  const [editAxisText, setEditAxisText] = useState("");
   const [currentAxisIdx, setCurrentAxisIdx] = useState(0);
   const [savedCount, setSavedCount] = useState(0);
 
-  // Deepen state (per-axis)
+  // Drag state
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  // Deepen state
   const [currentBullet, setCurrentBullet] = useState<string | null>(null);
   const [currentTags, setCurrentTags] = useState<string[]>([]);
   const [extraBullets, setExtraBullets] = useState<Array<{bullet: string; tags: string[]}>>([]);
@@ -347,10 +352,9 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
   const [processing, setProcessing] = useState(false);
   const answerRef = useRef<HTMLTextAreaElement>(null);
 
-  // How many axes to deepen (top half, min 1, max 3)
   const deepCount = Math.min(3, Math.max(1, Math.ceil(axes.length / 2)));
 
-  // Load suggested axes from description
+  // Load suggested axes
   useEffect(() => {
     const fetchAxes = async () => {
       try {
@@ -361,31 +365,43 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
         const suggested = (data.axes || []).map((a: any, i: number) => ({ id: `ax-${i}`, text: a.text || a }));
         setAxes(suggested.length > 0 ? suggested : []);
         setStep("axes");
-      } catch {
-        setStep("axes");
-      }
+      } catch { setStep("axes"); }
     };
     fetchAxes();
   }, [experience.id]);
 
   useEffect(() => { if (followUp && answerRef.current) answerRef.current.focus(); }, [followUp]);
 
+  // ── Axes management ──
   const addAxis = () => {
     if (!newAxisText.trim()) return;
     setAxes(prev => [...prev, { id: `ax-${Date.now()}`, text: newAxisText.trim() }]);
     setNewAxisText("");
   };
-
   const removeAxis = (id: string) => setAxes(prev => prev.filter(a => a.id !== id));
-
-  const moveAxis = (idx: number, dir: -1 | 1) => {
-    const newIdx = idx + dir;
-    if (newIdx < 0 || newIdx >= axes.length) return;
-    const copy = [...axes];
-    [copy[idx], copy[newIdx]] = [copy[newIdx], copy[idx]];
-    setAxes(copy);
+  const saveEditAxis = (id: string) => {
+    if (editAxisText.trim()) {
+      setAxes(prev => prev.map(a => a.id === id ? { ...a, text: editAxisText.trim() } : a));
+    }
+    setEditingAxisId(null);
+    setEditAxisText("");
   };
 
+  // ── Drag & drop ──
+  const handleDragStart = (idx: number) => setDragIdx(idx);
+  const handleDragOver = (e: React.DragEvent, idx: number) => { e.preventDefault(); setDragOverIdx(idx); };
+  const handleDrop = (idx: number) => {
+    if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setDragOverIdx(null); return; }
+    const copy = [...axes];
+    const [moved] = copy.splice(dragIdx, 1);
+    copy.splice(idx, 0, moved);
+    setAxes(copy);
+    setDragIdx(null);
+    setDragOverIdx(null);
+  };
+  const handleDragEnd = () => { setDragIdx(null); setDragOverIdx(null); };
+
+  // ── Deepening ──
   const startDeepen = () => {
     if (axes.length === 0) return;
     setStep("deepen");
@@ -397,12 +413,8 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
     const axis = axes[idx];
     if (!axis) return;
     setProcessing(true);
-    setCurrentBullet(null);
-    setCurrentTags([]);
-    setExtraBullets([]);
-    setFollowUp(null);
-    setAnswerDraft("");
-    setPreviousAnswers([]);
+    setCurrentBullet(null); setCurrentTags([]); setExtraBullets([]);
+    setFollowUp(null); setAnswerDraft(""); setPreviousAnswers([]);
 
     try {
       const res = await fetch(`/api/experiences/${experience.id}/enrich`, {
@@ -414,30 +426,24 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
       const data = await res.json();
       setCurrentBullet(data.bullet || axis.text);
       setCurrentTags(data.tags || []);
-      setExtraBullets(data.extraBullets || []);
-      if (data.followUp && !data.isComplete) {
-        setFollowUp(data.followUp);
-      }
+      // Limit to 1 extra max for deepened axes
+      setExtraBullets((data.extraBullets || []).slice(0, 1));
+      if (data.followUp && !data.isComplete) setFollowUp(data.followUp);
     } catch {
       setCurrentBullet(axis.text);
-      setCurrentTags([]);
-    } finally {
-      setProcessing(false);
-    }
+    } finally { setProcessing(false); }
   };
 
   const handleSubmitAnswer = async () => {
     if (!answerDraft.trim()) return;
     setProcessing(true);
-    const allPrevious = [...previousAnswers, answerDraft.trim()];
-
+    const allPrev = [...previousAnswers, answerDraft.trim()];
     try {
       const res = await fetch(`/api/experiences/${experience.id}/enrich`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          dimension: "axe",
-          question: followUp || axes[currentAxisIdx]?.text || "",
+          dimension: "axe", question: followUp || axes[currentAxisIdx]?.text || "",
           answer: answerDraft.trim(),
           previousAnswers: [axes[currentAxisIdx]?.text || "", ...previousAnswers],
         }),
@@ -446,70 +452,64 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
       const data = await res.json();
       setCurrentBullet(data.bullet || answerDraft.trim());
       setCurrentTags(data.tags || []);
-      setExtraBullets(data.extraBullets || []);
-      setPreviousAnswers(allPrevious);
+      setExtraBullets((data.extraBullets || []).slice(0, 1));
+      setPreviousAnswers(allPrev);
       setAnswerDraft("");
-      if (data.followUp && !data.isComplete) {
-        setFollowUp(data.followUp);
-      } else {
-        setFollowUp(null);
-      }
-    } catch {
-      setFollowUp(null);
-    } finally {
-      setProcessing(false);
-    }
+      if (data.followUp && !data.isComplete) { setFollowUp(data.followUp); } else { setFollowUp(null); }
+    } catch { setFollowUp(null); }
+    finally { setProcessing(false); }
   };
+
+  const MAX_BULLETS = 5;
 
   const handleAcceptBullet = async () => {
     if (!currentBullet) { moveToNextAxis(); return; }
+    const existing = bullets?.length || 0;
+    if (existing + savedCount >= MAX_BULLETS) {
+      toast({ title: "Limite atteinte", description: `Maximum ${MAX_BULLETS} bullets par experience.` });
+      moveToNextAxis(); return;
+    }
     let count = 0;
     try {
-      try {
-        await createBullet.mutateAsync({ experienceId: experience.id, text: currentBullet.trim(), tags: currentTags });
-        count++;
-      } catch (e: any) { if (!e.message?.includes("similaire")) throw e; }
+      if (existing + savedCount + count < MAX_BULLETS) {
+        try { await createBullet.mutateAsync({ experienceId: experience.id, text: currentBullet.trim(), tags: currentTags }); count++; }
+        catch (e: any) { if (!e.message?.includes("similaire")) throw e; }
+      }
       for (const extra of extraBullets) {
-        if (extra.bullet?.trim()) {
-          try {
-            await createBullet.mutateAsync({ experienceId: experience.id, text: extra.bullet.trim(), tags: extra.tags || [] });
-            count++;
-          } catch (e: any) { if (!e.message?.includes("similaire")) throw e; }
+        if (extra.bullet?.trim() && existing + savedCount + count < MAX_BULLETS) {
+          try { await createBullet.mutateAsync({ experienceId: experience.id, text: extra.bullet.trim(), tags: extra.tags || [] }); count++; }
+          catch (e: any) { if (!e.message?.includes("similaire")) throw e; }
         }
       }
       setSavedCount(prev => prev + count);
-    } catch (err) {
-      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
-    }
+    } catch (err) { toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" }); }
     moveToNextAxis();
   };
 
   const handleSkipAxis = async () => {
-    const axis = axes[currentAxisIdx];
-    if (axis && currentBullet) {
-      try {
-        await createBullet.mutateAsync({ experienceId: experience.id, text: currentBullet.trim(), tags: currentTags });
-        setSavedCount(prev => prev + 1);
-      } catch {}
+    const existing = bullets?.length || 0;
+    if (currentBullet && existing + savedCount < MAX_BULLETS) {
+      try { await createBullet.mutateAsync({ experienceId: experience.id, text: currentBullet.trim(), tags: currentTags }); setSavedCount(prev => prev + 1); } catch {}
     }
     moveToNextAxis();
   };
 
   const moveToNextAxis = () => {
-    const nextIdx = currentAxisIdx + 1;
-    if (nextIdx < deepCount && nextIdx < axes.length) {
-      setCurrentAxisIdx(nextIdx);
-      enrichAxis(nextIdx);
-    } else {
-      autoGenerateRemaining(nextIdx);
-    }
+    const next = currentAxisIdx + 1;
+    const existing = bullets?.length || 0;
+    if (existing + savedCount >= MAX_BULLETS) { setStep("done"); return; }
+    if (next < deepCount && next < axes.length) { setCurrentAxisIdx(next); enrichAxis(next); }
+    else { autoGenerateRemaining(next); }
   };
 
+  // Auto-gen: 1 bullet per axis, respects max
   const autoGenerateRemaining = async (startIdx: number) => {
     if (startIdx >= axes.length) { setStep("done"); return; }
     setProcessing(true);
     let count = 0;
+    const existing = bullets?.length || 0;
     for (let i = startIdx; i < axes.length; i++) {
+      if (existing + savedCount + count >= MAX_BULLETS) break;
       const axis = axes[i];
       try {
         const res = await fetch(`/api/experiences/${experience.id}/enrich`, {
@@ -519,15 +519,9 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
           credentials: "include",
         });
         const data = await res.json();
-        try {
-          await createBullet.mutateAsync({ experienceId: experience.id, text: (data.bullet || axis.text).trim(), tags: data.tags || [] });
-          count++;
-        } catch {}
-        for (const extra of (data.extraBullets || [])) {
-          if (extra.bullet?.trim()) {
-            try { await createBullet.mutateAsync({ experienceId: experience.id, text: extra.bullet.trim(), tags: extra.tags || [] }); count++; } catch {}
-          }
-        }
+        const text = (data.bullet || axis.text).trim();
+        try { await createBullet.mutateAsync({ experienceId: experience.id, text, tags: data.tags || [] }); count++; } catch {}
+        // NO extras for auto-generated — 1 bullet per axis only
       } catch {}
     }
     setSavedCount(prev => prev + count);
@@ -573,46 +567,68 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Etape 1</p>
             <p className="text-sm font-medium">Quels sont les grands axes de ta mission ?</p>
-            <p className="text-xs text-muted-foreground mt-1">L'ordre determine la profondeur. Axe 1 = le plus creuse.</p>
+            <p className="text-xs text-muted-foreground mt-1">Glisse pour reordonner. Clique pour editer. Axe 1 = le plus creuse.</p>
           </div>
 
           <div className="space-y-2">
             {axes.map((axis, i) => (
-              <div key={axis.id} className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground w-5 text-center shrink-0">{i + 1}</span>
-                <div className={`flex-1 text-sm p-3 rounded-lg border ${i < deepCount ? "bg-primary/5 border-primary/20" : "bg-muted/30 border-border"}`}>
-                  {axis.text}
-                </div>
-                <div className="flex flex-col gap-0.5 shrink-0">
-                  <button onClick={() => moveAxis(i, -1)} className="text-xs text-muted-foreground hover:text-foreground p-0.5" disabled={i === 0}>↑</button>
-                  <button onClick={() => moveAxis(i, 1)} className="text-xs text-muted-foreground hover:text-foreground p-0.5" disabled={i === axes.length - 1}>↓</button>
-                </div>
+              <div
+                key={axis.id}
+                draggable
+                onDragStart={() => handleDragStart(i)}
+                onDragOver={(e) => handleDragOver(e, i)}
+                onDrop={() => handleDrop(i)}
+                onDragEnd={handleDragEnd}
+                className={`flex items-center gap-2 transition-all ${dragOverIdx === i ? "opacity-50" : ""}`}
+              >
+                <span className="text-xs text-muted-foreground w-5 text-center shrink-0 cursor-grab select-none" style={{ cursor: "grab" }}>⠿</span>
+
+                {editingAxisId === axis.id ? (
+                  <Input
+                    autoFocus
+                    value={editAxisText}
+                    onChange={e => setEditAxisText(e.target.value)}
+                    onBlur={() => saveEditAxis(axis.id)}
+                    onKeyDown={e => { if (e.key === "Enter") saveEditAxis(axis.id); if (e.key === "Escape") { setEditingAxisId(null); setEditAxisText(""); } }}
+                    className="flex-1 h-10 text-sm"
+                  />
+                ) : (
+                  <div
+                    onClick={() => { setEditingAxisId(axis.id); setEditAxisText(axis.text); }}
+                    className={`flex-1 text-sm p-3 rounded-lg border cursor-text transition-colors ${
+                      i < deepCount ? "bg-primary/5 border-primary/20 hover:border-primary/40" : "bg-muted/30 border-border hover:border-muted-foreground/30"
+                    }`}
+                  >
+                    <span className="text-[10px] font-semibold text-muted-foreground mr-2">{i + 1}.</span>
+                    {axis.text}
+                  </div>
+                )}
+
                 <button onClick={() => removeAxis(axis.id)} className="text-muted-foreground hover:text-destructive p-1 shrink-0">
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             ))}
 
+            {/* Add axis */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground w-5 text-center shrink-0">{axes.length + 1}</span>
+              <span className="text-xs text-muted-foreground w-5 text-center shrink-0">+</span>
               <Input
                 value={newAxisText}
                 onChange={e => setNewAxisText(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addAxis(); } }}
-                placeholder="+ Ajouter un axe..."
+                placeholder="Ajouter un axe..."
                 className="flex-1 h-10 text-sm border-dashed"
               />
               {newAxisText.trim() && (
-                <Button size="sm" variant="ghost" onClick={addAxis} className="h-8 px-2">
-                  <Plus className="w-4 h-4" />
-                </Button>
+                <Button size="sm" variant="ghost" onClick={addAxis} className="h-8 px-2"><Plus className="w-4 h-4" /></Button>
               )}
             </div>
           </div>
 
           {axes.length > 0 && deepCount < axes.length && (
             <p className="text-xs text-muted-foreground">
-              Les {deepCount} premier{deepCount > 1 ? "s" : ""} axe{deepCount > 1 ? "s" : ""} seront approfondis. Les {axes.length - deepCount} restant{axes.length - deepCount > 1 ? "s" : ""} generes automatiquement.
+              Les {deepCount} premier{deepCount > 1 ? "s" : ""} seront approfondis. Les {axes.length - deepCount} restant{axes.length - deepCount > 1 ? "s" : ""} generes automatiquement.
             </p>
           )}
         </div>
@@ -621,6 +637,7 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
       {/* ── DEEPEN ── */}
       {step === "deepen" && (
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {/* Progress */}
           <div className="flex gap-1.5">
             {axes.slice(0, deepCount).map((_, i) => (
               <div key={i} className={`flex-1 h-1 rounded-full ${i <= currentAxisIdx ? "bg-primary" : "bg-muted"}`} />
@@ -629,10 +646,12 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
 
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="text-[10px]">Axe {currentAxisIdx + 1}/{deepCount}</Badge>
+            <Badge variant="outline" className="text-[10px]">{MAX_BULLETS - (bullets?.length || 0) - savedCount} bullet{MAX_BULLETS - (bullets?.length || 0) - savedCount > 1 ? "s" : ""} restant{MAX_BULLETS - (bullets?.length || 0) - savedCount > 1 ? "s" : ""}</Badge>
             <span className="text-sm font-medium">{currentAxis?.text}</span>
           </div>
 
-          {currentBullet && (
+          {/* Bullet preview */}
+          {currentBullet && !processing && (
             <div className="space-y-3">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Bullet en construction</p>
               <div className="bg-primary/5 rounded-lg p-4" style={{ borderLeft: "3px solid hsl(var(--primary) / 0.3)" }}>
@@ -641,24 +660,34 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
                   onChange={e => setCurrentBullet(e.target.value)}
                   className="text-sm resize-none min-h-[40px] border-0 p-0 focus-visible:ring-0 bg-transparent font-medium"
                 />
-                {currentTags.length > 0 && (
-                  <div className="flex gap-1 mt-2 flex-wrap">
-                    {currentTags.map((tag, i) => (
-                      <Badge key={i} variant="secondary" className="text-[9px] px-1.5 py-0">{tag}</Badge>
-                    ))}
-                  </div>
-                )}
+                <div className="flex gap-1 mt-2 flex-wrap items-center">
+                  {currentTags.map((tag, i) => (
+                    <span key={i} className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0 bg-secondary text-secondary-foreground rounded-md">
+                      {tag}
+                      <button onClick={() => setCurrentTags(prev => prev.filter((_, j) => j !== i))} className="ml-0.5 hover:text-destructive">×</button>
+                    </span>
+                  ))}
+                  <input
+                    type="text"
+                    placeholder="+ tag"
+                    className="text-[10px] w-16 bg-transparent border-b border-dashed border-muted-foreground/30 outline-none px-1"
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && (e.target as HTMLInputElement).value.trim()) {
+                        setCurrentTags(prev => [...prev, (e.target as HTMLInputElement).value.trim()]);
+                        (e.target as HTMLInputElement).value = "";
+                      }
+                    }}
+                  />
+                </div>
               </div>
 
-              {extraBullets.length > 0 && extraBullets.map((eb, i) => (
+              {extraBullets.map((eb, i) => (
                 <div key={i} className="bg-muted/30 rounded-lg p-3" style={{ borderLeft: "3px solid hsl(var(--muted-foreground) / 0.2)" }}>
                   <p className="text-[10px] font-semibold text-muted-foreground mb-1">+ mission distincte</p>
                   <p className="text-sm">{eb.bullet}</p>
                   {eb.tags?.length > 0 && (
                     <div className="flex gap-1 mt-1.5 flex-wrap">
-                      {eb.tags.map((tag: string, j: number) => (
-                        <Badge key={j} variant="secondary" className="text-[9px] px-1.5 py-0">{tag}</Badge>
-                      ))}
+                      {eb.tags.map((tag: string, j: number) => <Badge key={j} variant="secondary" className="text-[9px] px-1.5 py-0">{tag}</Badge>)}
                     </div>
                   )}
                 </div>
@@ -666,9 +695,19 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
 
               {previousAnswers.length > 0 && (
                 <div className="space-y-1">
-                  {previousAnswers.map((a, i) => (
-                    <p key={i} className="text-xs text-muted-foreground pl-3 border-l-2 border-border">{a}</p>
-                  ))}
+                  {previousAnswers.map((a, i) => <p key={i} className="text-xs text-muted-foreground pl-3 border-l-2 border-border">{a}</p>)}
+                </div>
+              )}
+
+              {/* Inline actions — always visible under bullet */}
+              {!followUp && (
+                <div className="flex gap-2 pt-2">
+                  <Button size="sm" onClick={handleAcceptBullet} disabled={createBullet.isPending} className="flex-1 h-9">
+                    <Check className="w-3.5 h-3.5 mr-1" />
+                    Valider{extraBullets.length > 0 ? ` ${1 + extraBullets.length} bullets` : ""}
+                    {currentAxisIdx + 1 < deepCount ? " → suivant" : " → finaliser"}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleSkipAxis} className="h-9">Passer</Button>
                 </div>
               )}
             </div>
@@ -683,7 +722,7 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
             <div className="w-14 h-14 bg-green-50 dark:bg-green-900/20 rounded-full flex items-center justify-center mx-auto">
               <Check className="w-7 h-7 text-green-600" />
             </div>
-            <p className="text-lg font-semibold">{savedCount} bullet{savedCount > 1 ? "s" : ""} enregistre{savedCount > 1 ? "s" : ""}</p>
+            <p className="text-lg font-semibold">{savedCount} bullet{savedCount > 1 ? "s" : ""} cree{savedCount > 1 ? "s" : ""}</p>
             <p className="text-sm text-muted-foreground">
               {axes.length} axe{axes.length > 1 ? "s" : ""} traite{axes.length > 1 ? "s" : ""}. Tu peux rouvrir pour ajouter des axes.
             </p>
@@ -712,17 +751,6 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
                 <Button variant="ghost" size="sm" onClick={handleAcceptBullet} className="h-7 text-xs text-muted-foreground">Passer</Button>
               </div>
             </div>
-          </div>
-        )}
-
-        {step === "deepen" && !followUp && currentBullet && !processing && (
-          <div className="flex gap-2 animate-in fade-in-50">
-            <Button size="sm" onClick={handleAcceptBullet} disabled={createBullet.isPending} className="flex-1 h-9">
-              {createBullet.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin mr-1" /> : <Check className="w-3.5 h-3.5 mr-1" />}
-              Valider{extraBullets.length > 0 ? ` ${1 + extraBullets.length} bullets` : ""}
-              {currentAxisIdx + 1 < deepCount ? " → suivant" : " → finaliser"}
-            </Button>
-            <Button size="sm" variant="outline" onClick={handleSkipAxis} className="h-9">Passer</Button>
           </div>
         )}
 
