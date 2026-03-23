@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { format } from "date-fns";
 import { Layout } from "@/components/layout";
 import { useExperiences, useCreateExperience, useUpdateExperience, useDeleteExperience } from "@/hooks/use-experiences";
@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Plus, Building, Calendar, Pencil, RefreshCw, Briefcase, Zap, Upload, Sparkles, Check, X, GraduationCap, Globe } from "lucide-react";
+import { Plus, Building, Calendar, Pencil, RefreshCw, Briefcase, Zap, Upload, Sparkles, Check, X, GraduationCap, Globe, ChevronDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Experience, Bullet } from "@shared/schema";
@@ -138,6 +138,16 @@ function ExperiencesSection() {
   const [enrichingExpId, setEnrichingExpId] = useState<string | null>(null);
   const [editBulletId, setEditBulletId] = useState<string | null>(null);
 
+  // Stable sort: compute once, don't re-sort on edits
+  const sortedExperiences = useMemo(() => {
+    if (!experiences) return [];
+    return [...experiences].sort((a, b) => {
+      const dateA = a.endDate ? new Date(a.endDate).getTime() : Date.now();
+      const dateB = b.endDate ? new Date(b.endDate).getTime() : Date.now();
+      return dateB - dateA;
+    });
+  }, [experiences?.map(e => e.id).join(",")]);
+
   if (isLoading) return <div className="h-40 flex items-center justify-center text-muted-foreground"><RefreshCw className="w-6 h-6 animate-spin" /></div>;
 
   const enrichingExp = experiences?.find(e => e.id === enrichingExpId) || null;
@@ -175,11 +185,7 @@ function ExperiencesSection() {
         </Card>
       ) : (
         <Accordion type="multiple" className="space-y-3">
-          {[...experiences].sort((a, b) => {
-            const dateA = a.endDate ? new Date(a.endDate).getTime() : Date.now();
-            const dateB = b.endDate ? new Date(b.endDate).getTime() : Date.now();
-            return dateB - dateA;
-          }).map(exp => (
+          {sortedExperiences.map(exp => (
             <ExperienceAccordionItem
               key={exp.id}
               experience={exp}
@@ -200,7 +206,7 @@ function ExperiencesSection() {
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   EXPERIENCE ACCORDION ITEM — read-only bullets
+   EXPERIENCE ACCORDION ITEM — read-only, all UI polish
    ══════════════════════════════════════════════════════════════════ */
 function ExperienceAccordionItem({ experience, onEdit, onOpenPanel }: {
   experience: Experience; onEdit: () => void; onOpenPanel: (bulletId?: string) => void;
@@ -208,6 +214,15 @@ function ExperienceAccordionItem({ experience, onEdit, onOpenPanel }: {
   const { data: bullets } = useBullets(experience.id);
   const bulletCount = bullets?.length || 0;
   const depth = getDepthInfo(bulletCount);
+
+  function quickCheckBullet(text: string, tags: string[]): string[] {
+    const warnings: string[] = [];
+    if (text.length < 60) warnings.push("Trop court");
+    if (text.length > 200) warnings.push("Trop long");
+    if (!/\d+/.test(text)) warnings.push("Pas de chiffre");
+    if (!tags || tags.length === 0) warnings.push("Pas de tags");
+    return warnings;
+  }
 
   const cardRef = useRef<HTMLDivElement>(null);
   const btnsRef = useRef<HTMLDivElement>(null);
@@ -231,22 +246,27 @@ function ExperienceAccordionItem({ experience, onEdit, onOpenPanel }: {
     <div ref={cardRef}>
     <AccordionItem value={experience.id} className="bg-card border rounded-xl shadow-sm overflow-hidden">
       <div className="flex items-center pr-4">
-        <AccordionTrigger className="flex-1 hover:no-underline py-4 px-5 data-[state=open]:border-b data-[state=open]:border-border/50">
-          <div className="flex flex-col items-start text-left gap-1">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Building className="w-3 h-3" /> {experience.company}
-              {(experience as any).contractType && <Badge variant="outline" className="text-[9px] px-1.5 py-0">{(experience as any).contractType}</Badge>}
-              <span className="opacity-40">|</span>
-              <Calendar className="w-3 h-3" />
-              {experience.startDate ? format(new Date(experience.startDate), "MMM yyyy") : "N/A"} - {experience.endDate ? format(new Date(experience.endDate), "MMM yyyy") : "Present"}
+        <AccordionTrigger className="flex-1 hover:no-underline py-5 px-5 data-[state=open]:border-b data-[state=open]:border-border/50 [&>svg]:hidden">
+          <div className="flex items-start gap-3 w-full">
+            {/* Chevron left */}
+            <div className="w-7 h-7 rounded-md bg-muted/50 flex items-center justify-center shrink-0 mt-0.5">
+              <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform duration-200" />
             </div>
-            <span className="font-bold text-base">{experience.title}</span>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded" style={{ background: depth.bg, color: depth.color }}>{depth.label}</span>
-              <div className="flex gap-1">
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: i < depth.dots ? depth.color : "#e8e5de" }} />
-                ))}
+            <div className="flex flex-col items-start text-left gap-1 flex-1 min-w-0">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                <span className="flex items-center gap-1"><Building className="w-3 h-3" /> {experience.company}</span>
+                {(experience as any).contractType && <Badge variant="outline" className="text-[10px] px-1.5 py-0">{(experience as any).contractType}</Badge>}
+                <span className="opacity-40">|</span>
+                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {experience.startDate ? format(new Date(experience.startDate), "MMM yyyy") : "N/A"} – {experience.endDate ? format(new Date(experience.endDate), "MMM yyyy") : "Present"}</span>
+              </div>
+              <span className="font-bold text-base">{experience.title}</span>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-md" style={{ background: depth.bg, color: depth.color }}>{depth.label}</span>
+                <div className="flex gap-1.5">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="w-2 h-2 rounded-full" style={{ background: i < depth.dots ? depth.color : "#e8e5de" }} />
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -270,31 +290,43 @@ function ExperienceAccordionItem({ experience, onEdit, onOpenPanel }: {
             <p className="text-sm text-muted-foreground text-center py-4">Aucun bullet. Clique sur Enrichir pour commencer.</p>
           )}
 
-          {bullets?.map(bullet => (
-            <div
-              key={bullet.id}
-              onClick={() => onOpenPanel(bullet.id)}
-              className="group relative bg-muted/30 rounded-lg p-3 border border-border/30 hover:border-primary/30 transition-colors cursor-pointer"
-            >
-              {bullet.tags && bullet.tags.length > 0 && (
-                <div className="flex gap-1.5 mb-1.5 flex-wrap">
-                  {bullet.tags.map((tag: string, i: number) => (
-                    <Badge key={i} variant="secondary" className="text-xs px-2 py-0.5">{tag}</Badge>
-                  ))}
-                </div>
-              )}
-              <p className="text-sm text-foreground/90 leading-relaxed">{bullet.text}</p>
-            </div>
-          ))}
+          {bullets?.map(bullet => {
+            const warnings = quickCheckBullet(bullet.text, bullet.tags || []);
+            return (
+              <div
+                key={bullet.id}
+                onClick={() => onOpenPanel(bullet.id)}
+                className={`rounded-lg p-4 border transition-colors cursor-pointer hover:border-primary/30 ${warnings.length > 0 ? "border-amber-200 dark:border-amber-800/30" : "border-border/30"}`}
+              >
+                {/* Tags */}
+                {bullet.tags && bullet.tags.length > 0 && (
+                  <div className="flex gap-1.5 mb-2 flex-wrap">
+                    {bullet.tags.map((tag: string, i: number) => (
+                      <span key={i} className="text-[13px] px-3 py-0.5 bg-secondary text-secondary-foreground rounded-md">{tag}</span>
+                    ))}
+                  </div>
+                )}
+                {/* Text */}
+                <p className="text-sm text-foreground/90 leading-relaxed">{bullet.text}</p>
+                {/* Warnings — separated from tags */}
+                {warnings.length > 0 && (
+                  <div className="flex gap-1.5 flex-wrap mt-2 pt-2 border-t border-border/20">
+                    {warnings.map((w, i) => (
+                      <span key={i} className="text-xs px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">○ {w}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </AccordionContent>
     </AccordionItem>
     </div>
   );
 }
-
 /* ══════════════════════════════════════════════════════════════════
-   ENRICHMENT PANEL — list / edit / axes
+   ENRICHMENT PANEL — list / edit / axes — polished UI
    ══════════════════════════════════════════════════════════════════ */
 function EnrichmentPanel({ experience, initialBulletId }: { experience: Experience; initialBulletId?: string | null }) {
   const { data: bullets } = useBullets(experience.id);
@@ -309,13 +341,11 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
   const bulletCount = bullets?.length || 0;
   const remaining = MAX_BULLETS - bulletCount;
 
-  // Flow
   type Step = "loading" | "axes" | "list" | "edit";
   const [step, setStep] = useState<Step>("loading");
   const [axes, setAxes] = useState<string[]>([]);
 
-  // Edit state
-  const [editId, setEditId] = useState<string | null>(null); // null = new bullet
+  const [editId, setEditId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [editTags, setEditTags] = useState<string[]>([]);
   const [newTagText, setNewTagText] = useState("");
@@ -325,20 +355,15 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
   const [processing, setProcessing] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
 
-  // Quick deterministic check (no LLM, instant)
-  function quickCheck(text: string, tags: string[]): { hasScope: boolean; hasImpact: boolean; goodLength: boolean; hasTags: boolean } {
-    const hasNumber = /\d+/.test(text);
-    const scopeWords = /(\d+\s*(equipe|personne|utilisateur|membre|marque|marche|boutique|pays|client|interview|test))|pour\s+\d+|(\d+\+?\s)/i.test(text);
-    const impactWords = /(impact|amelior|optimis|structur|redon|refon|deploie|coherence|facilitant|reduisant|augmentant|pilotage|conception|mise en place)/i.test(text);
-    return {
-      hasScope: hasNumber || scopeWords,
-      hasImpact: impactWords,
-      goodLength: text.length >= 60 && text.length <= 200,
-      hasTags: tags.length > 0,
-    };
+  function quickCheck(text: string, tags: string[]): string[] {
+    const w: string[] = [];
+    if (text.length < 60) w.push("Trop court");
+    if (text.length > 200) w.push("Trop long");
+    if (!/\d+/.test(text)) w.push("Pas de chiffre");
+    if (!tags || tags.length === 0) w.push("Pas de tags");
+    return w;
   }
 
-  // Init
   useEffect(() => {
     if (initialBulletId && bullets?.length) {
       const b = bullets.find((x: any) => x.id === initialBulletId);
@@ -394,7 +419,6 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
 
   const handleSave = async () => {
     if (!editText.trim() || editText.trim().length < MIN_CHARS) return;
-    // Auto-tag if empty
     let finalTags = editTags;
     if (finalTags.length === 0) {
       try {
@@ -408,11 +432,9 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
     }
     try {
       if (editId) {
-        // Update existing
         await updateBullet.mutateAsync({ id: editId, experienceId: experience.id, text: editText.trim(), tags: finalTags });
         toast({ title: "Bullet mis a jour" });
       } else {
-        // Create new
         await createBullet.mutateAsync({ experienceId: experience.id, text: editText.trim(), tags: finalTags });
         toast({ title: "Bullet enregistre" });
       }
@@ -441,7 +463,6 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
   const charValid = charCount >= MIN_CHARS && charCount <= MAX_CHARS;
   const charColor = charCount === 0 ? "text-muted-foreground" : charValid ? "text-green-600" : "text-amber-600";
 
-  // Eval criteria config
   const CRITERIA = [
     { key: "clarte", label: "Clarte" },
     { key: "contexte", label: "Contexte" },
@@ -453,14 +474,14 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <SheetHeader className="p-6 pb-4 border-b border-border/50 space-y-1">
+      <SheetHeader className="p-6 pb-5 border-b border-border/50 space-y-1">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Building className="w-3.5 h-3.5" /> {experience.company}
           {experience.startDate && (
             <>
               <span className="opacity-40">|</span>
               <Calendar className="w-3.5 h-3.5" />
-              {format(new Date(experience.startDate), "MMM yyyy")} - {experience.endDate ? format(new Date(experience.endDate), "MMM yyyy") : "Present"}
+              {format(new Date(experience.startDate), "MMM yyyy")} – {experience.endDate ? format(new Date(experience.endDate), "MMM yyyy") : "Present"}
             </>
           )}
         </div>
@@ -475,17 +496,17 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
         </div>
       )}
 
-      {/* ── AXES (0 bullets) ── */}
+      {/* ── AXES ── */}
       {step === "axes" && (
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
           <div>
             <p className="text-sm font-medium">Axes detectes dans ta description</p>
             <p className="text-xs text-muted-foreground mt-1">Clique sur un axe pour l'utiliser comme base.</p>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {axes.map((axis, i) => (
               <button key={i} onClick={() => openEdit(null, axis, [])} disabled={remaining <= 0}
-                className="w-full text-left text-sm p-3 rounded-lg border border-border bg-background hover:border-primary/50 hover:bg-primary/5 transition-all disabled:opacity-50">
+                className="w-full text-left text-sm p-4 rounded-lg border border-border bg-background hover:border-primary/50 hover:bg-primary/5 transition-all disabled:opacity-50 leading-relaxed">
                 {axis}
               </button>
             ))}
@@ -497,32 +518,32 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
       {step === "list" && (
         <div className="flex-1 overflow-y-auto p-6 space-y-3">
           {bullets?.map((b: any) => {
-            const qc = quickCheck(b.text, b.tags || []);
-            const warnings: string[] = [];
-            if (!qc.goodLength) warnings.push(b.text.length < 60 ? "Trop court (min 60 car)" : "Trop long (max 200 car)");
-            if (!qc.hasScope) warnings.push("Pas de chiffre ou d'echelle");
-            if (!qc.hasTags) warnings.push("Pas de tags");
-            const isOk = warnings.length === 0;
+            const warnings = quickCheck(b.text, b.tags || []);
             return (
               <div key={b.id} onClick={() => openEdit(b.id, b.text, b.tags || [])}
-                className={`p-3 rounded-lg border transition-colors cursor-pointer space-y-2 ${isOk ? "border-green-200 dark:border-green-800/30" : "border-amber-200 dark:border-amber-800/30"}`}>
+                className={`p-4 rounded-lg border transition-colors cursor-pointer hover:border-primary/30 ${warnings.length > 0 ? "border-amber-200 dark:border-amber-800/30" : "border-green-200 dark:border-green-800/30"}`}>
+                {/* Tags */}
                 {b.tags?.length > 0 && (
-                  <div className="flex gap-1.5 flex-wrap">
+                  <div className="flex gap-1.5 flex-wrap mb-2">
                     {b.tags.map((tag: string, i: number) => (
-                      <span key={i} className="text-xs px-2.5 py-0.5 bg-secondary text-secondary-foreground rounded-md">{tag}</span>
+                      <span key={i} className="text-[13px] px-3 py-0.5 bg-secondary text-secondary-foreground rounded-md">{tag}</span>
                     ))}
                   </div>
                 )}
+                {/* Text */}
                 <p className="text-sm leading-relaxed">{b.text}</p>
+                {/* Warnings */}
                 {warnings.length > 0 && (
-                  <div className="flex gap-1.5 flex-wrap">
+                  <div className="flex gap-1.5 flex-wrap mt-2.5 pt-2 border-t border-border/20">
                     {warnings.map((w, i) => (
-                      <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">○ {w}</span>
+                      <span key={i} className="text-xs px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">○ {w}</span>
                     ))}
                   </div>
                 )}
-                {isOk && (
-                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400">✓ Pret pour le tailoring</span>
+                {warnings.length === 0 && (
+                  <div className="mt-2.5 pt-2 border-t border-border/20">
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400">✓ Pret pour le tailoring</span>
+                  </div>
                 )}
               </div>
             );
@@ -535,12 +556,12 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
 
       {/* ── EDIT ── */}
       {step === "edit" && (
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Textarea */}
           <div>
-            <div className="flex justify-between items-center mb-2">
+            <div className="flex justify-between items-center mb-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ton bullet</p>
-              <span className={`text-xs ${charColor}`}>{charCount}/{MAX_CHARS}</span>
+              <span className={`text-xs font-medium ${charColor}`}>{charCount}/{MAX_CHARS}</span>
             </div>
             <Textarea
               ref={textRef}
@@ -548,53 +569,52 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
               onChange={e => { const val = e.target.value.slice(0, MAX_CHARS); setEditText(val); setEditEval(null); }}
               onPaste={e => { e.preventDefault(); const pasted = e.clipboardData.getData("text").slice(0, MAX_CHARS); setEditText(pasted); setEditEval(null); }}
               placeholder="Ex: Conception et deploiement d'un design system pour 3 equipes produit, reduisant le temps de maquettage de 30%"
-              className="min-h-[90px] text-sm resize-none"
+              className="min-h-[100px] text-sm resize-none"
               maxLength={MAX_CHARS}
             />
             {charCount > 0 && charCount < MIN_CHARS && (
-              <p className="text-xs text-amber-600 mt-1">Minimum {MIN_CHARS} caracteres ({MIN_CHARS - charCount} restants)</p>
+              <p className="text-xs text-amber-600 mt-2">Minimum {MIN_CHARS} caracteres ({MIN_CHARS - charCount} restants)</p>
             )}
           </div>
 
           {/* Tags */}
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Tags</p>
-            <div className="flex gap-1.5 flex-wrap items-center">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Tags</p>
+            <div className="flex gap-2 flex-wrap items-center">
               {editTags.map((tag, i) => (
-                <span key={i} className="inline-flex items-center gap-1 text-xs px-2.5 py-1 bg-secondary text-secondary-foreground rounded-md">
+                <span key={i} className="inline-flex items-center gap-1.5 text-[13px] px-3 py-1 bg-secondary text-secondary-foreground rounded-md">
                   {tag}
-                  <button onClick={() => setEditTags(prev => prev.filter((_, j) => j !== i))} className="hover:text-destructive">×</button>
+                  <button onClick={() => setEditTags(prev => prev.filter((_, j) => j !== i))} className="hover:text-destructive text-muted-foreground">×</button>
                 </span>
               ))}
               <input type="text" value={newTagText} onChange={e => setNewTagText(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && newTagText.trim()) { e.preventDefault(); setEditTags(prev => [...prev, newTagText.trim()]); setNewTagText(""); } }}
-                placeholder="+ tag" className="text-xs w-20 bg-transparent border-b border-dashed border-muted-foreground/30 outline-none px-1 py-0.5" />
+                placeholder="+ ajouter un tag"
+                className="text-[13px] min-w-[120px] flex-1 bg-transparent border-b border-dashed border-muted-foreground/30 outline-none px-2 py-1" />
             </div>
           </div>
 
           {/* Evaluation */}
           {editEval && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Evaluation</p>
-              <div className="flex gap-2 flex-wrap mb-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Evaluation</p>
+              <div className="flex gap-2 flex-wrap mb-3">
                 {CRITERIA.map(({ key, label }) => (
-                  <span key={key} className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                  <span key={key} className={`text-[13px] px-3.5 py-1 rounded-full font-medium ${
                     editEval[key] ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400" : "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
                   }`}>
                     {editEval[key] ? "✓" : "○"} {label}
                   </span>
                 ))}
               </div>
-              {/* Show orange reasons */}
               {CRITERIA.filter(c => editEval[c.key] === false && editReasons?.[c.key]).map(c => (
-                <div key={c.key} className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/10 p-2.5 rounded-lg mb-1.5">
+                <div key={c.key} className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/10 p-3 rounded-lg mb-2">
                   <span className="font-medium">{c.label} :</span> {editReasons?.[c.key]}
                 </div>
               ))}
             </div>
           )}
 
-          {/* Suggestion */}
           {editSuggestion && (
             <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/10 p-3 rounded-lg">
               <span className="font-medium">Suggestion :</span> {editSuggestion}
@@ -604,30 +624,30 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
       )}
 
       {/* ── BOTTOM BAR ── */}
-      <div className="border-t border-border/50 bg-muted/20 p-5 space-y-2 shrink-0">
+      <div className="border-t border-border/50 bg-muted/20 p-5 space-y-2.5 shrink-0">
 
         {step === "axes" && (
           <button onClick={() => openEdit(null, "", [])}
-            className="w-full text-sm p-2.5 rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-all text-center">
+            className="w-full text-sm p-3 rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-all text-center">
             + Ecrire un bullet librement
           </button>
         )}
 
         {step === "list" && remaining > 0 && (
-          <Button onClick={() => openEdit(null, "", [])} className="w-full">
+          <Button onClick={() => openEdit(null, "", [])} className="w-full h-10">
             <Plus className="w-4 h-4 mr-2" /> Ajouter un bullet ({remaining} restant{remaining > 1 ? "s" : ""})
           </Button>
         )}
         {step === "list" && remaining > 0 && axes.length > bulletCount && (
-          <Button variant="outline" onClick={() => setStep("axes")} className="w-full">
+          <Button variant="outline" onClick={() => setStep("axes")} className="w-full h-10">
             <Sparkles className="w-4 h-4 mr-2" /> Voir les axes suggeres
           </Button>
         )}
 
         {step === "edit" && (
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {!editEval && !processing && (
-              <Button onClick={handleEvaluate} disabled={charCount < MIN_CHARS} variant="outline" className="w-full">
+              <Button onClick={handleEvaluate} disabled={charCount < MIN_CHARS} variant="outline" className="w-full h-10">
                 <Sparkles className="w-4 h-4 mr-2" /> Tagger + Evaluer
               </Button>
             )}
@@ -637,20 +657,20 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
               </div>
             )}
             <div className="flex gap-2">
-              <Button onClick={handleSave} disabled={!charValid || createBullet.isPending} className="flex-1">
+              <Button onClick={handleSave} disabled={!charValid || createBullet.isPending} className="flex-1 h-10">
                 <Check className="w-4 h-4 mr-2" /> {editId ? "Enregistrer" : "Ajouter"}
               </Button>
               {editEval && !processing && (
-                <Button variant="outline" onClick={handleEvaluate} className="px-3">
+                <Button variant="outline" onClick={handleEvaluate} className="h-10 px-3" title="Re-evaluer">
                   <RefreshCw className="w-4 h-4" />
                 </Button>
               )}
-              <Button variant="outline" onClick={() => setStep(bulletCount > 0 ? "list" : axes.length > 0 ? "axes" : "list")}>
+              <Button variant="outline" onClick={() => setStep(bulletCount > 0 ? "list" : axes.length > 0 ? "axes" : "list")} className="h-10">
                 Retour
               </Button>
             </div>
             {editId && (
-              <button onClick={handleDelete} className="w-full text-xs text-destructive hover:underline text-center py-1">
+              <button onClick={handleDelete} className="w-full text-xs text-destructive hover:underline text-center py-1.5">
                 Supprimer ce bullet
               </button>
             )}
