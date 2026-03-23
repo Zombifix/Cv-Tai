@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Plus, Building, Calendar, Pencil, RefreshCw, Briefcase, Zap, Upload, Sparkles, Check, X, PenLine, Lightbulb, Search, GraduationCap, Globe } from "lucide-react";
+import { Plus, Building, Calendar, Pencil, RefreshCw, Briefcase, Zap, Upload, Sparkles, Check, X, GraduationCap, Globe } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Experience, Bullet } from "@shared/schema";
@@ -329,49 +329,106 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
   const createBullet = useCreateBullet();
   const { toast } = useToast();
 
-  // Gap detection
-  const [gaps, setGaps] = useState<Gap[]>([]);
-  const [gapsLoading, setGapsLoading] = useState(false);
+  // Flow state
+  type Step = "loading" | "axes" | "deepen" | "done";
+  const [step, setStep] = useState<Step>("loading");
+  const [axes, setAxes] = useState<Array<{id: string; text: string}>>([]);
+  const [newAxisText, setNewAxisText] = useState("");
+  const [currentAxisIdx, setCurrentAxisIdx] = useState(0);
+  const [savedCount, setSavedCount] = useState(0);
 
-  // Micro-thread
-  const [activeGap, setActiveGap] = useState<Gap | null>(null);
-  const [answerDraft, setAnswerDraft] = useState("");
-  const [previousAnswers, setPreviousAnswers] = useState<string[]>([]);
+  // Deepen state (per-axis)
   const [currentBullet, setCurrentBullet] = useState<string | null>(null);
   const [currentTags, setCurrentTags] = useState<string[]>([]);
-  const [followUp, setFollowUp] = useState<string | null>(null);
-  const [processing, setProcessing] = useState(false);
-
-  // Free add
-  const [freeMode, setFreeMode] = useState(false);
-  const [freeText, setFreeText] = useState("");
   const [extraBullets, setExtraBullets] = useState<Array<{bullet: string; tags: string[]}>>([]);
-
+  const [followUp, setFollowUp] = useState<string | null>(null);
+  const [answerDraft, setAnswerDraft] = useState("");
+  const [previousAnswers, setPreviousAnswers] = useState<string[]>([]);
+  const [processing, setProcessing] = useState(false);
   const answerRef = useRef<HTMLTextAreaElement>(null);
 
-  // Fetch gaps
-  const fetchGaps = async () => {
-    setGapsLoading(true);
-    try {
-      const res = await fetch(`/api/experiences/${experience.id}/detect-gaps`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
-      });
-      if (res.ok) {
+  // How many axes to deepen (top half, min 1, max 3)
+  const deepCount = Math.min(3, Math.max(1, Math.ceil(axes.length / 2)));
+
+  // Load suggested axes from description
+  useEffect(() => {
+    const fetchAxes = async () => {
+      try {
+        const res = await fetch(`/api/experiences/${experience.id}/extract-axes`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+        });
         const data = await res.json();
-        setGaps(Array.isArray(data.gaps) ? data.gaps : []);
-      } else { setGaps([]); }
-    } catch { setGaps([]); }
-    finally { setGapsLoading(false); }
+        const suggested = (data.axes || []).map((a: any, i: number) => ({ id: `ax-${i}`, text: a.text || a }));
+        setAxes(suggested.length > 0 ? suggested : []);
+        setStep("axes");
+      } catch {
+        setStep("axes");
+      }
+    };
+    fetchAxes();
+  }, [experience.id]);
+
+  useEffect(() => { if (followUp && answerRef.current) answerRef.current.focus(); }, [followUp]);
+
+  const addAxis = () => {
+    if (!newAxisText.trim()) return;
+    setAxes(prev => [...prev, { id: `ax-${Date.now()}`, text: newAxisText.trim() }]);
+    setNewAxisText("");
   };
 
-  useEffect(() => { fetchGaps(); }, [experience.id, bullets?.length]);
-  useEffect(() => { if ((activeGap || followUp) && answerRef.current) answerRef.current.focus(); }, [activeGap, followUp]);
+  const removeAxis = (id: string) => setAxes(prev => prev.filter(a => a.id !== id));
 
-  // Submit answer (or follow-up answer)
+  const moveAxis = (idx: number, dir: -1 | 1) => {
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= axes.length) return;
+    const copy = [...axes];
+    [copy[idx], copy[newIdx]] = [copy[newIdx], copy[idx]];
+    setAxes(copy);
+  };
+
+  const startDeepen = () => {
+    if (axes.length === 0) return;
+    setStep("deepen");
+    setCurrentAxisIdx(0);
+    enrichAxis(0);
+  };
+
+  const enrichAxis = async (idx: number) => {
+    const axis = axes[idx];
+    if (!axis) return;
+    setProcessing(true);
+    setCurrentBullet(null);
+    setCurrentTags([]);
+    setExtraBullets([]);
+    setFollowUp(null);
+    setAnswerDraft("");
+    setPreviousAnswers([]);
+
+    try {
+      const res = await fetch(`/api/experiences/${experience.id}/enrich`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dimension: "axe", question: `Decris ce que tu as fait sur : ${axis.text}`, answer: axis.text, previousAnswers: [] }),
+        credentials: "include",
+      });
+      const data = await res.json();
+      setCurrentBullet(data.bullet || axis.text);
+      setCurrentTags(data.tags || []);
+      setExtraBullets(data.extraBullets || []);
+      if (data.followUp && !data.isComplete) {
+        setFollowUp(data.followUp);
+      }
+    } catch {
+      setCurrentBullet(axis.text);
+      setCurrentTags([]);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const handleSubmitAnswer = async () => {
     if (!answerDraft.trim()) return;
     setProcessing(true);
-
     const allPrevious = [...previousAnswers, answerDraft.trim()];
 
     try {
@@ -379,106 +436,106 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          dimension: activeGap?.dimension || "general",
-          question: followUp || activeGap?.question || "ajout libre",
+          dimension: "axe",
+          question: followUp || axes[currentAxisIdx]?.text || "",
           answer: answerDraft.trim(),
-          previousAnswers: previousAnswers,
+          previousAnswers: [axes[currentAxisIdx]?.text || "", ...previousAnswers],
         }),
         credentials: "include",
       });
       const data = await res.json();
-
       setCurrentBullet(data.bullet || answerDraft.trim());
       setCurrentTags(data.tags || []);
       setExtraBullets(data.extraBullets || []);
       setPreviousAnswers(allPrevious);
       setAnswerDraft("");
-
       if (data.followUp && !data.isComplete) {
         setFollowUp(data.followUp);
       } else {
         setFollowUp(null);
       }
     } catch {
-      setCurrentBullet(answerDraft.trim());
       setFollowUp(null);
     } finally {
       setProcessing(false);
     }
   };
 
-  // Accept and save bullet(s)
   const handleAcceptBullet = async () => {
-    if (!currentBullet) return;
-    let saved = 0;
+    if (!currentBullet) { moveToNextAxis(); return; }
+    let count = 0;
     try {
-      // Save main bullet
       try {
         await createBullet.mutateAsync({ experienceId: experience.id, text: currentBullet.trim(), tags: currentTags });
-        saved++;
-      } catch (e: any) {
-        if (!e.message?.includes("similaire")) throw e; // re-throw if not a duplicate
-      }
-      // Auto-save extra bullets (multi-topic split)
+        count++;
+      } catch (e: any) { if (!e.message?.includes("similaire")) throw e; }
       for (const extra of extraBullets) {
-        if (extra.bullet && extra.bullet.trim()) {
+        if (extra.bullet?.trim()) {
           try {
             await createBullet.mutateAsync({ experienceId: experience.id, text: extra.bullet.trim(), tags: extra.tags || [] });
-            saved++;
-          } catch (e: any) {
-            if (!e.message?.includes("similaire")) throw e;
-          }
+            count++;
+          } catch (e: any) { if (!e.message?.includes("similaire")) throw e; }
         }
       }
-      if (saved > 0) {
-        toast({ title: saved > 1 ? `${saved} bullets enregistres` : "Bullet CV enregistre" });
-      } else {
-        toast({ title: "Doublons ignores", description: "Ces bullets existaient deja." });
-      }
-      resetThread();
+      setSavedCount(prev => prev + count);
     } catch (err) {
       toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
     }
+    moveToNextAxis();
   };
 
-  // Reset micro-thread
-  const resetThread = () => {
-    setActiveGap(null);
-    setAnswerDraft("");
-    setPreviousAnswers([]);
-    setCurrentBullet(null);
-    setCurrentTags([]);
-    setExtraBullets([]);
-    setFollowUp(null);
-    setFreeMode(false);
-    setFreeText("");
+  const handleSkipAxis = async () => {
+    const axis = axes[currentAxisIdx];
+    if (axis && currentBullet) {
+      try {
+        await createBullet.mutateAsync({ experienceId: experience.id, text: currentBullet.trim(), tags: currentTags });
+        setSavedCount(prev => prev + 1);
+      } catch {}
+    }
+    moveToNextAxis();
   };
 
-  // Free add with enrichment
-  const handleFreeSubmit = async () => {
-    if (!freeText.trim()) return;
+  const moveToNextAxis = () => {
+    const nextIdx = currentAxisIdx + 1;
+    if (nextIdx < deepCount && nextIdx < axes.length) {
+      setCurrentAxisIdx(nextIdx);
+      enrichAxis(nextIdx);
+    } else {
+      autoGenerateRemaining(nextIdx);
+    }
+  };
+
+  const autoGenerateRemaining = async (startIdx: number) => {
+    if (startIdx >= axes.length) { setStep("done"); return; }
     setProcessing(true);
-    try {
-      const res = await fetch(`/api/experiences/${experience.id}/enrich`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dimension: "libre", question: "ajout libre", answer: freeText.trim(), previousAnswers: [] }),
-        credentials: "include",
-      });
-      const data = await res.json();
-      setCurrentBullet(data.bullet || freeText.trim());
-      setCurrentTags(data.tags || ["libre"]);
-      setExtraBullets(data.extraBullets || []);
-      setFreeText("");
-      setActiveGap({ id: "free", dimension: "libre", question: "Ajout libre", priority: 0 });
-    } catch {
-      setCurrentBullet(freeText.trim());
-      setCurrentTags(["libre"]);
-      setExtraBullets([]);
-    } finally { setProcessing(false); }
+    let count = 0;
+    for (let i = startIdx; i < axes.length; i++) {
+      const axis = axes[i];
+      try {
+        const res = await fetch(`/api/experiences/${experience.id}/enrich`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dimension: "axe-auto", question: "Generation automatique", answer: axis.text, previousAnswers: [] }),
+          credentials: "include",
+        });
+        const data = await res.json();
+        try {
+          await createBullet.mutateAsync({ experienceId: experience.id, text: (data.bullet || axis.text).trim(), tags: data.tags || [] });
+          count++;
+        } catch {}
+        for (const extra of (data.extraBullets || [])) {
+          if (extra.bullet?.trim()) {
+            try { await createBullet.mutateAsync({ experienceId: experience.id, text: extra.bullet.trim(), tags: extra.tags || [] }); count++; } catch {}
+          }
+        }
+      } catch {}
+    }
+    setSavedCount(prev => prev + count);
+    setProcessing(false);
+    setStep("done");
   };
 
-  const isInThread = !!activeGap;
+  const currentAxis = axes[currentAxisIdx];
 
   return (
     <div className="flex flex-col h-full">
@@ -495,83 +552,161 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
           )}
         </div>
         <SheetTitle className="text-lg font-bold">{experience.title}</SheetTitle>
+        {(bullets?.length || 0) > 0 && (
+          <p className="text-xs text-muted-foreground">{bullets?.length} bullet{(bullets?.length || 0) > 1 ? "s" : ""} existant{(bullets?.length || 0) > 1 ? "s" : ""}</p>
+        )}
       </SheetHeader>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      {/* ── LOADING ── */}
+      {step === "loading" && (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-2">
+            <RefreshCw className="w-6 h-6 animate-spin mx-auto text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Analyse de l'experience...</p>
+          </div>
+        </div>
+      )}
 
-        {/* Current thread — progressive bullet building */}
-        {isInThread && currentBullet && (
-          <div className="space-y-3 animate-in fade-in-50">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Bullet en construction</p>
-            <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
-              <Textarea
-                value={currentBullet}
-                onChange={e => setCurrentBullet(e.target.value)}
-                className="text-sm resize-none min-h-[40px] border-0 p-0 focus-visible:ring-0 bg-transparent font-medium"
+      {/* ── AXES ── */}
+      {step === "axes" && (
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Etape 1</p>
+            <p className="text-sm font-medium">Quels sont les grands axes de ta mission ?</p>
+            <p className="text-xs text-muted-foreground mt-1">L'ordre determine la profondeur. Axe 1 = le plus creuse.</p>
+          </div>
+
+          <div className="space-y-2">
+            {axes.map((axis, i) => (
+              <div key={axis.id} className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground w-5 text-center shrink-0">{i + 1}</span>
+                <div className={`flex-1 text-sm p-3 rounded-lg border ${i < deepCount ? "bg-primary/5 border-primary/20" : "bg-muted/30 border-border"}`}>
+                  {axis.text}
+                </div>
+                <div className="flex flex-col gap-0.5 shrink-0">
+                  <button onClick={() => moveAxis(i, -1)} className="text-xs text-muted-foreground hover:text-foreground p-0.5" disabled={i === 0}>↑</button>
+                  <button onClick={() => moveAxis(i, 1)} className="text-xs text-muted-foreground hover:text-foreground p-0.5" disabled={i === axes.length - 1}>↓</button>
+                </div>
+                <button onClick={() => removeAxis(axis.id)} className="text-muted-foreground hover:text-destructive p-1 shrink-0">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground w-5 text-center shrink-0">{axes.length + 1}</span>
+              <Input
+                value={newAxisText}
+                onChange={e => setNewAxisText(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addAxis(); } }}
+                placeholder="+ Ajouter un axe..."
+                className="flex-1 h-10 text-sm border-dashed"
               />
-              {currentTags.length > 0 && (
-                <div className="flex gap-1 mt-2 flex-wrap">
-                  {currentTags.map((tag, i) => (
-                    <Badge key={i} variant="secondary" className="text-[9px] px-1.5 py-0">{tag}</Badge>
+              {newAxisText.trim() && (
+                <Button size="sm" variant="ghost" onClick={addAxis} className="h-8 px-2">
+                  <Plus className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {axes.length > 0 && deepCount < axes.length && (
+            <p className="text-xs text-muted-foreground">
+              Les {deepCount} premier{deepCount > 1 ? "s" : ""} axe{deepCount > 1 ? "s" : ""} seront approfondis. Les {axes.length - deepCount} restant{axes.length - deepCount > 1 ? "s" : ""} generes automatiquement.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ── DEEPEN ── */}
+      {step === "deepen" && (
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <div className="flex gap-1.5">
+            {axes.slice(0, deepCount).map((_, i) => (
+              <div key={i} className={`flex-1 h-1 rounded-full ${i <= currentAxisIdx ? "bg-primary" : "bg-muted"}`} />
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-[10px]">Axe {currentAxisIdx + 1}/{deepCount}</Badge>
+            <span className="text-sm font-medium">{currentAxis?.text}</span>
+          </div>
+
+          {currentBullet && (
+            <div className="space-y-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Bullet en construction</p>
+              <div className="bg-primary/5 rounded-lg p-4" style={{ borderLeft: "3px solid hsl(var(--primary) / 0.3)" }}>
+                <Textarea
+                  value={currentBullet}
+                  onChange={e => setCurrentBullet(e.target.value)}
+                  className="text-sm resize-none min-h-[40px] border-0 p-0 focus-visible:ring-0 bg-transparent font-medium"
+                />
+                {currentTags.length > 0 && (
+                  <div className="flex gap-1 mt-2 flex-wrap">
+                    {currentTags.map((tag, i) => (
+                      <Badge key={i} variant="secondary" className="text-[9px] px-1.5 py-0">{tag}</Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {extraBullets.length > 0 && extraBullets.map((eb, i) => (
+                <div key={i} className="bg-muted/30 rounded-lg p-3" style={{ borderLeft: "3px solid hsl(var(--muted-foreground) / 0.2)" }}>
+                  <p className="text-[10px] font-semibold text-muted-foreground mb-1">+ mission distincte</p>
+                  <p className="text-sm">{eb.bullet}</p>
+                  {eb.tags?.length > 0 && (
+                    <div className="flex gap-1 mt-1.5 flex-wrap">
+                      {eb.tags.map((tag: string, j: number) => (
+                        <Badge key={j} variant="secondary" className="text-[9px] px-1.5 py-0">{tag}</Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {previousAnswers.length > 0 && (
+                <div className="space-y-1">
+                  {previousAnswers.map((a, i) => (
+                    <p key={i} className="text-xs text-muted-foreground pl-3 border-l-2 border-border">{a}</p>
                   ))}
                 </div>
               )}
             </div>
-            {/* Extra bullets (multi-topic split) */}
-            {extraBullets.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">+ {extraBullets.length} bullet{extraBullets.length > 1 ? "s" : ""} supplementaire{extraBullets.length > 1 ? "s" : ""} (mission distincte)</p>
-                {extraBullets.map((eb, i) => (
-                  <div key={i} className="bg-primary/5 border border-primary/10 rounded-lg p-3">
-                    <p className="text-sm font-medium">{eb.bullet}</p>
-                    {eb.tags?.length > 0 && (
-                      <div className="flex gap-1 mt-1.5 flex-wrap">
-                        {eb.tags.map((tag: string, j: number) => (
-                          <Badge key={j} variant="secondary" className="text-[9px] px-1.5 py-0">{tag}</Badge>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-            {/* Previous answers */}
-            {previousAnswers.length > 0 && (
-              <div className="space-y-1">
-                {previousAnswers.map((a, i) => (
-                  <p key={i} className="text-xs text-muted-foreground pl-3 border-l-2 border-border">{a}</p>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+          )}
+        </div>
+      )}
 
-        {/* Empty state */}
-        {!isInThread && !freeMode && (
-          <div className="text-center py-8">
-            <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
-              <Search className="w-6 h-6 text-muted-foreground" />
+      {/* ── DONE ── */}
+      {step === "done" && (
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="text-center space-y-3">
+            <div className="w-14 h-14 bg-green-50 dark:bg-green-900/20 rounded-full flex items-center justify-center mx-auto">
+              <Check className="w-7 h-7 text-green-600" />
             </div>
-            <p className="text-sm font-medium mb-1">Analyse des lacunes</p>
-            <p className="text-xs text-muted-foreground">
-              {gapsLoading ? "Analyse en cours..." : gaps.length > 0 ? `${gaps.length} dimension${gaps.length > 1 ? "s" : ""} a approfondir` : "Cette experience est bien couverte !"}
+            <p className="text-lg font-semibold">{savedCount} bullet{savedCount > 1 ? "s" : ""} enregistre{savedCount > 1 ? "s" : ""}</p>
+            <p className="text-sm text-muted-foreground">
+              {axes.length} axe{axes.length > 1 ? "s" : ""} traite{axes.length > 1 ? "s" : ""}. Tu peux rouvrir pour ajouter des axes.
             </p>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Bottom interaction zone */}
+      {/* ── BOTTOM BAR ── */}
       <div className="border-t border-border/50 bg-muted/20 p-5 space-y-3 shrink-0">
+        {step === "axes" && (
+          <Button onClick={startDeepen} disabled={axes.length === 0} className="w-full">
+            <Sparkles className="w-4 h-4 mr-2" />
+            {axes.length === 0 ? "Ajoute au moins un axe" : `Enrichir ${axes.length} axe${axes.length > 1 ? "s" : ""}`}
+          </Button>
+        )}
 
-        {/* Follow-up question in micro-thread */}
-        {isInThread && followUp && !processing && (
-          <div className="space-y-2.5 animate-in fade-in-50 slide-in-from-bottom-2 duration-200">
-            <p className="text-sm font-medium text-foreground leading-snug">{followUp}</p>
+        {step === "deepen" && followUp && !processing && (
+          <div className="space-y-2.5 animate-in fade-in-50">
+            <p className="text-sm font-medium leading-snug">{followUp}</p>
             <div className="flex gap-2">
               <Textarea ref={answerRef} value={answerDraft} onChange={e => setAnswerDraft(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmitAnswer(); } }}
-                placeholder="Creuse un peu..." className="min-h-[50px] text-sm resize-none" />
+                placeholder="Ta reponse..." className="min-h-[50px] text-sm resize-none" />
               <div className="flex flex-col gap-1.5 justify-end">
                 <Button size="sm" onClick={handleSubmitAnswer} disabled={!answerDraft.trim()} className="h-9 px-3">OK</Button>
                 <Button variant="ghost" size="sm" onClick={handleAcceptBullet} className="h-7 text-xs text-muted-foreground">Passer</Button>
@@ -580,94 +715,28 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
           </div>
         )}
 
-        {/* Accept/reject proposed bullet */}
-        {isInThread && !followUp && currentBullet && !processing && (
+        {step === "deepen" && !followUp && currentBullet && !processing && (
           <div className="flex gap-2 animate-in fade-in-50">
             <Button size="sm" onClick={handleAcceptBullet} disabled={createBullet.isPending} className="flex-1 h-9">
               {createBullet.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin mr-1" /> : <Check className="w-3.5 h-3.5 mr-1" />}
-              Valider {extraBullets.length > 0 ? `${1 + extraBullets.length} bullets` : "ce bullet"}
+              Valider{extraBullets.length > 0 ? ` ${1 + extraBullets.length} bullets` : ""}
+              {currentAxisIdx + 1 < deepCount ? " → suivant" : " → finaliser"}
             </Button>
-            <Button size="sm" variant="outline" onClick={resetThread} className="h-9">Annuler</Button>
+            <Button size="sm" variant="outline" onClick={handleSkipAxis} className="h-9">Passer</Button>
           </div>
         )}
 
-        {/* Processing indicator */}
         {processing && (
           <div className="flex items-center justify-center py-3 gap-2 text-sm text-muted-foreground">
-            <RefreshCw className="w-4 h-4 animate-spin" /> Reformulation en cours...
+            <RefreshCw className="w-4 h-4 animate-spin" />
+            {step === "deepen" && currentAxisIdx < deepCount ? "Reformulation..." : "Generation automatique..."}
           </div>
         )}
 
-        {/* Initial answer to gap question */}
-        {isInThread && !currentBullet && !followUp && !processing && (
-          <div className="space-y-2.5 animate-in fade-in-50 slide-in-from-bottom-2 duration-200">
-            <p className="text-sm font-medium text-foreground leading-snug">{activeGap?.question}</p>
-            <div className="flex gap-2">
-              <Textarea ref={answerRef} value={answerDraft} onChange={e => setAnswerDraft(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmitAnswer(); } }}
-                placeholder="Reponds simplement, l'IA reformulera..." className="min-h-[50px] text-sm resize-none" />
-              <div className="flex flex-col gap-1.5 justify-end">
-                <Button size="sm" onClick={handleSubmitAnswer} disabled={!answerDraft.trim()} className="h-9 px-3">OK</Button>
-                <Button variant="ghost" size="sm" onClick={resetThread} className="h-7 text-xs text-muted-foreground">Annuler</Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Free add input */}
-        {freeMode && !isInThread && (
-          <div className="space-y-2.5 animate-in fade-in-50 slide-in-from-bottom-2 duration-200">
-            <p className="text-sm font-medium text-foreground flex items-center gap-2">
-              <PenLine className="w-4 h-4 text-primary" /> Ajout libre
-            </p>
-            <div className="flex gap-2">
-              <Textarea value={freeText} onChange={e => setFreeText(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleFreeSubmit(); } }}
-                placeholder="Ce que tu veux ajouter..." className="min-h-[50px] text-sm resize-none" />
-              <div className="flex flex-col gap-1.5 justify-end">
-                <Button size="sm" onClick={handleFreeSubmit} disabled={!freeText.trim() || processing} className="h-9 px-3">
-                  {processing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "OK"}
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => setFreeMode(false)} className="h-7 text-xs text-muted-foreground">Annuler</Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Gap questions list */}
-        {!isInThread && !freeMode && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <Lightbulb className="w-3.5 h-3.5" />
-                {gapsLoading ? "Analyse..." : gaps.length > 0 ? "Lacunes detectees" : "Rien a ajouter"}
-              </p>
-              {!gapsLoading && (
-                <button onClick={fetchGaps} className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
-                  <RefreshCw className="w-3 h-3" /> Relancer
-                </button>
-              )}
-            </div>
-            {gapsLoading ? (
-              <div className="flex items-center justify-center py-3"><RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" /></div>
-            ) : (
-              gaps.map((gap) => (
-                <button key={gap.id} onClick={() => { setActiveGap(gap); setAnswerDraft(""); setPreviousAnswers([]); setCurrentBullet(null); setFollowUp(null); }}
-                  className="w-full text-left text-sm p-3 rounded-lg border border-border bg-background hover:border-primary/50 hover:bg-primary/5 transition-all leading-snug">
-                  <span className="text-[10px] font-semibold uppercase text-primary mr-2">{gap.dimension}</span>
-                  {gap.question}
-                </button>
-              ))
-            )}
-          </div>
-        )}
-
-        {/* Free add button */}
-        {!freeMode && !isInThread && (
-          <button onClick={() => setFreeMode(true)}
-            className="w-full text-sm p-2.5 rounded-lg border-2 border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-all flex items-center justify-center gap-2">
-            <PenLine className="w-3.5 h-3.5" /> Ajouter librement un element
-          </button>
+        {step === "done" && (
+          <Button variant="outline" onClick={() => { setStep("axes"); setSavedCount(0); }} className="w-full">
+            <Plus className="w-4 h-4 mr-2" /> Ajouter des axes
+          </Button>
         )}
       </div>
     </div>
