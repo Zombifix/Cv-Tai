@@ -756,7 +756,7 @@ Reponds UNIQUEMENT en JSON valide :
       const exchangeCount = history.length;
       const userSaysIDontKnow = /je (ne )?sais? pas|j'?en sais rien|aucune idee|pas de chiffre|je me souviens? pas/i.test(answer);
 
-      const prompt = `Tu es un evaluateur de CV expert. Tu EVALUES d'abord le texte, puis tu decides quoi faire.
+      const prompt = `Tu es un expert en redaction CV. Tu transformes de la matiere brute en bullets CV optimises pour ATS et recruteurs.
 
 EXPERIENCE :
 - Poste : ${exp.title}
@@ -764,54 +764,57 @@ EXPERIENCE :
 - Description : ${exp.description || "Aucune"}
 - Echanges precedents : ${exchangeCount}
 ${userSaysIDontKnow ? "- L'utilisateur ne connait pas certains chiffres. Accepte.\n" : ""}
-TEXTE DE L'UTILISATEUR :
+MATIERE BRUTE :
 ${allAnswers}
 
-ETAPE 1 — EVALUE le texte sur ces 5 criteres (oui/non) :
-1. CLARTE — le lecteur comprend en 5 secondes ce qui a ete fait ?
-2. CONTEXTE — on sait pour qui/quoi/dans quel cadre ?
-3. SCOPE — on comprend l'echelle (equipe, utilisateurs, marques, budget) ? Un ordre de grandeur suffit.
-4. IMPACT — il y a une consequence visible ? Un chiffre c'est ideal mais PAS obligatoire. "Assurant une coherence globale", "facilitant l'onboarding", "reduisant la friction" = impact valide. Seul "j'ai travaille sur X" sans aucune consequence = impact manquant.
-5. LONGUEUR — le texte est < 250 caracteres ? (sinon il faut couper)
+TU FAIS 3 CHOSES :
 
-ETAPE 2 — DECIDE quoi faire selon l'evaluation :
+1. REFORMULE en format CV optimise
+- Chaque bullet : [Verbe d'action] + [quoi de specifique] + [contexte/echelle] + [impact si mentionne]
+- 150-200 caracteres MAX par bullet
+- Verbes forts : Pilote, Structure, Conçoit, Deploie, Definit, Refond, Harmonise...
+- Garde TOUS les elements cles de la matiere (ne supprime pas un element sur 4)
+- Garde les chiffres s'il y en a
+- N'invente AUCUN impact ou chiffre non mentionne par l'utilisateur
+- Impact qualitatif OK ("assurant la coherence", "facilitant l'onboarding")
+- En francais
 
-CAS 1 : Tout est OK (5/5 ou 4/5 avec juste scope ou impact manquant mais utilisateur a deja repondu 2+ fois)
-→ Garde le texte quasi tel quel. Ajoute juste un verbe d'action au debut si absent. Ne change RIEN d'autre.
-→ isComplete = true
+2. CREE des bullets SUPPLEMENTAIRES si justifie
+- Si la matiere couvre plusieurs aspects riches → 2-3 bullets distincts
+- Chaque bullet couvre un angle different (pas de redondance)
+- Ex : "vision produit + DA + refonte parcours" peut faire 1 bullet principal + 1 bullet "alignement DA et coherence visuelle"
+- Max 3 bullets au total pour un axe
+- Si la matiere est simple → 1 seul bullet suffit
 
-CAS 2 : 1 critere manque clairement et l'utilisateur n'a pas encore repondu a une relance
-→ Garde le texte tel quel pour le bullet
-→ Pose UNE question ciblee sur LE critere manquant (pas un autre)
-→ Si c'est le scope qui manque : demande un ordre de grandeur (pas un chiffre exact)
-→ Si c'est l'impact qui manque : demande "ca a change quoi ?" (accepte reponse qualitative)
-→ Ne demande JAMAIS un pourcentage ou un KPI precis
-→ isComplete = false
+3. EVALUE sur 5 criteres
+- CLARTE : comprehensible en 5 secondes ?
+- CONTEXTE : on sait pour qui/quoi ?
+- SCOPE : ordre de grandeur (equipe, users, marches) ?
+- IMPACT : consequence visible ? (qualitatif accepte)
+- COMPLETUDE : la matiere est suffisante pour un bon bullet ?
 
-CAS 3 : Le texte est trop long (> 250 car) et couvre 2 sujets distincts
-→ Propose un SPLIT en 2 bullets (chacun gardant la matiere de son sujet)
-→ isComplete = true
+RELANCE :
+${exchangeCount >= 2 || userSaysIDontKnow ? "PAS de relance. isComplete = true." : "Si 1 critere manque clairement, pose UNE question courte (10 mots max) sur CE critere. Ne demande jamais un % exact. isComplete = false. Si tout est OK, pas de question. isComplete = true."}
 
-CAS 4 : Le texte est trop long mais c'est 1 seul sujet
-→ Raccourcis en gardant TOUS les elements cles. Ne supprime rien d'important.
-→ isComplete = true
+EXEMPLES :
 
-REGLES ABSOLUES :
-- Ne REECRIS jamais le texte de zero. Tu l'ameliores a la marge.
-- Si l'utilisateur dit 4 choses, le bullet contient 4 choses.
-- N'invente JAMAIS d'impact ("ameliorant X") non mentionne par l'utilisateur.
-- Ne remplace pas des termes specifiques par des generiques.
-- Le bullet doit etre en francais.
-${exchangeCount >= 2 || userSaysIDontKnow ? "\nL'utilisateur a deja assez contribue. Ne pose PAS de question. isComplete = true." : ""}
+Matiere : "Premier designer sur le CRM Accor : structuration du produit, definition de la vision, alignement de la direction artistique et refonte des parcours pour assurer une coherence globale"
+→ Bullet 1 : "Premier designer CRM Accor : structuration produit, definition de la vision et refonte des parcours pour une coherence globale"
+→ Bullet 2 : "Alignement de la direction artistique du CRM avec les standards de la marque ALL"
+→ Question : "C'etait pour combien d'utilisateurs ou de marches ?"
 
-TAGS : 3-6 mots-cles SPECIFIQUES au contenu reel (pas "UX" generique si le bullet parle de vision produit et DA)
+Matiere : "Mise en place des fondations loyalty B2B pour ALL for Business, landing pages, espace client, interfaces admin, 4M utilisateurs"
+→ Bullet 1 : "Conception des fondations loyalty B2B pour ALL for Business (4M utilisateurs) : landing pages, espace client et interfaces d'administration"
+→ Pas de question (scope et contexte presents)
+
+TAGS : 3-6 mots-cles specifiques au contenu (CRM, vision-produit, direction-artistique, loyalty-B2B, landing-pages...)
 
 JSON :
 {
   "bullets": [{"bullet": "...", "tags": ["..."]}],
-  "followUp": "question ciblee sur 1 critere" ou null,
+  "followUp": "..." ou null,
   "isComplete": true ou false,
-  "evaluation": {"clarte": true/false, "contexte": true/false, "scope": true/false, "impact": true/false, "longueur": true/false}
+  "evaluation": {"clarte": true/false, "contexte": true/false, "scope": true/false, "impact": true/false, "completude": true/false}
 }`;
 
       const response = await openai.chat.completions.create({
