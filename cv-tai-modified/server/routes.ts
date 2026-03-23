@@ -789,7 +789,7 @@ Si la matiere couvre 2+ missions/perimetres distincts → un bullet SEPARE par m
 (Competence transversale ≠ mission distincte)
 
 RELANCE :
-${exchangeCount >= 2 || userSaysIDontKnow ? "NE POSE PAS de relance. isComplete = true. L'utilisateur a deja assez contribue." : "Tu peux poser UNE question courte (10 mots max) UNIQUEMENT si un detail cle manque et que l'utilisateur semble pouvoir y repondre. Sinon isComplete = true."}
+${exchangeCount >= 2 || userSaysIDontKnow ? "NE POSE PAS de relance. isComplete = true. L'utilisateur a deja assez contribue." : dimension === "axe" && exchangeCount === 0 ? "POSE OBLIGATOIREMENT une question pour enrichir ce bullet. Exemples : un chiffre manquant, un contexte a preciser, un impact a quantifier. La question doit etre specifique a ce qui a ete dit. isComplete = false." : "Tu peux poser UNE question courte (10 mots max) UNIQUEMENT si un detail cle manque. Sinon isComplete = true."}
 
 TAGS : 3-6 mots-cles concrets pour le matching (ex: UX, refonte, e-commerce, conversion, fidelisation)
 
