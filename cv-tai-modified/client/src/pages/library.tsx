@@ -1,1020 +1,1349 @@
-import type { Express } from "express";
-import type { Server } from "http";
-import { storage } from "./storage";
-import { api } from "@shared/routes";
-import { z } from "zod";
-import OpenAI from "openai";
-import { db } from "./db";
-import { bullets } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
-import {
-  normalizeLinkedInUrl,
-  checkLLMHealth,
-  runTailorPipeline,
-} from "./tailoring-engine";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { format } from "date-fns";
+import { Layout } from "@/components/layout";
+import { useExperiences, useCreateExperience, useUpdateExperience, useDeleteExperience } from "@/hooks/use-experiences";
+import { useBullets, useCreateBullet, useUpdateBullet, useDeleteBullet } from "@/hooks/use-bullets";
+import { useSkills, useCreateSkill, useDeleteSkill } from "@/hooks/use-skills";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Badge } from "@/components/ui/badge";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Plus, Building, Calendar, Pencil, RefreshCw, Briefcase, Zap, Upload, Sparkles, Check, X, GraduationCap, Globe } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import type { Experience, Bullet } from "@shared/schema";
 
-let openai: OpenAI | null = null;
-if (process.env.GROQ_API_KEY) {
-  openai = new OpenAI({
-    apiKey: process.env.GROQ_API_KEY,
-    baseURL: "https://api.groq.com/openai/v1",
-  });
+/* ══════════════════════════════════════════════════════════════════
+   TYPES
+   ══════════════════════════════════════════════════════════════════ */
+interface Gap { id: string; dimension: string; question: string; priority: number; }
+
+function getDepthInfo(bulletCount: number) {
+  if (bulletCount === 0) return { label: "Vide", color: "#C45050", bg: "#FEF0EF", dots: 0 };
+  if (bulletCount <= 2) return { label: "Ebauche", color: "#B8941F", bg: "#FEF9EC", dots: 1 };
+  if (bulletCount <= 5) return { label: "Structure", color: "#4D8A5E", bg: "#EEF5EF", dots: 3 };
+  return { label: "Complet", color: "#2D7A3D", bg: "#E0F0E0", dots: 5 };
 }
 
-// Embeddings disabled as per request
-async function getEmbedding(text: string): Promise<number[]> {
-  return Array(1536).fill(0);
+/* ══════════════════════════════════════════════════════════════════
+   PROFILE HOOK
+   ══════════════════════════════════════════════════════════════════ */
+function useProfile() {
+  const [profile, setProfile] = useState<any>({ name: "", title: "", summary: "", targetRole: "" });
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/profile", { credentials: "include" }).then(r => r.json()).then(p => {
+      setProfile(p || { name: "", title: "", summary: "", targetRole: "" });
+      setLoaded(true);
+    }).catch(() => setLoaded(true));
+  }, []);
+
+  const save = useCallback(async (updates: any) => {
+    const merged = { ...profile, ...updates };
+    setProfile(merged);
+    await fetch("/api/profile", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates), credentials: "include",
+    });
+  }, [profile]);
+
+  return { profile, save, loaded };
 }
 
-async function seedDatabase() {
-  const exps = await storage.getExperiences();
-  if (exps.length === 0) {
-    const exp = await storage.createExperience({
-      title: "Senior Software Engineer",
-      company: "Tech Solutions Inc.",
-      startDate: new Date("2020-01-01").toISOString(),
-      endDate: new Date("2023-01-01").toISOString(),
-      description: "Led the development of a cloud-native SaaS platform.",
-      priority: 10,
-    });
-    
-    await storage.createBullet({
-      experienceId: exp.id,
-      text: "Designed and implemented microservices architecture using Node.js and Docker, improving system scalability by 40%.",
-      priority: 5,
-      tags: ["Node.js", "Docker", "Architecture"],
-    });
+/* ══════════════════════════════════════════════════════════════════
+   MAIN PAGE — Single page, no tabs
+   ══════════════════════════════════════════════════════════════════ */
+export default function Library() {
+  const { profile, save: saveProfile, loaded: profileLoaded } = useProfile();
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileDraft, setProfileDraft] = useState({ name: "", title: "", summary: "" });
 
-    await storage.createBullet({
-      experienceId: exp.id,
-      text: "Optimized database queries in PostgreSQL, reducing average API response time from 300ms to 50ms.",
-      priority: 8,
-      tags: ["PostgreSQL", "Performance", "SQL"],
-    });
-    
-    await storage.createSkill({ name: "TypeScript", level: 5, priority: 10 });
-    await storage.createSkill({ name: "React", level: 5, priority: 9 });
-    await storage.createSkill({ name: "Node.js", level: 4, priority: 8 });
-  }
+  useEffect(() => {
+    if (profileLoaded) {
+      setProfileDraft({ name: profile.name || "", title: profile.title || "", summary: profile.summary || "" });
+    }
+  }, [profileLoaded]);
+
+  const handleSaveProfile = () => {
+    saveProfile(profileDraft);
+    setEditingProfile(false);
+  };
+
+  return (
+    <Layout>
+      <div className="flex flex-col gap-10 max-w-4xl">
+
+        {/* ── PROFILE HEADER ── */}
+        <Card className="border border-border">
+          <CardContent className="p-5">
+          {editingProfile ? (
+            <div className="space-y-3 animate-in fade-in-50">
+              <Input value={profileDraft.name} onChange={e => setProfileDraft({ ...profileDraft, name: e.target.value })}
+                placeholder="Prenom Nom" className="text-2xl font-bold border-0 p-0 h-auto focus-visible:ring-0 bg-transparent" />
+              <Input value={profileDraft.title} onChange={e => setProfileDraft({ ...profileDraft, title: e.target.value })}
+                placeholder="Senior Product Designer" className="text-base text-muted-foreground border-0 p-0 h-auto focus-visible:ring-0 bg-transparent" />
+              <Input value={profileDraft.summary} onChange={e => setProfileDraft({ ...profileDraft, summary: e.target.value })}
+                placeholder="Une phrase qui te resume (optionnel)" className="text-sm text-muted-foreground border-0 p-0 h-auto focus-visible:ring-0 bg-transparent" />
+              <Button size="sm" onClick={handleSaveProfile}>Valider</Button>
+            </div>
+          ) : (
+            <div className="cursor-pointer group" onClick={() => setEditingProfile(true)}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight">{profile.name || "Votre nom"}</h1>
+                  <p className="text-base text-muted-foreground mt-0.5">{profile.title || "Votre poste"}</p>
+                  {profile.summary && <p className="text-sm text-muted-foreground/70 mt-1">{profile.summary}</p>}
+                </div>
+                <Pencil className="w-4 h-4 text-muted-foreground opacity-50 group-hover:opacity-100 transition-opacity mt-1" />
+              </div>
+            </div>
+          )}
+          </CardContent>
+        </Card>
+
+        {/* ── EXPERIENCES ── */}
+        <ExperiencesSection />
+
+        {/* ── SKILLS ── */}
+        <SkillsSection />
+
+        {/* ── FORMATIONS + LANGUAGES — side by side ── */}
+        <div className="grid grid-cols-2 gap-6">
+          <FormationsSection />
+          <LanguagesSection />
+        </div>
+
+      </div>
+    </Layout>
+  );
 }
 
-export async function registerRoutes(
-  httpServer: Server,
-  app: Express
-): Promise<Server> {
-  
-  // Seed initial data
-  seedDatabase().catch(console.error);
+/* ══════════════════════════════════════════════════════════════════
+   EXPERIENCES SECTION — Accordion + Enrichment Sheet
+   ══════════════════════════════════════════════════════════════════ */
+function ExperiencesSection() {
+  const { data: experiences, isLoading } = useExperiences();
+  const [editOpen, setEditOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [editingExp, setEditingExp] = useState<any>(null);
+  const [enrichingExpId, setEnrichingExpId] = useState<string | null>(null);
 
-  app.get("/api/llm/health", async (_req, res) => {
-    const result = await checkLLMHealth(openai);
-    res.status(result.success ? 200 : 503).json(result);
-  });
+  if (isLoading) return <div className="h-40 flex items-center justify-center text-muted-foreground"><RefreshCw className="w-6 h-6 animate-spin" /></div>;
 
-  // ══════════════════════════════════════════════════════════════
-  // CV IMPORT — PDF (base64) or text paste → parse ALL experiences
-  // ══════════════════════════════════════════════════════════════
-  app.post("/api/import/cv", async (req, res) => {
+  const enrichingExp = experiences?.find(e => e.id === enrichingExpId) || null;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-bold flex items-center gap-2">
+          <Briefcase className="w-5 h-5 text-primary" /> Work History
+        </h2>
+        <div className="flex gap-2">
+          <CVImportDialog open={importOpen} onOpenChange={setImportOpen} />
+          <ExperienceDialog open={editOpen} onOpenChange={setEditOpen} experience={editingExp} onClose={() => setEditingExp(null)} />
+        </div>
+      </div>
+
+      {!experiences?.length ? (
+        <Card className="border-dashed border-2 bg-transparent shadow-none">
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-4">
+              <Upload className="w-6 h-6" />
+            </div>
+            <h3 className="font-semibold text-lg">Importez votre CV</h3>
+            <p className="text-muted-foreground mt-1 mb-4 max-w-sm">Uploadez un PDF ou collez le texte de votre CV pour pre-remplir vos experiences.</p>
+            <div className="flex gap-2">
+              <Button onClick={() => setImportOpen(true)}><Upload className="w-4 h-4 mr-2" /> Importer un CV</Button>
+              <Button variant="outline" onClick={() => setEditOpen(true)}><Plus className="w-4 h-4 mr-2" /> Ajouter manuellement</Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Accordion type="multiple" className="space-y-3">
+          {[...experiences].sort((a, b) => {
+            const dateA = a.endDate ? new Date(a.endDate).getTime() : Date.now();
+            const dateB = b.endDate ? new Date(b.endDate).getTime() : Date.now();
+            return dateB - dateA;
+          }).map(exp => (
+            <ExperienceAccordionItem
+              key={exp.id}
+              experience={exp}
+              onEdit={() => { setEditingExp(exp); setEditOpen(true); }}
+              onEnrich={() => setEnrichingExpId(exp.id)}
+            />
+          ))}
+        </Accordion>
+      )}
+
+      {/* Enrichment Sheet */}
+      <Sheet open={!!enrichingExp} onOpenChange={(val) => { if (!val) setEnrichingExpId(null); }}>
+        <SheetContent className="w-full sm:max-w-lg p-0 flex flex-col">
+          {enrichingExp && <EnrichmentPanel experience={enrichingExp} />}
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   EXPERIENCE ACCORDION ITEM — bullets visible + edit + enrich
+   ══════════════════════════════════════════════════════════════════ */
+function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
+  experience: Experience; onEdit: () => void; onEnrich: () => void;
+}) {
+  const { data: bullets } = useBullets(experience.id);
+  const updateBullet = useUpdateBullet();
+  const deleteBullet = useDeleteBullet();
+  const { toast } = useToast();
+  const bulletCount = bullets?.length || 0;
+  const depth = getDepthInfo(bulletCount);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editTags, setEditTags] = useState<string[]>([]);
+  const [newTag, setNewTag] = useState("");
+  const [retagging, setRetagging] = useState<string | null>(null);
+
+  const handleSaveEdit = async () => {
+    if (!editingId || !editText.trim()) return;
     try {
-      let rawText = "";
+      await updateBullet.mutateAsync({ id: editingId, experienceId: experience.id, text: editText.trim(), tags: editTags });
+      setEditingId(null);
+      setEditText("");
+      setEditTags([]);
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
+    }
+  };
 
-      if (req.body?.fileBase64) {
-        // PDF sent as base64
-        try {
-          const pdfParse = (await import("pdf-parse")).default;
-          const buffer = Buffer.from(req.body.fileBase64, "base64");
-          console.log("[IMPORT] PDF buffer size:", buffer.length);
-          const data = await pdfParse(buffer);
-          rawText = data.text || "";
-          console.log("[IMPORT] PDF text extracted:", rawText.length, "chars");
-          console.log("[IMPORT] First 200 chars:", rawText.slice(0, 200));
-        } catch (pdfErr: any) {
-          console.error("[IMPORT] PDF parse error:", pdfErr.message);
-          return res.status(400).json({ message: "Impossible de lire ce PDF. Essayez de coller le texte directement." });
-        }
-      } else if (req.body?.text) {
-        rawText = req.body.text;
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteBullet.mutateAsync({ id, experienceId: experience.id });
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
+    }
+  };
+
+  const handleRetag = async (bulletId: string, bulletText: string) => {
+    setRetagging(bulletId);
+    try {
+      const res = await fetch(`/api/experiences/${experience.id}/tag-evaluate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: bulletText }),
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data.tags?.length > 0) {
+        await updateBullet.mutateAsync({ id: bulletId, experienceId: experience.id, tags: data.tags });
+        toast({ title: "Tags mis a jour" });
+      }
+    } catch {} finally { setRetagging(null); }
+  };
+
+  const cardRef = useRef<HTMLDivElement>(null);
+  const btnsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const card = cardRef.current;
+    const btns = btnsRef.current;
+    if (!card || !btns) return;
+    btns.style.visibility = "hidden";
+    const show = () => { btns.style.visibility = "visible"; };
+    const hide = () => { btns.style.visibility = "hidden"; };
+    card.addEventListener("mouseenter", show);
+    card.addEventListener("mouseleave", hide);
+    return () => {
+      card.removeEventListener("mouseenter", show);
+      card.removeEventListener("mouseleave", hide);
+    };
+  }, []);
+
+  return (
+    <div ref={cardRef}>
+    <AccordionItem value={experience.id} className="bg-card border rounded-xl shadow-sm overflow-hidden">
+      <div className="flex items-center pr-4">
+        <AccordionTrigger className="flex-1 hover:no-underline py-4 px-5 data-[state=open]:border-b data-[state=open]:border-border/50">
+          <div className="flex flex-col items-start text-left gap-1">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Building className="w-3 h-3" /> {experience.company}
+              {experience.contractType && <Badge variant="outline" className="text-[9px] px-1.5 py-0">{experience.contractType}</Badge>}
+              <span className="opacity-40">|</span>
+              <Calendar className="w-3 h-3" />
+              {experience.startDate ? format(new Date(experience.startDate), "MMM yyyy") : "N/A"} - {experience.endDate ? format(new Date(experience.endDate), "MMM yyyy") : "Present"}
+            </div>
+            <span className="font-bold text-base">{experience.title}</span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded" style={{ background: depth.bg, color: depth.color }}>{depth.label}</span>
+              <div className="flex gap-1">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: i < depth.dots ? depth.color : "#e8e5de" }} />
+                ))}
+              </div>
+            </div>
+          </div>
+        </AccordionTrigger>
+        <div ref={btnsRef} className="flex items-center gap-1 ml-auto pl-3">
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={onEdit}>
+            <Pencil className="w-4 h-4" />
+          </Button>
+          <Button variant="outline" size="sm" className="h-8 text-xs gap-1" onClick={onEnrich}>
+            <Sparkles className="w-3.5 h-3.5" /> Enrichir
+          </Button>
+        </div>
+      </div>
+      <AccordionContent className="p-0">
+        <div className="p-5 space-y-3">
+          {experience.description && (
+            <p className="text-sm text-foreground/70 whitespace-pre-line mb-4">{experience.description}</p>
+          )}
+
+          {(!bullets || bullets.length === 0) && (
+            <p className="text-sm text-muted-foreground text-center py-4">Aucun bullet. Clique sur Enrichir pour commencer.</p>
+          )}
+
+          {bullets?.map(bullet => (
+            <div key={bullet.id} className="group relative bg-muted/30 rounded-lg p-3 border border-border/30 hover:border-border transition-colors">
+              {editingId === bullet.id ? (
+                <div className="space-y-3">
+                  <Textarea value={editText} onChange={e => setEditText(e.target.value)} className="text-sm resize-none min-h-[50px]" />
+                  {/* Editable tags */}
+                  <div className="flex gap-1 flex-wrap items-center">
+                    {editTags.map((tag, i) => (
+                      <span key={i} className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 bg-secondary text-secondary-foreground rounded-md">
+                        {tag}
+                        <button onClick={() => setEditTags(prev => prev.filter((_, j) => j !== i))} className="ml-0.5 hover:text-destructive">×</button>
+                      </span>
+                    ))}
+                    <input
+                      type="text" value={newTag} onChange={e => setNewTag(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter" && newTag.trim()) { e.preventDefault(); setEditTags(prev => [...prev, newTag.trim()]); setNewTag(""); } }}
+                      placeholder="+ tag" className="text-[10px] w-20 bg-transparent border-b border-dashed border-muted-foreground/30 outline-none px-1 py-0.5"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={handleSaveEdit} disabled={!editText.trim()} className="h-7 text-xs">Enregistrer</Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setEditingId(null); setNewTag(""); }} className="h-7 text-xs">Annuler</Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {bullet.tags && bullet.tags.length > 0 ? (
+                    <div className="flex gap-1 mb-1.5 flex-wrap">
+                      {bullet.tags.map((tag: string, i: number) => (
+                        <Badge key={i} variant="secondary" className="text-[9px] px-1.5 py-0">{tag}</Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleRetag(bullet.id, bullet.text)}
+                      disabled={retagging === bullet.id}
+                      className="text-[10px] text-primary hover:underline mb-1.5 flex items-center gap-1"
+                    >
+                      {retagging === bullet.id ? <RefreshCw className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
+                      Generer les tags
+                    </button>
+                  )}
+                  <p className="text-sm text-foreground/90 leading-relaxed pr-14">{bullet.text}</p>
+                </>
+              )}
+              {editingId !== bullet.id && (
+                <div className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                  <button onClick={() => { setEditingId(bullet.id); setEditText(bullet.text); setEditTags(bullet.tags || []); }} className="text-muted-foreground hover:text-primary p-0.5"><Pencil className="w-3 h-3" /></button>
+                  <button onClick={() => handleDelete(bullet.id)} className="text-muted-foreground hover:text-destructive p-0.5"><X className="w-3 h-3" /></button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </AccordionContent>
+    </AccordionItem>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ENRICHMENT PANEL — gap detection + micro-thread
+   ══════════════════════════════════════════════════════════════════ */
+function EnrichmentPanel({ experience }: { experience: Experience }) {
+  const { data: bullets } = useBullets(experience.id);
+  const createBullet = useCreateBullet();
+  const { toast } = useToast();
+
+  const MAX_BULLETS = 5;
+  const bulletCount = bullets?.length || 0;
+  const remaining = MAX_BULLETS - bulletCount;
+
+  // Flow state
+  type Step = "loading" | "axes" | "list" | "edit";
+  const [step, setStep] = useState<Step>("loading");
+  const [axes, setAxes] = useState<string[]>([]);
+
+  // Edit state
+  const [editText, setEditText] = useState("");
+  const [editTags, setEditTags] = useState<string[]>([]);
+  const [editEval, setEditEval] = useState<Record<string, boolean> | null>(null);
+  const [editSuggestion, setEditSuggestion] = useState<string | null>(null);
+  const [newTagText, setNewTagText] = useState("");
+  const [processing, setProcessing] = useState(false);
+  const [evaluated, setEvaluated] = useState(false);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+
+  // On mount: check if bullets exist
+  useEffect(() => {
+    if (bulletCount > 0) {
+      setStep("list");
+    } else {
+      fetchAxes();
+    }
+  }, [experience.id]);
+
+  const fetchAxes = async () => {
+    setStep("loading");
+    try {
+      const res = await fetch(`/api/experiences/${experience.id}/extract-axes`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+      });
+      const data = await res.json();
+      const suggested = (data.axes || []).map((a: any) => a.text || a).filter(Boolean);
+      setAxes(suggested);
+      setStep(suggested.length > 0 ? "axes" : "edit");
+    } catch { setStep("edit"); }
+  };
+
+  // Start editing a bullet (from axis or blank)
+  const startEdit = (prefill?: string) => {
+    setEditText(prefill || "");
+    setEditTags([]);
+    setEditEval(null);
+    setEditSuggestion(null);
+    setEvaluated(false);
+    setStep("edit");
+    setTimeout(() => textRef.current?.focus(), 100);
+  };
+
+  // Call LLM to tag + evaluate
+  const handleEvaluate = async () => {
+    if (!editText.trim()) return;
+    setProcessing(true);
+    try {
+      const res = await fetch(`/api/experiences/${experience.id}/tag-evaluate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: editText.trim() }),
+        credentials: "include",
+      });
+      const data = await res.json();
+      setEditTags(data.tags || []);
+      setEditEval(data.evaluation || null);
+      setEditSuggestion(data.suggestion || null);
+      setEvaluated(true);
+    } catch {
+      setEditTags(["general"]);
+      setEvaluated(true);
+    } finally { setProcessing(false); }
+  };
+
+  // Save bullet (auto-tag if no tags)
+  const handleSave = async () => {
+    if (!editText.trim()) return;
+    let finalTags = editTags;
+    // Auto-tag if user hasn't tagged
+    if (finalTags.length === 0) {
+      try {
+        const res = await fetch(`/api/experiences/${experience.id}/tag-evaluate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: editText.trim() }),
+          credentials: "include",
+        });
+        const data = await res.json();
+        finalTags = data.tags || ["general"];
+        setEditTags(finalTags);
+        setEditEval(data.evaluation || null);
+      } catch { finalTags = ["general"]; }
+    }
+    try {
+      await createBullet.mutateAsync({
+        experienceId: experience.id,
+        text: editText.trim(),
+        tags: finalTags,
+      });
+      toast({ title: "Bullet enregistre" });
+      setEditText("");
+      setEditTags([]);
+      setEditEval(null);
+      setEditSuggestion(null);
+      setEvaluated(false);
+      setStep("list");
+    } catch (e: any) {
+      if (e.message?.includes("similaire")) {
+        toast({ title: "Doublon", description: "Un bullet similaire existe deja." });
       } else {
-        return res.status(400).json({ message: "Envoyez un fichier PDF (base64) ou du texte." });
+        toast({ title: "Erreur", description: e.message, variant: "destructive" });
       }
-
-      // Clean up extracted text
-      rawText = rawText.replace(/\s+/g, " ").trim();
-
-      if (rawText.length < 20) {
-        return res.status(400).json({ message: "Pas assez de contenu extrait. Essayez de coller le texte de votre CV directement." });
-      }
-
-      // Truncate to avoid token limits
-      const truncated = rawText.slice(0, 8000);
-
-      if (!openai) {
-        return res.status(500).json({ message: "Service IA non configuré (GROQ_API_KEY manquant)." });
-      }
-
-      const prompt = `Analyse ce CV et extrais TOUTES les expériences professionnelles.
-
-Pour chaque expérience, extrais :
-- title : intitulé du poste
-- company : nom de l'entreprise
-- startDate : date de début au format YYYY-MM-DD (estime si besoin, ex: "2020" → "2020-01-01")
-- endDate : date de fin au format YYYY-MM-DD (null si poste actuel)
-- description : résumé court du rôle en 1-2 phrases
-- bullets : liste des réalisations/responsabilités (chaque bullet = une ligne du CV)
-
-Réponds UNIQUEMENT en JSON valide, sans markdown ni backticks :
-{
-  "experiences": [
-    {
-      "title": "...",
-      "company": "...",
-      "startDate": "...",
-      "endDate": "..." ou null,
-      "description": "...",
-      "bullets": ["...", "..."]
     }
-  ]
+  };
+
+  const removeTag = (idx: number) => setEditTags(prev => prev.filter((_, i) => i !== idx));
+  const addTag = () => {
+    if (newTagText.trim()) {
+      setEditTags(prev => [...prev, newTagText.trim()]);
+      setNewTagText("");
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <SheetHeader className="p-6 pb-4 border-b border-border/50 space-y-1">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Building className="w-3.5 h-3.5" /> {experience.company}
+          {experience.startDate && (
+            <>
+              <span className="opacity-40">|</span>
+              <Calendar className="w-3.5 h-3.5" />
+              {format(new Date(experience.startDate), "MMM yyyy")} - {experience.endDate ? format(new Date(experience.endDate), "MMM yyyy") : "Present"}
+            </>
+          )}
+        </div>
+        <SheetTitle className="text-lg font-bold">{experience.title}</SheetTitle>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-[10px]">{bulletCount}/{MAX_BULLETS} bullets</Badge>
+          {remaining <= 0 && <span className="text-[10px] text-amber-600">Limite atteinte</span>}
+        </div>
+      </SheetHeader>
+
+      {/* ── LOADING ── */}
+      {step === "loading" && (
+        <div className="flex-1 flex items-center justify-center">
+          <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />
+        </div>
+      )}
+
+      {/* ── AXES — suggestions from description ── */}
+      {step === "axes" && (
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <div>
+            <p className="text-sm font-medium">Axes detectes dans ta description</p>
+            <p className="text-xs text-muted-foreground mt-1">Clique sur un axe pour l'utiliser comme base de bullet. Tu pourras l'editer.</p>
+          </div>
+
+          <div className="space-y-2">
+            {axes.map((axis, i) => (
+              <button
+                key={i}
+                onClick={() => startEdit(axis)}
+                disabled={remaining <= 0}
+                className="w-full text-left text-sm p-3 rounded-lg border border-border bg-background hover:border-primary/50 hover:bg-primary/5 transition-all leading-snug disabled:opacity-50"
+              >
+                {axis}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── LIST — existing bullets ── */}
+      {step === "list" && (
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {bullets && bullets.length > 0 ? (
+            <div className="space-y-3">
+              {bullets.map((b: any) => (
+                <div key={b.id} className="text-sm p-3 rounded-lg border border-border bg-background">
+                  <p className="leading-snug">{b.text}</p>
+                  {b.tags?.length > 0 && (
+                    <div className="flex gap-1 mt-2 flex-wrap">
+                      {b.tags.map((tag: string, i: number) => (
+                        <Badge key={i} variant="secondary" className="text-[9px] px-1.5 py-0">{tag}</Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8">Aucun bullet. Clique ci-dessous pour en ajouter.</p>
+          )}
+        </div>
+      )}
+
+      {/* ── EDIT — write / edit a bullet ── */}
+      {step === "edit" && (
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Redige ton bullet</p>
+            <Textarea
+              ref={textRef}
+              value={editText}
+              onChange={e => { setEditText(e.target.value); setEvaluated(false); }}
+              placeholder="Ex: Premier designer CRM Accor : structuration produit, definition de la vision et alignement DA pour des parcours coherents"
+              className="min-h-[100px] text-sm resize-none"
+            />
+          </div>
+
+          {/* Tags (shown after evaluation or editable anytime) */}
+          <div className="space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Tags</p>
+            <div className="flex gap-1 flex-wrap items-center">
+              {editTags.map((tag, i) => (
+                <span key={i} className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 bg-secondary text-secondary-foreground rounded-md">
+                  {tag}
+                  <button onClick={() => removeTag(i)} className="ml-0.5 hover:text-destructive">×</button>
+                </span>
+              ))}
+              <input
+                type="text"
+                value={newTagText}
+                onChange={e => setNewTagText(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
+                placeholder="+ tag"
+                className="text-[10px] w-20 bg-transparent border-b border-dashed border-muted-foreground/30 outline-none px-1 py-0.5"
+              />
+            </div>
+            {editTags.length === 0 && !evaluated && (
+              <p className="text-[10px] text-muted-foreground">Les tags seront generes automatiquement. Tu peux aussi les ajouter toi-meme.</p>
+            )}
+          </div>
+
+          {/* Evaluation badges */}
+          {editEval && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Evaluation</p>
+              <div className="flex gap-2 flex-wrap">
+                {[
+                  { key: "clarte", label: "Clarte", tip: "Le recruteur comprend en 5 secondes ce que tu as fait" },
+                  { key: "contexte", label: "Contexte", tip: "On sait pour qui, dans quel cadre, quel produit" },
+                  { key: "scope", label: "Scope", tip: "L'echelle est claire : equipe, utilisateurs, marches" },
+                  { key: "impact", label: "Impact", tip: "Il y a une consequence visible (chiffre ou qualitative)" },
+                  { key: "completude", label: "Completude", tip: "La matiere est suffisante pour un bon bullet CV" },
+                ].map(({ key, label, tip }) => (
+                  <span key={key} title={tip} className={`text-xs px-2.5 py-1 rounded-full font-medium cursor-help ${
+                    editEval[key] ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400" : "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+                  }`}>
+                    {editEval[key] ? "✓" : "○"} {label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Suggestion */}
+          {editSuggestion && (
+            <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/10 p-3 rounded-lg">
+              <span className="font-medium">Suggestion :</span> {editSuggestion}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── BOTTOM BAR ── */}
+      <div className="border-t border-border/50 bg-muted/20 p-5 space-y-3 shrink-0">
+
+        {/* Axes mode — also show "write from scratch" */}
+        {step === "axes" && (
+          <div className="space-y-2">
+            <Button variant="outline" onClick={() => startEdit()} className="w-full" disabled={remaining <= 0}>
+              <Plus className="w-4 h-4 mr-2" /> Ecrire un bullet librement
+            </Button>
+          </div>
+        )}
+
+        {/* List mode — add button */}
+        {step === "list" && (
+          <div className="space-y-2">
+            {remaining > 0 && axes.length > 0 && bulletCount < axes.length && (
+              <Button variant="outline" onClick={() => setStep("axes")} className="w-full">
+                <Sparkles className="w-4 h-4 mr-2" /> Voir les axes suggeres ({axes.length - bulletCount} restants)
+              </Button>
+            )}
+            <Button onClick={() => startEdit()} className="w-full" disabled={remaining <= 0}>
+              <Plus className="w-4 h-4 mr-2" /> {remaining <= 0 ? "Limite atteinte (5/5)" : "Ajouter un bullet"}
+            </Button>
+          </div>
+        )}
+
+        {/* Edit mode — evaluate + save */}
+        {step === "edit" && (
+          <div className="space-y-2">
+            {!evaluated && !processing && (
+              <Button onClick={handleEvaluate} disabled={!editText.trim()} variant="outline" className="w-full">
+                <Sparkles className="w-4 h-4 mr-2" /> Tagger + Evaluer
+              </Button>
+            )}
+            {processing && (
+              <div className="flex items-center justify-center py-2 gap-2 text-sm text-muted-foreground">
+                <RefreshCw className="w-4 h-4 animate-spin" /> Analyse...
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button onClick={handleSave} disabled={!editText.trim() || createBullet.isPending} className="flex-1">
+                <Check className="w-4 h-4 mr-2" /> Enregistrer
+              </Button>
+              <Button variant="outline" onClick={() => setStep(bulletCount > 0 ? "list" : axes.length > 0 ? "axes" : "list")}>
+                Retour
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
-CV à analyser :
-${truncated}`;
+/* ══════════════════════════════════════════════════════════════════
+   EXPERIENCE DIALOG — fixed pre-filling
+   ══════════════════════════════════════════════════════════════════ */
+function ExperienceDialog({ open, onOpenChange, experience, onClose }: any) {
+  const createExp = useCreateExperience();
+  const updateExp = useUpdateExperience();
+  const deleteExp = useDeleteExperience();
+  const { toast } = useToast();
 
-      const response = await openai.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.3,
+  const [formData, setFormData] = useState({ title: "", company: "", contractType: "", startDate: "", endDate: "", description: "" });
+  const [isCurrent, setIsCurrent] = useState(false);
+
+  useEffect(() => {
+    if (experience && open) {
+      setFormData({
+        title: experience.title || "",
+        company: experience.company || "",
+        contractType: experience.contractType || "",
+        startDate: experience.startDate || "",
+        endDate: experience.endDate || "",
+        description: experience.description || "",
       });
+      setIsCurrent(!experience.endDate);
+    } else if (open && !experience) {
+      setFormData({ title: "", company: "", contractType: "", startDate: "", endDate: "", description: "" });
+      setIsCurrent(false);
+    }
+  }, [open, experience]);
 
-      let parsed;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const data = { ...formData, endDate: isCurrent ? null : formData.endDate || null };
+      if (experience) {
+        await updateExp.mutateAsync({ id: experience.id, ...data });
+        toast({ title: "Experience mise a jour" });
+      } else {
+        await createExp.mutateAsync(data);
+        toast({ title: "Experience ajoutee" });
+      }
+      onOpenChange(false);
+      onClose();
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm("Supprimer cette experience ?")) return;
+    try {
+      await deleteExp.mutateAsync(experience.id);
+      toast({ title: "Experience supprimee" });
+      onOpenChange(false);
+      onClose();
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); if (!val) onClose(); }}>
+      <DialogTrigger asChild>
+        {!experience && <Button><Plus className="w-4 h-4 mr-2" /> Add Experience</Button>}
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader><DialogTitle>{experience ? "Modifier" : "Ajouter une experience"}</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 py-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2"><Label>Titre</Label><Input required value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} placeholder="Product Designer" /></div>
+            <div className="space-y-2"><Label>Entreprise</Label><Input required value={formData.company} onChange={e => setFormData({ ...formData, company: e.target.value })} placeholder="Accor" /></div>
+            <div className="space-y-2"><Label>Date debut</Label><Input type="date" value={formData.startDate} onChange={e => setFormData({ ...formData, startDate: e.target.value })} /></div>
+            <div className="space-y-2">
+              <Label>Date fin</Label>
+              <Input type="date" value={isCurrent ? "" : formData.endDate} onChange={e => setFormData({ ...formData, endDate: e.target.value })} disabled={isCurrent} className={isCurrent ? "opacity-40" : ""} />
+              <label className="flex items-center gap-2 cursor-pointer mt-1" onClick={() => setIsCurrent(!isCurrent)}>
+                <div className={`w-8 h-[18px] rounded-full p-0.5 transition-colors ${isCurrent ? "bg-primary" : "bg-border"}`}>
+                  <div className={`w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform ${isCurrent ? "translate-x-3.5" : "translate-x-0"}`} />
+                </div>
+                <span className="text-xs text-muted-foreground">Poste actuel</span>
+              </label>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Type de contrat</Label>
+            <div className="flex gap-2">
+              {["CDI", "Freelance", "CDD", "Stage", "Alternance"].map(ct => (
+                <button key={ct} type="button" onClick={() => setFormData({ ...formData, contractType: formData.contractType === ct ? "" : ct })}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${formData.contractType === ct ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:border-primary/50"}`}>
+                  {ct}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2"><Label>Description</Label><Textarea value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Description du role..." className="h-24" /></div>
+          <DialogFooter className="pt-4 flex justify-between sm:justify-between">
+            {experience ? <Button type="button" variant="destructive" onClick={handleDelete} disabled={deleteExp.isPending}>Supprimer</Button> : <div />}
+            <Button type="submit" disabled={createExp.isPending || updateExp.isPending}>{experience ? "Enregistrer" : "Creer"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   SKILLS SECTION
+   ══════════════════════════════════════════════════════════════════ */
+function SkillsSection() {
+  const { data: skills, isLoading } = useSkills();
+  const createSkill = useCreateSkill();
+  const deleteSkill = useDeleteSkill();
+  const { toast } = useToast();
+  const [addOpen, setAddOpen] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [proposed, setProposed] = useState<Array<{name: string; category: string; accepted: boolean}>>([]);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addCategory, setAddCategory] = useState("Techniques");
+
+  const CATEGORIES = ["Outils", "Methodologies", "Soft Skills", "Domaines", "Techniques"];
+  const CATEGORY_ICONS: Record<string, string> = {
+    "Outils": "wrench",
+    "Methodologies": "compass",
+    "Soft Skills": "users",
+    "Domaines": "globe",
+    "Techniques": "code",
+  };
+
+  const grouped = CATEGORIES.reduce((acc, cat) => {
+    const catSkills = (skills || []).filter(s => (s.category || "Techniques") === cat);
+    if (catSkills.length > 0) acc[cat] = catSkills;
+    return acc;
+  }, {} as Record<string, typeof skills>);
+
+  // Uncategorized
+  const uncategorized = (skills || []).filter(s => !s.category || !CATEGORIES.includes(s.category));
+  if (uncategorized.length > 0) grouped["Autres"] = uncategorized;
+
+  const handleExtract = async () => {
+    setExtracting(true);
+    try {
+      const res = await fetch("/api/skills/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      if (!data.skills?.length) {
+        toast({ title: "Aucune nouvelle competence detectee" });
+        setExtracting(false);
+        return;
+      }
+      setProposed(data.skills.map((s: any) => ({ ...s, accepted: true })));
+      setReviewOpen(true);
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleSaveProposed = async () => {
+    const toSave = proposed.filter(s => s.accepted);
+    let saved = 0;
+    for (const s of toSave) {
       try {
-        parsed = JSON.parse(response.choices[0].message.content || "{}");
-      } catch {
-        return res.status(500).json({ message: "L'IA n'a pas pu analyser le contenu." });
-      }
-
-      const experiences = parsed.experiences || [];
-      console.log("[IMPORT] Parsed", experiences.length, "experiences");
-
-      res.json({ experiences, rawTextLength: rawText.length });
-    } catch (err: any) {
-      console.error("[IMPORT] Error:", err.message);
-      res.status(500).json({ message: "Erreur lors de l'import: " + err.message });
+        await createSkill.mutateAsync({ name: s.name, category: s.category } as any);
+        saved++;
+      } catch { /* skip duplicates */ }
     }
-  });
+    toast({ title: `${saved} competence${saved > 1 ? "s" : ""} ajoutee${saved > 1 ? "s" : ""}` });
+    setReviewOpen(false);
+    setProposed([]);
+  };
 
-  // Bulk create experiences from import
-  app.post("/api/import/save", async (req, res) => {
+  const handleAddManual = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addName.trim()) return;
     try {
-      const { experiences: exps } = req.body;
-      if (!exps || !Array.isArray(exps)) {
-        return res.status(400).json({ message: "experiences array required" });
-      }
-
-      const created = [];
-      for (const exp of exps) {
-        const newExp = await storage.createExperience({
-          title: exp.title || "Sans titre",
-          company: exp.company || "Non renseigné",
-          startDate: exp.startDate || undefined,
-          endDate: exp.endDate || undefined,
-          description: exp.description || "",
-        });
-
-        if (exp.bullets && Array.isArray(exp.bullets)) {
-          for (const bulletText of exp.bullets) {
-            if (bulletText.trim()) {
-              await storage.createBullet({
-                experienceId: newExp.id,
-                text: bulletText.trim(),
-                tags: [],
-              });
-            }
-          }
-        }
-
-        created.push(newExp);
-      }
-
-      res.status(201).json({ created: created.length });
-    } catch (err: any) {
-      console.error("[IMPORT] Save error:", err.message);
-      res.status(500).json({ message: "Erreur lors de la sauvegarde." });
+      await createSkill.mutateAsync({ name: addName.trim(), category: addCategory } as any);
+      setAddName("");
+      setAddOpen(false);
+      toast({ title: "Competence ajoutee" });
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
     }
-  });
+  };
 
-  // Parse experience from raw text
-  app.post("/api/experiences/parse", async (req, res) => {
+  const handleDelete = async (id: string) => {
+    try { await deleteSkill.mutateAsync(id); }
+    catch (err) { toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" }); }
+  };
+
+  const totalSkills = (skills || []).length;
+  const atLimit = totalSkills >= 15;
+
+  if (isLoading) return <div className="h-40 flex items-center justify-center text-muted-foreground"><RefreshCw className="w-6 h-6 animate-spin" /></div>;
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2"><Zap className="w-3.5 h-3.5" /> Competences</h2>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleExtract} disabled={extracting || atLimit} className="gap-2 h-8 text-xs">
+            {extracting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            {atLimit ? "Limite atteinte" : extracting ? "Analyse..." : "Extraire auto"}
+          </Button>
+          <Dialog open={addOpen} onOpenChange={setAddOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="h-8 text-xs" disabled={atLimit}><Plus className="w-3.5 h-3.5 mr-1" /> Ajouter</Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[400px]">
+              <DialogHeader><DialogTitle>Ajouter une competence</DialogTitle></DialogHeader>
+              <form onSubmit={handleAddManual} className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Nom</Label>
+                  <Input required value={addName} onChange={e => setAddName(e.target.value)} placeholder="Figma, User Testing..." />
+                </div>
+                <div className="space-y-2">
+                  <Label>Categorie</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {CATEGORIES.map(cat => (
+                      <button key={cat} type="button" onClick={() => setAddCategory(cat)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${addCategory === cat ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:border-primary/50"}`}>
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button type="submit" disabled={createSkill.isPending}>Enregistrer</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      {/* Skills grouped by category — 2 columns */}
+      <div className="bg-card border rounded-xl p-5 shadow-sm grid grid-cols-2 gap-x-8 gap-y-4">
+        {Object.keys(grouped).length === 0 ? (
+          <div className="text-center py-6 text-muted-foreground col-span-2">
+            <p className="text-sm">Aucune competence.</p>
+            <p className="text-xs mt-1">Cliquez "Extraire auto" pour detecter vos competences.</p>
+          </div>
+        ) : (
+          Object.entries(grouped).map(([category, catSkills]) => (
+            <div key={category}>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{category}</p>
+              <div className="flex flex-wrap gap-2">
+                {catSkills!.map(skill => (
+                  <div key={skill.id} className="group flex items-center gap-1.5 px-3 py-1.5 bg-secondary text-secondary-foreground rounded-full border border-border/50 hover:border-destructive/30 transition-all">
+                    <span className="font-medium text-sm">{skill.name}</span>
+                    <button onClick={() => handleDelete(skill.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Review Dialog for extracted skills */}
+      <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
+        <DialogContent className="sm:max-w-[550px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" />
+              Competences detectees
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Decochez pour exclure. Les competences decochees ne seront <strong>plus jamais reproposees</strong>.</p>
+          <div className="space-y-4 py-4">
+            {CATEGORIES.map(cat => {
+              const catItems = proposed.filter(s => s.category === cat);
+              if (!catItems.length) return null;
+              return (
+                <div key={cat}>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{cat}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {catItems.map((skill, idx) => {
+                      const globalIdx = proposed.findIndex(s => s.name === skill.name);
+                      return (
+                        <button key={idx} onClick={() => {
+                          setProposed(prev => prev.map((s, i) => i === globalIdx ? { ...s, accepted: !s.accepted } : s));
+                        }}
+                          className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                            skill.accepted
+                              ? "bg-primary/10 text-primary border-primary/30"
+                              : "bg-muted text-muted-foreground border-border line-through opacity-50"
+                          }`}>
+                          {skill.accepted ? <Check className="w-3 h-3 inline mr-1" /> : <X className="w-3 h-3 inline mr-1" />}
+                          {skill.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setReviewOpen(false)}>Annuler</Button>
+            <Button onClick={handleSaveProposed} disabled={createSkill.isPending || proposed.filter(s => s.accepted).length === 0}>
+              {createSkill.isPending ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Ajouter {proposed.filter(s => s.accepted).length} competence{proposed.filter(s => s.accepted).length > 1 ? "s" : ""}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function SkillDialog({ open, onOpenChange, skill, onClose }: any) {
+  // Kept for backward compat but no longer used as primary
+  return null;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   CV IMPORT DIALOG
+   ══════════════════════════════════════════════════════════════════ */
+interface ParsedExp { title: string; company: string; startDate?: string; endDate?: string | null; description?: string; bullets?: string[]; selected?: boolean; }
+
+function CVImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (val: boolean) => void }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [step, setStep] = useState<"input" | "loading" | "review">("input");
+  const [rawText, setRawText] = useState("");
+  const [parsedExps, setParsedExps] = useState<ParsedExp[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const reset = () => { setStep("input"); setRawText(""); setParsedExps([]); setSaving(false); };
+
+  const handleFile = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".pdf")) { toast({ title: "Format non supporte", description: "PDF uniquement.", variant: "destructive" }); return; }
+    setStep("loading");
     try {
-      const { text } = req.body;
-      if (!text) return res.status(400).json({ message: "text required" });
-      
-      if (!openai) {
-        return res.json({
-          title: text.split("\n")[0].slice(0, 50),
-          company: "Unknown",
-          summary: text.slice(0, 200),
-        });
-      }
-
-      const response = await openai.chat.completions.create({
-        model: "llama-3.2-90b-vision-preview",
-        messages: [{
-          role: "user",
-          content: `Parse this raw experience text into structured JSON. Be strict about what is explicitly mentioned. If a field is not mentioned, omit it. Return ONLY valid JSON with these fields: title, company, employmentType, startDate (YYYY-MM-DD format), endDate (YYYY-MM-DD format), location, summary (brief 1-2 sentences), responsibilities (array of 3-5 bullet points), achievements (array of 3-5 bullet points with metrics), skills (array of technical skills), tools (array of software/tools), industry (array of industry tags).
-
-Raw experience text:
-${text}`,
-        }],
-        response_format: { type: "json_object" },
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(",")[1]);
+        reader.onerror = () => reject(new Error("Lecture impossible"));
+        reader.readAsDataURL(file);
       });
+      const res = await fetch("/api/import/cv", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileBase64: base64 }), credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      if (!data.experiences?.length) { toast({ title: "Aucune experience trouvee", variant: "destructive" }); setStep("input"); return; }
+      setParsedExps(data.experiences.map((e: any) => ({ ...e, selected: true }))); setStep("review");
+    } catch (err) { toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" }); setStep("input"); }
+  };
 
-      const parsed = JSON.parse(response.choices[0].message.content || "{}");
-      res.json(parsed);
-    } catch (err: any) {
-      console.error("Parse error", err);
-      res.status(500).json({ message: "Failed to parse experience" });
-    }
-  });
-
-  // Experiences
-  app.get(api.experiences.list.path, async (req, res) => {
-    const exps = await storage.getExperiences();
-    res.json(exps);
-  });
-  app.get(api.experiences.get.path, async (req, res) => {
-    const exp = await storage.getExperience(req.params.id);
-    if (!exp) return res.status(404).json({ message: "Not found" });
-    res.json(exp);
-  });
-  app.post(api.experiences.create.path, async (req, res) => {
+  const handleTextSubmit = async () => {
+    if (!rawText.trim()) return;
+    setStep("loading");
     try {
-      const input = api.experiences.create.input.parse(req.body);
-      const exp = await storage.createExperience(input);
-      res.status(201).json(exp);
-    } catch (e) {
-      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
-      throw e;
-    }
-  });
-  app.put(api.experiences.update.path, async (req, res) => {
-    try {
-      const input = api.experiences.update.input.parse(req.body);
-      const exp = await storage.updateExperience(req.params.id, input);
-      res.json(exp);
-    } catch (e) {
-      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
-      throw e;
-    }
-  });
-  app.delete(api.experiences.delete.path, async (req, res) => {
-    await storage.deleteExperience(req.params.id);
-    res.status(204).end();
-  });
+      const res = await fetch("/api/import/cv", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: rawText }), credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      if (!data.experiences?.length) { toast({ title: "Aucune experience trouvee", variant: "destructive" }); setStep("input"); return; }
+      setParsedExps(data.experiences.map((e: any) => ({ ...e, selected: true }))); setStep("review");
+    } catch (err) { toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" }); setStep("input"); }
+  };
 
-  // Bullets
-  app.get(api.bullets.listByExperience.path, async (req, res) => {
-    const b = await storage.getBulletsByExperience(req.params.experienceId);
-    res.json(b);
-  });
-  app.post(api.bullets.create.path, async (req, res) => {
-    try {
-      const input = api.bullets.create.input.parse(req.body);
-      const expId = req.params.experienceId;
+  const toggleExp = (idx: number) => { setParsedExps(prev => prev.map((e, i) => i === idx ? { ...e, selected: !e.selected } : e)); };
 
-      // Anti-duplicate: check if a very similar bullet already exists
-      const existing = await storage.getBulletsByExperience(expId);
-      const newTextLower = input.text.toLowerCase().trim();
-      const isDuplicate = existing.some(b => {
-        const existingLower = b.text.toLowerCase().trim();
-        // Check if first 50 chars match (likely a duplicate/reformulation)
-        if (newTextLower.slice(0, 50) === existingLower.slice(0, 50)) return true;
-        // Check high overlap (>80% of words in common)
-        const newWords = new Set(newTextLower.split(/\s+/).filter(w => w.length > 3));
-        const existingWords = new Set(existingLower.split(/\s+/).filter(w => w.length > 3));
-        if (newWords.size === 0) return false;
-        const overlap = [...newWords].filter(w => existingWords.has(w)).length;
-        return overlap / newWords.size > 0.8;
+  const handleSaveAll = async () => {
+    const toSave = parsedExps.filter(e => e.selected);
+    if (!toSave.length) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/import/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ experiences: toSave }), credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      toast({ title: `${data.created} experience${data.created > 1 ? "s" : ""} importee${data.created > 1 ? "s" : ""}` });
+      queryClient.invalidateQueries({ queryKey: ["/api/experiences"] });
+      onOpenChange(false); reset();
+    } catch (err) { toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" }); setSaving(false); }
+  };
+
+  const selectedCount = parsedExps.filter(e => e.selected).length;
+
+  return (
+    <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); if (!val) reset(); }}>
+      <DialogTrigger asChild><Button className="gap-2"><Upload className="w-4 h-4" /> Importer un CV</Button></DialogTrigger>
+      <DialogContent className="sm:max-w-[650px] max-h-[85vh] overflow-y-auto">
+        <DialogHeader><DialogTitle className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-primary" /> Importer votre CV</DialogTitle></DialogHeader>
+
+        {step === "input" && (
+          <div className="space-y-4 py-4">
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={e => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); }}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${dragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+            >
+              <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
+              <Upload className="w-8 h-8 mx-auto mb-3 text-muted-foreground" />
+              <p className="font-medium text-sm">Deposez votre CV ici ou cliquez</p>
+              <p className="text-xs text-muted-foreground mt-1">PDF uniquement</p>
+            </div>
+            <div className="flex items-center gap-3"><div className="flex-1 h-px bg-border" /><span className="text-xs text-muted-foreground">ou collez le texte</span><div className="flex-1 h-px bg-border" /></div>
+            <Textarea value={rawText} onChange={e => setRawText(e.target.value)} placeholder="Collez le contenu de votre CV ou profil LinkedIn ici..." className="h-32 text-sm" />
+            <DialogFooter><Button onClick={handleTextSubmit} disabled={!rawText.trim()}>Analyser</Button></DialogFooter>
+          </div>
+        )}
+
+        {step === "loading" && (
+          <div className="py-12 text-center space-y-4">
+            <RefreshCw className="w-8 h-8 animate-spin mx-auto text-primary" />
+            <p className="font-medium">Analyse en cours...</p>
+          </div>
+        )}
+
+        {step === "review" && (
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">{parsedExps.length} experience{parsedExps.length > 1 ? "s" : ""} trouvee{parsedExps.length > 1 ? "s" : ""}. Decochez celles que vous ne voulez pas.</p>
+            <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+              {parsedExps.map((exp, idx) => (
+                <div key={idx} onClick={() => toggleExp(idx)} className={`p-4 rounded-lg border cursor-pointer transition-all ${exp.selected ? "border-primary/50 bg-primary/5" : "border-border opacity-50"}`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center mt-0.5 shrink-0 ${exp.selected ? "bg-primary border-primary" : "border-border"}`}>
+                      {exp.selected && <Check className="w-3 h-3 text-primary-foreground" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sm">{exp.title}</div>
+                      <div className="text-sm text-muted-foreground">{exp.company}</div>
+                      {exp.startDate && <div className="text-xs text-muted-foreground mt-1">{exp.startDate} - {exp.endDate || "Present"}</div>}
+                      {exp.bullets && exp.bullets.length > 0 && (
+                        <div className="mt-2 space-y-1">{exp.bullets.map((b, i) => <div key={i} className="text-xs text-foreground/60 pl-3 border-l-2 border-border">{b}</div>)}</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <DialogFooter className="flex gap-2 pt-4">
+              <Button variant="outline" onClick={() => { setStep("input"); setParsedExps([]); }}>Retour</Button>
+              <Button onClick={handleSaveAll} disabled={saving || selectedCount === 0}>
+                {saving ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Import...</> : `Importer ${selectedCount} experience${selectedCount > 1 ? "s" : ""}`}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   FORMATIONS SECTION
+   ══════════════════════════════════════════════════════════════════ */
+function FormationsSection() {
+  const [formations, setFormations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addOpen, setAddOpen] = useState(false);
+  const [school, setSchool] = useState("");
+  const [degree, setDegree] = useState("");
+  const [year, setYear] = useState("");
+  const { toast } = useToast();
+
+  const fetchFormations = async () => {
+    try {
+      const res = await fetch("/api/formations", { credentials: "include" });
+      if (res.ok) setFormations(await res.json());
+    } catch {} finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchFormations(); }, []);
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!school.trim() || !degree.trim()) return;
+    try {
+      await fetch("/api/formations", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ school: school.trim(), degree: degree.trim(), year: year.trim() || null }),
+        credentials: "include",
       });
-
-      if (isDuplicate) {
-        console.log("[BULLETS] Duplicate detected, skipping:", input.text.slice(0, 60));
-        return res.status(409).json({ message: "Un bullet similaire existe deja pour cette experience." });
-      }
-
-      const bullet = await storage.createBullet({ ...input, experienceId: expId });
-      getEmbedding(bullet.text).then(emb => storage.updateBulletEmbedding(bullet.id, emb));
-      res.status(201).json(bullet);
-    } catch (e) {
-      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
-      throw e;
+      setSchool(""); setDegree(""); setYear(""); setAddOpen(false);
+      fetchFormations();
+      toast({ title: "Formation ajoutee" });
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
     }
-  });
-  app.put(api.bullets.update.path, async (req, res) => {
+  };
+
+  const handleDelete = async (id: string) => {
+    await fetch(`/api/formations/${id}`, { method: "DELETE", credentials: "include" });
+    fetchFormations();
+  };
+
+  if (loading) return null;
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+          <GraduationCap className="w-3.5 h-3.5" /> Formation
+        </h2>
+        <Dialog open={addOpen} onOpenChange={setAddOpen}>
+          <DialogTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-7 text-xs"><Plus className="w-3 h-3 mr-1" /> Ajouter</Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader><DialogTitle>Ajouter une formation</DialogTitle></DialogHeader>
+            <form onSubmit={handleAdd} className="space-y-4 py-4">
+              <div className="space-y-2"><Label>Ecole</Label><Input required value={school} onChange={e => setSchool(e.target.value)} placeholder="Web School Factory" /></div>
+              <div className="space-y-2"><Label>Diplome</Label><Input required value={degree} onChange={e => setDegree(e.target.value)} placeholder="Master en Digital Design" /></div>
+              <div className="space-y-2"><Label>Annee</Label><Input value={year} onChange={e => setYear(e.target.value)} placeholder="2019" /></div>
+              <DialogFooter><Button type="submit">Ajouter</Button></DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {formations.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Aucune formation ajoutee.</p>
+      ) : (
+        <div className="space-y-2">
+          {formations.map((f: any) => (
+            <div key={f.id} className="group flex items-center justify-between p-3 bg-card rounded-lg border border-border/50">
+              <div>
+                <p className="text-sm font-medium">{f.degree}</p>
+                <p className="text-xs text-muted-foreground">{f.school}{f.year ? ` · ${f.year}` : ""}</p>
+              </div>
+              <button onClick={() => handleDelete(f.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   LANGUAGES SECTION
+   ══════════════════════════════════════════════════════════════════ */
+function LanguagesSection() {
+  const [langs, setLangs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addOpen, setAddOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [level, setLevel] = useState("");
+  const { toast } = useToast();
+
+  const LANG_SUGGESTIONS = ["Francais", "Anglais", "Espagnol", "Allemand", "Italien", "Portugais", "Chinois", "Arabe", "Japonais"];
+  const LEVELS = ["Langue maternelle", "Courant (C1)", "Professionnel (B2)", "Intermediaire (B1)", "Scolaire", "Notions"];
+
+  const fetchLangs = async () => {
     try {
-      const input = api.bullets.update.input.parse(req.body);
-      const bullet = await storage.updateBullet(req.params.id, input);
-      if (input.text) {
-        getEmbedding(input.text).then(emb => storage.updateBulletEmbedding(bullet.id, emb));
-      }
-      res.json(bullet);
-    } catch (e) {
-      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
-      throw e;
-    }
-  });
-  app.delete(api.bullets.delete.path, async (req, res) => {
-    await storage.deleteBullet(req.params.id);
-    res.status(204).end();
-  });
-  app.post(api.bullets.reEmbedAll.path, async (req, res) => {
-    const all = await storage.getAllBullets();
-    let count = 0;
-    for (const b of all) {
-      const emb = await getEmbedding(b.text);
-      await storage.updateBulletEmbedding(b.id, emb);
-      count++;
-    }
-    res.json({ success: true, count });
-  });
+      const res = await fetch("/api/languages", { credentials: "include" });
+      if (res.ok) setLangs(await res.json());
+    } catch {} finally { setLoading(false); }
+  };
 
-  // Skills
-  app.get(api.skills.list.path, async (req, res) => {
-    const s = await storage.getSkills();
-    res.json(s);
-  });
-  app.post(api.skills.create.path, async (req, res) => {
+  useEffect(() => { fetchLangs(); }, []);
+
+  const handleAdd = async () => {
+    if (!name.trim()) return;
     try {
-      const input = api.skills.create.input.parse(req.body);
-      const skill = await storage.createSkill(input);
-      res.status(201).json(skill);
-    } catch (e) {
-      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
-      throw e;
-    }
-  });
-  app.put(api.skills.update.path, async (req, res) => {
-    try {
-      const input = api.skills.update.input.parse(req.body);
-      const skill = await storage.updateSkill(req.params.id, input);
-      res.json(skill);
-    } catch (e) {
-      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
-      throw e;
-    }
-  });
-  app.delete(api.skills.delete.path, async (req, res) => {
-    await storage.deleteSkill(req.params.id);
-    res.status(204).end();
-  });
-
-  // Extract skills from all experiences + bullets via LLM
-  app.post("/api/skills/extract", async (req, res) => {
-    try {
-      const allExps = await storage.getExperiences();
-      const allBullets = await storage.getAllBullets();
-      const existingSkills = await storage.getSkills();
-
-      if (allExps.length === 0) {
-        return res.status(400).json({ message: "Ajoutez des experiences d'abord." });
-      }
-
-      // Build a summary of all experiences + bullets
-      const expSummaries = allExps.map(exp => {
-        const expBullets = allBullets.filter(b => b.experienceId === exp.id);
-        return `${exp.title} chez ${exp.company}:\n${exp.description || ""}\n${expBullets.map(b => "- " + b.text).join("\n")}`;
-      }).join("\n\n");
-
-      const existingNames = existingSkills.map(s => s.name.toLowerCase());
-
-      if (!openai) {
-        return res.json({ skills: [] });
-      }
-
-      const prompt = `Analyse ces experiences professionnelles et extrais TOUTES les competences (skills).
-
-EXPERIENCES :
-${expSummaries.slice(0, 6000)}
-
-COMPETENCES DEJA ENREGISTREES (ne pas dupliquer) :
-${existingNames.join(", ") || "aucune"}
-
-REGLES :
-- Extrais les competences explicites ET implicites
-- Classe chaque competence dans UNE categorie parmi : "Outils", "Methodologies", "Soft Skills", "Domaines", "Techniques"
-- "Outils" = logiciels, apps, plateformes (Figma, Jira, Salesforce...)
-- "Methodologies" = methodes de travail (User Research, Design Thinking, Agile, A/B Testing...)
-- "Soft Skills" = competences humaines (Leadership, Communication, Gestion de stakeholders...)
-- "Domaines" = expertises metier (E-commerce, CRM, B2B, Luxury, Retail...)
-- "Techniques" = competences techniques (Design System, Prototypage, Data Visualization...)
-- NE PAS inclure les competences deja enregistrees
-- Max 20 nouvelles competences
-- Nom court (1-3 mots max)
-
-Reponds UNIQUEMENT en JSON valide :
-{
-  "skills": [
-    {"name": "...", "category": "Outils"},
-    {"name": "...", "category": "Methodologies"}
-  ]
-}`;
-
-      const response = await openai.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.3,
+      await fetch("/api/languages", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), level: level || null }),
+        credentials: "include",
       });
-
-      let result;
-      try {
-        result = JSON.parse(response.choices[0].message.content || "{}");
-      } catch {
-        return res.json({ skills: [] });
-      }
-
-      const extracted = result.skills || [];
-      // Filter out duplicates
-      const filtered = extracted.filter((s: any) =>
-        s.name && !existingNames.includes(s.name.toLowerCase())
-      );
-
-      console.log("[SKILLS] Extracted", filtered.length, "new skills");
-      res.json({ skills: filtered });
-    } catch (err: any) {
-      console.error("[SKILLS] Extract error:", err.message);
-      res.json({ skills: [] });
+      setName(""); setLevel(""); setAddOpen(false);
+      fetchLangs();
+      toast({ title: "Langue ajoutee" });
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
     }
-  });
-
-  // ══════════════════════════════════════════════════════════════
-  // PROFILE
-  // ══════════════════════════════════════════════════════════════
-  app.get("/api/profile", async (_req, res) => {
-    const p = await storage.getProfile();
-    res.json(p || { name: "", title: "", summary: null, targetRole: null });
-  });
-  app.put("/api/profile", async (req, res) => {
-    try {
-      const p = await storage.upsertProfile(req.body);
-      res.json(p);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  // Role target check — analyze library against a target role
-  app.post("/api/profile/check-role", async (req, res) => {
-    try {
-      const { role } = req.body;
-      if (!role) return res.status(400).json({ message: "role required" });
-
-      const allExps = await storage.getExperiences();
-      const allBullets = await storage.getAllBullets();
-
-      if (allExps.length === 0) return res.json({ summary: "Ajoutez des experiences d'abord.", dimensions: [] });
-
-      if (!openai) return res.json({ summary: "Service IA non configure.", dimensions: [] });
-
-      const expSummaries = allExps.map(exp => {
-        const expBullets = allBullets.filter(b => b.experienceId === exp.id);
-        return `${exp.title} chez ${exp.company}:\n${expBullets.map(b => `- ${b.text} [tags: ${(b.tags || []).join(", ")}]`).join("\n")}`;
-      }).join("\n\n");
-
-      const prompt = `Analyse ce profil par rapport au poste vise : "${role}".
-
-EXPERIENCES :
-${expSummaries.slice(0, 5000)}
-
-Evalue 5-6 dimensions cles pour ce type de poste. Pour chaque dimension :
-- score de 0 a 100
-- status : "fort" (70+), "correct" (40-69), "leger" (15-39), "absent" (0-14)
-- bullets : combien de bullets couvrent cette dimension
-- Si le score est faible, propose un "tip" : soit un pont avec une experience existante, soit un constat de manque
-
-Termine par un "summary" : 2 phrases max, ton direct, qui resume les forces et les trous.
-
-Reponds UNIQUEMENT en JSON :
-{
-  "summary": "...",
-  "dimensions": [
-    {"name": "...", "score": 80, "status": "fort", "bullets": 3, "tip": null},
-    {"name": "...", "score": 20, "status": "leger", "bullets": 1, "tip": "Ton experience X peut se reformuler sous cet angle."}
-  ]
-}`;
-
-      const response = await openai.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.4,
-      });
-
-      let result;
-      try { result = JSON.parse(response.choices[0].message.content || "{}"); }
-      catch { result = { summary: "Impossible d'analyser.", dimensions: [] }; }
-
-      res.json(result);
-    } catch (err: any) {
-      console.error("[CHECK-ROLE] Error:", err.message);
-      res.json({ summary: "Erreur lors de l'analyse.", dimensions: [] });
-    }
-  });
-
-  // ══════════════════════════════════════════════════════════════
-  // FORMATIONS
-  // ══════════════════════════════════════════════════════════════
-  app.get("/api/formations", async (_req, res) => {
-    const f = await storage.getFormations();
-    res.json(f);
-  });
-  app.post("/api/formations", async (req, res) => {
-    try {
-      const { school, degree, year } = req.body;
-      if (!school || !degree) return res.status(400).json({ message: "school and degree required" });
-      const f = await storage.createFormation({ school, degree, year });
-      res.status(201).json(f);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-  app.delete("/api/formations/:id", async (req, res) => {
-    await storage.deleteFormation(req.params.id);
-    res.status(204).end();
-  });
-
-  // ══════════════════════════════════════════════════════════════
-  // LANGUAGES
-  // ══════════════════════════════════════════════════════════════
-  app.get("/api/languages", async (_req, res) => {
-    const l = await storage.getLanguages();
-    res.json(l);
-  });
-  app.post("/api/languages", async (req, res) => {
-    try {
-      const { name, level } = req.body;
-      if (!name) return res.status(400).json({ message: "name required" });
-      const l = await storage.createLanguage({ name, level });
-      res.status(201).json(l);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-  app.delete("/api/languages/:id", async (req, res) => {
-    await storage.deleteLanguage(req.params.id);
-    res.status(204).end();
-  });
-
-  // ══════════════════════════════════════════════════════════════
-  // SETTINGS — reset all data
-  // ══════════════════════════════════════════════════════════════
-  app.post("/api/settings/reset", async (_req, res) => {
-    try {
-      const client = await (await import("./db")).pool.connect();
-      try {
-        await client.query("DELETE FROM runs");
-        await client.query("DELETE FROM job_posts");
-        await client.query("DELETE FROM bullets");
-        await client.query("DELETE FROM experiences");
-        await client.query("DELETE FROM skills");
-        await client.query("DELETE FROM formations");
-        await client.query("DELETE FROM languages");
-        await client.query("DELETE FROM profile");
-        console.log("[SETTINGS] All data reset");
-        res.json({ success: true });
-      } finally {
-        client.release();
-      }
-    } catch (err: any) {
-      console.error("[SETTINGS] Reset failed:", err.message);
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  // Runs history
-  app.get("/api/runs", async (_req, res) => {
-    const allRuns = await storage.getRuns();
-    res.json(allRuns);
-  });
-
-  // ══════════════════════════════════════════════════════════════
-  // EXTRACT AXES — parse description + bullets into mission axes
-  // ══════════════════════════════════════════════════════════════
-  app.post("/api/experiences/:id/extract-axes", async (req, res) => {
-    try {
-      const exp = await storage.getExperience(req.params.id);
-      if (!exp) return res.status(404).json({ message: "Experience not found" });
-
-      const existingBullets = await storage.getBulletsByExperience(exp.id);
-      const bulletTexts = existingBullets.map(b => `- ${b.text}`).join("\n");
-
-      if (!openai || (!exp.description && existingBullets.length === 0)) {
-        return res.json({ axes: [] });
-      }
-
-      const prompt = `Analyse cette experience et identifie les grands AXES de mission / perimetres de travail distincts.
-
-EXPERIENCE :
-- Poste : ${exp.title}
-- Entreprise : ${exp.company}
-- Description : ${exp.description || "Aucune"}
-${existingBullets.length > 0 ? `\nBULLETS EXISTANTS :\n${bulletTexts}` : ""}
-
-REGLES :
-- Un axe = un projet, un produit, ou un scope de responsabilite distinct (ex: "CRM B2B", "Refonte page produit", "Accompagnement UX equipes")
-- Une competence transversale (design system, user research, figma) n'est PAS un axe
-- Max 5 axes
-- Classe-les du plus important au moins important (temps passe, impact)
-- Si la description est vague ou courte, propose 2-3 axes generiques bases sur le titre du poste
-
-Reponds en JSON : {"axes": [{"text": "description courte de l'axe", "source": "description|bullet|inferred"}]}`;
-
-      const response = await openai.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.3,
-      });
-
-      let result;
-      try {
-        result = JSON.parse(response.choices[0].message.content || "{}");
-      } catch { result = { axes: [] }; }
-
-      res.json({ axes: (result.axes || []).slice(0, 5) });
-    } catch (err: any) {
-      console.error("[AXES] Error:", err.message);
-      res.json({ axes: [] });
-    }
-  });
-
-  // ══════════════════════════════════════════════════════════════
-  // GAP DETECTION — analyze experience + bullets, find what's missing
-  // ══════════════════════════════════════════════════════════════
-  app.post("/api/experiences/:id/detect-gaps", async (req, res) => {
-    try {
-      const exp = await storage.getExperience(req.params.id);
-      if (!exp) return res.status(404).json({ message: "Experience not found" });
-
-      const existingBullets = await storage.getBulletsByExperience(exp.id);
-      const bulletTexts = existingBullets.map(b => `- ${b.text} [tags: ${(b.tags || []).join(", ")}]`).join("\n");
-
-      if (!openai) {
-        return res.json({ gaps: [
-          { id: "g1", dimension: "scope", question: "Tu travaillais avec combien de personnes ?", priority: 1 },
-          { id: "g2", dimension: "impact", question: "Quel resultat concret ca a donne ?", priority: 2 },
-        ]});
-      }
-
-      const prompt = `Tu analyses un CV pour trouver ce qui MANQUE. Tu dois identifier les lacunes et poser UNE question par lacune.
-
-ETAPE 1 — IDENTIFIER LES MISSIONS/PERIMETRES DISTINCTS
-Regarde la description et les bullets. S'il y a plusieurs MISSIONS ou PERIMETRES de travail differents (ex: CRM + B2B, app mobile + back-office, produit client + produit interne), identifie-les.
-ATTENTION : une competence transversale (design system, user research, figma) n'est PAS un perimetre distinct. Un perimetre = un projet, un produit, ou un scope de responsabilite separe.
-
-EXPERIENCE :
-- Poste : ${exp.title}
-- Entreprise : ${exp.company}
-- Description : ${exp.description || "Aucune"}
-${existingBullets.length > 0 ? `\nBULLETS EXISTANTS :\n${bulletTexts}` : "\nAucun bullet existant."}
-
-ETAPE 2 — TROUVER LES LACUNES
-Pour CHAQUE mission/perimetre, verifie ces dimensions. PRIORISE les dimensions qui donnent des CHIFFRES :
-1. SCOPE — combien ? (utilisateurs, marques, boutiques, equipe, budget)
-2. IMPACT — quel resultat mesurable ? (%, temps gagne, avant/apres, adoption)
-3. CONTEXTE — pourquoi ? quel probleme concret a resoudre ?
-4. METHODE — comment ? quelle approche specifique ?
-5. COLLABORATION — avec qui ? combien de personnes ?
-6. DIFFICULTES — quelles contraintes concretes ?
-
-REGLES :
-- PRIORISE scope et impact (ce sont les dimensions qui produisent les meilleurs bullets CV)
-- Si plusieurs missions, couvre TOUS les perimetres
-- Max 4 questions au total
-- Chaque question DEMANDE UN CHIFFRE ou UN FAIT CONCRET (pas "parle-moi de...")
-- Questions en 15 mots MAX, tutoiement, ton direct
-- Si tout est couvert AVEC des chiffres, retourne un tableau vide
-
-BONS EXEMPLES :
-- "Le CRM, c'est utilise par combien de marques ?" (demande un chiffre)
-- "Le B2B, ca a remplace quel process ? Ca prenait combien de temps avant ?" (demande un avant/apres)
-- "Tu bossais avec combien de devs et PMs sur le CRM ?" (demande un chiffre)
-
-MAUVAIS EXEMPLES :
-- "Parle-moi du CRM" (trop vague)
-- "Comment c'etait ?" (pas de direction)
-
-Reponds UNIQUEMENT en JSON valide :
-{"gaps": [{"id": "g1", "dimension": "scope|impact|contexte|methode|collaboration|difficultes", "question": "...", "priority": 1}]}`;
-
-      const response = await openai.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.5,
-      });
-
-      let result;
-      try {
-        result = JSON.parse(response.choices[0].message.content || "{}");
-      } catch {
-        result = { gaps: [] };
-      }
-
-      res.json(result);
-    } catch (err: any) {
-      console.error("[GAPS] Error:", err.message);
-      res.json({ gaps: [] });
-    }
-  });
-
-  // ══════════════════════════════════════════════════════════════
-  // MICRO-THREAD — follow-up + progressive reformulation + auto-tags
-  // ══════════════════════════════════════════════════════════════
-  app.post("/api/experiences/:id/enrich", async (req, res) => {
-    try {
-      const exp = await storage.getExperience(req.params.id);
-      if (!exp) return res.status(404).json({ message: "Experience not found" });
-
-      const { dimension, question, answer, previousAnswers } = req.body;
-      if (!answer) return res.status(400).json({ message: "answer required" });
-
-      // Build conversation history for micro-thread
-      const history = previousAnswers || [];
-      const allAnswers = [...history, answer].join(" | ");
-
-      if (!openai) {
-        return res.json({
-          bullet: answer,
-          tags: [dimension || "general"],
-          followUp: null,
-          isComplete: true,
-        });
-      }
-
-      // Count how many exchanges already happened
-      const exchangeCount = history.length;
-      const userSaysIDontKnow = /je (ne )?sais? pas|j'?en sais rien|aucune idee|pas de chiffre|je me souviens? pas/i.test(answer);
-
-      const prompt = `Tu es un expert en redaction CV. Tu transformes de la matiere brute en bullets CV optimises pour ATS et recruteurs.
-
-EXPERIENCE :
-- Poste : ${exp.title}
-- Entreprise : ${exp.company}
-- Description : ${exp.description || "Aucune"}
-- Echanges precedents : ${exchangeCount}
-${userSaysIDontKnow ? "- L'utilisateur ne connait pas certains chiffres. Accepte.\n" : ""}
-MATIERE BRUTE :
-${allAnswers}
-
-TU FAIS 3 CHOSES :
-
-1. REFORMULE en format CV optimise
-- Chaque bullet : [Verbe d'action] + [quoi de specifique] + [contexte/echelle] + [impact si mentionne]
-- 150-200 caracteres MAX par bullet
-- Verbes forts : Pilote, Structure, Conçoit, Deploie, Definit, Refond, Harmonise...
-- Garde TOUS les elements cles de la matiere (ne supprime pas un element sur 4)
-- Garde les chiffres s'il y en a
-- N'invente AUCUN impact ou chiffre non mentionne par l'utilisateur
-- Impact qualitatif OK ("assurant la coherence", "facilitant l'onboarding")
-- En francais
-
-2. CREE des bullets SUPPLEMENTAIRES si justifie
-- Si la matiere couvre plusieurs aspects riches → 2-3 bullets distincts
-- Chaque bullet couvre un angle different (pas de redondance)
-- Ex : "vision produit + DA + refonte parcours" peut faire 1 bullet principal + 1 bullet "alignement DA et coherence visuelle"
-- Max 3 bullets au total pour un axe
-- Si la matiere est simple → 1 seul bullet suffit
-
-3. EVALUE sur 5 criteres
-- CLARTE : comprehensible en 5 secondes ?
-- CONTEXTE : on sait pour qui/quoi ?
-- SCOPE : ordre de grandeur (equipe, users, marches) ?
-- IMPACT : consequence visible ? (qualitatif accepte)
-- COMPLETUDE : la matiere est suffisante pour un bon bullet ?
-
-RELANCE :
-${exchangeCount >= 2 || userSaysIDontKnow ? "PAS de relance. isComplete = true." : "Si 1 critere manque clairement, pose UNE question courte (10 mots max) sur CE critere. Ne demande jamais un % exact. isComplete = false. Si tout est OK, pas de question. isComplete = true."}
-
-EXEMPLES :
-
-Matiere : "Premier designer sur le CRM Accor : structuration du produit, definition de la vision, alignement de la direction artistique et refonte des parcours pour assurer une coherence globale"
-→ Bullet 1 : "Premier designer CRM Accor : structuration produit, definition de la vision et refonte des parcours pour une coherence globale"
-→ Bullet 2 : "Alignement de la direction artistique du CRM avec les standards de la marque ALL"
-→ Question : "C'etait pour combien d'utilisateurs ou de marches ?"
-
-Matiere : "Mise en place des fondations loyalty B2B pour ALL for Business, landing pages, espace client, interfaces admin, 4M utilisateurs"
-→ Bullet 1 : "Conception des fondations loyalty B2B pour ALL for Business (4M utilisateurs) : landing pages, espace client et interfaces d'administration"
-→ Pas de question (scope et contexte presents)
-
-TAGS : 3-6 mots-cles specifiques au contenu (CRM, vision-produit, direction-artistique, loyalty-B2B, landing-pages...)
-
-JSON :
-{
-  "bullets": [{"bullet": "...", "tags": ["..."]}],
-  "followUp": "..." ou null,
-  "isComplete": true ou false,
-  "evaluation": {"clarte": true/false, "contexte": true/false, "scope": true/false, "impact": true/false, "completude": true/false}
-}`;
-
-      const response = await openai.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.4,
-      });
-
-      let result;
-      try {
-        result = JSON.parse(response.choices[0].message.content || "{}");
-      } catch {
-        result = { bullets: [{ bullet: answer, tags: [dimension || "general"] }], followUp: null, isComplete: true };
-      }
-
-      // Handle new format (bullets array) with backward compat
-      const bulletsArray = result.bullets || (result.bullet ? [{ bullet: result.bullet, tags: result.tags }] : [{ bullet: answer, tags: [dimension || "general"] }]);
-      const firstBullet = bulletsArray[0] || { bullet: answer, tags: [dimension || "general"] };
-      const extraBullets = bulletsArray.slice(1);
-
-      // Ensure tags is always an array
-      if (!Array.isArray(firstBullet.tags)) firstBullet.tags = [dimension || "general"];
-
-      // Return first bullet in standard format + extra bullets if multi-topic
-      res.json({
-        bullet: firstBullet.bullet,
-        tags: firstBullet.tags,
-        followUp: result.followUp || null,
-        isComplete: result.isComplete !== false,
-        extraBullets: extraBullets.length > 0 ? extraBullets : undefined,
-        evaluation: result.evaluation || null,
-      });
-    } catch (err: any) {
-      console.error("[ENRICH] Error:", err.message);
-      res.json({ bullet: req.body.answer || "", tags: ["general"], followUp: null, isComplete: true });
-    }
-  });
-
-  // ══════════════════════════════════════════════════════════════
-  // TAG + EVALUATE — user writes bullet, LLM tags + evaluates
-  // ══════════════════════════════════════════════════════════════
-  app.post("/api/experiences/:id/tag-evaluate", async (req, res) => {
-    try {
-      const exp = await storage.getExperience(req.params.id);
-      if (!exp) return res.status(404).json({ message: "Experience not found" });
-
-      const { text } = req.body;
-      if (!text || !text.trim()) return res.status(400).json({ message: "text required" });
-
-      if (!openai) {
-        return res.json({ tags: ["general"], evaluation: null, suggestion: null });
-      }
-
-      const prompt = `Tu recois un bullet CV. Tu fais 3 choses SIMPLES :
-
-1. TAGGER avec 3-6 mots-cles pour le matching ATS
-   - Mots-cles que les recruteurs et ATS utilisent REELLEMENT (product-design, user-research, design-system, CRM, B2B, stakeholder-management, prototyping, figma, user-flows, A/B-testing...)
-   - Specifiques au contenu (pas de tags generiques comme "travail" ou "experience")
-   
-2. EVALUER sur 5 criteres (true/false)
-   - clarte : comprehensible en 5 secondes ?
-   - contexte : on sait pour qui/quoi/dans quel cadre ?
-   - scope : ordre de grandeur (equipe, users, marches) present ?
-   - impact : consequence visible (qualitative OK) ?
-   - completude : matiere suffisante ?
-
-3. SUGGERER une amelioration (optionnel)
-   - Si un critere est false → UNE suggestion courte (15 mots max)
-   - Si tout est true → suggestion = null
-   - Ne demande JAMAIS un % ou KPI exact
-
-EXPERIENCE : ${exp.title} chez ${exp.company}
-BULLET : ${text.trim()}
-
-JSON uniquement :
-{
-  "tags": ["tag1", "tag2"],
-  "evaluation": {"clarte": true, "contexte": true, "scope": false, "impact": true, "completude": true},
-  "suggestion": "Tu pourrais preciser le nombre d'equipes concernees" ou null
-}`;
-
-      const response = await openai.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.2,
-      });
-
-      let result;
-      try { result = JSON.parse(response.choices[0].message.content || "{}"); }
-      catch { result = { tags: ["general"], evaluation: null, suggestion: null }; }
-
-      res.json({
-        tags: Array.isArray(result.tags) ? result.tags : ["general"],
-        evaluation: result.evaluation || null,
-        suggestion: result.suggestion || null,
-      });
-    } catch (err: any) {
-      console.error("[TAG-EVAL] Error:", err.message);
-      res.json({ tags: ["general"], evaluation: null, suggestion: null });
-    }
-  });
-
-  // Tailor — Pipeline V2
-  app.post(api.tailor.generate.path, async (req, res) => {
-    try {
-      const { url, text, mode, outputLength, customMaxChars, introMaxChars, bodyMaxChars } = api.tailor.generate.input.parse(req.body);
-
-      // Normalize LinkedIn URL
-      const normalizedUrl = url ? normalizeLinkedInUrl(url) : undefined;
-      let effectiveJobText = text || "";
-
-      if (!effectiveJobText && !normalizedUrl) {
-        return res.status(400).json({ message: "Please provide a job description or URL." });
-      }
-
-      // Scrape URL if needed
-      if (!effectiveJobText && normalizedUrl) {
-        try {
-          const jinaUrl = `https://r.jina.ai/${normalizedUrl}`;
-          const jinaRes = await fetch(jinaUrl, {
-            headers: { "Accept": "text/plain", "X-Return-Format": "text" },
-            signal: AbortSignal.timeout(15000),
-          });
-          if (jinaRes.ok) {
-            effectiveJobText = (await jinaRes.text()).slice(0, 6000).trim();
-            console.log("[TAILOR] Scraped", effectiveJobText.length, "chars");
-          }
-        } catch (e: any) {
-          console.warn("[TAILOR] Scrape failed:", e.message);
-        }
-      }
-
-      if (!effectiveJobText) {
-        effectiveJobText = `Job posting at: ${normalizedUrl}. Could not retrieve content. Please paste the job description.`;
-      }
-
-      if (!openai) {
-        return res.status(500).json({ message: "AI service not configured. Please set GROQ_API_KEY." });
-      }
-
-      // Load all data
-      const allExps = await storage.getExperiences();
-      const allBullets = await storage.getAllBullets();
-      const allSkills = await storage.getSkills();
-      const profileData = await storage.getProfile();
-      const formations = await storage.getFormations();
-      const langs = await storage.getLanguages();
-
-      if (allExps.length === 0) {
-        return res.status(400).json({ message: "Your CV library is empty. Please add experiences first." });
-      }
-
-      // Run Pipeline V2
-      const result = await runTailorPipeline({
-        jobText: effectiveJobText,
-        mode,
-        outputLength,
-        customMaxChars,
-        introMaxChars,
-        bodyMaxChars,
-        allExperiences: allExps,
-        allBullets: allBullets,
-        allSkills: allSkills,
-        profile: profileData ? { name: profileData.name, title: profileData.title, summary: profileData.summary } : undefined,
-        formations,
-        languages: langs,
-      }, openai);
-
-      // Save job post
-      const jobPost = await storage.createJobPost({
-        url: normalizedUrl,
-        rawText: effectiveJobText,
-        extractedJson: result.report as any,
-      });
-
-      // Save run
-      const run = await storage.createRun({
-        jobPostId: jobPost.id,
-        mode,
-        selectedExperienceIds: result.selectedExperienceIds,
-        selectedBulletIds: result.selectedBulletIds,
-        outputCvText: result.cvText,
-        outputReportJson: result.report as any,
-      });
-
-      res.status(201).json(run);
-    } catch (e) {
-      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
-      console.error("[TAILOR] Unexpected error:", e);
-      res.status(500).json({ message: "An unexpected error occurred during CV generation." });
-    }
-  });
-
-  app.get(api.tailor.getRun.path, async (req, res) => {
-    const run = await storage.getRun(req.params.id);
-    if (!run) return res.status(404).json({ message: "Not found" });
-    res.json(run);
-  });
-
-  return httpServer;
+  };
+
+  const handleDelete = async (id: string) => {
+    await fetch(`/api/languages/${id}`, { method: "DELETE", credentials: "include" });
+    fetchLangs();
+  };
+
+  if (loading) return null;
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+          <Globe className="w-3.5 h-3.5" /> Langues
+        </h2>
+        <Dialog open={addOpen} onOpenChange={(val) => { setAddOpen(val); if (!val) { setName(""); setLevel(""); } }}>
+          <DialogTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-7 text-xs"><Plus className="w-3 h-3 mr-1" /> Ajouter</Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[420px]">
+            <DialogHeader><DialogTitle>Ajouter une langue</DialogTitle></DialogHeader>
+            <div className="space-y-5 py-4">
+              <div className="space-y-2">
+                <Label>Langue</Label>
+                <div className="flex flex-wrap gap-2">
+                  {LANG_SUGGESTIONS.map(l => (
+                    <button key={l} type="button" onClick={() => setName(name === l ? "" : l)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${name === l ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:border-primary/50"}`}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                <Input value={name} onChange={e => setName(e.target.value)} placeholder="Autre langue..." className="mt-2 h-8 text-sm" />
+              </div>
+              <div className="space-y-2">
+                <Label>Niveau</Label>
+                <div className="flex flex-wrap gap-2">
+                  {LEVELS.map(l => (
+                    <button key={l} type="button" onClick={() => setLevel(level === l ? "" : l)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all ${level === l ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:border-primary/50"}`}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <DialogFooter><Button onClick={handleAdd} disabled={!name.trim()}>Ajouter</Button></DialogFooter>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {langs.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Aucune langue ajoutee.</p>
+      ) : (
+        <div className="space-y-2">
+          {langs.map((l: any) => (
+            <div key={l.id} className="group flex items-center justify-between p-3 bg-card rounded-lg border border-border/50">
+              <div className="flex items-center gap-3">
+                <span className="font-medium text-sm">{l.name}</span>
+                {l.level && <span className="text-xs text-muted-foreground">{l.level}</span>}
+              </div>
+              <button onClick={() => handleDelete(l.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
