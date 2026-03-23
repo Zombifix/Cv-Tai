@@ -26,7 +26,7 @@ interface Gap { id: string; dimension: string; question: string; priority: numbe
 function getDepthInfo(bulletCount: number) {
   if (bulletCount === 0) return { label: "Vide", color: "#C45050", bg: "#FEF0EF", dots: 0 };
   if (bulletCount <= 2) return { label: "Ebauche", color: "#B8941F", bg: "#FEF9EC", dots: 1 };
-  if (bulletCount <= 3) return { label: "Structure", color: "#4D8A5E", bg: "#EEF5EF", dots: 3 };
+  if (bulletCount <= 4) return { label: "Structure", color: "#4D8A5E", bg: "#EEF5EF", dots: 3 };
   return { label: "Complet", color: "#2D7A3D", bg: "#E0F0E0", dots: 5 };
 }
 
@@ -325,8 +325,18 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
   const [processing, setProcessing] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
 
-  // Evaluate all bullets for list view
-  const [bulletEvals, setBulletEvals] = useState<Record<string, { eval: Record<string, boolean>; reasons: Record<string, string>; suggestion: string | null }>>({});
+  // Quick deterministic check (no LLM, instant)
+  function quickCheck(text: string, tags: string[]): { hasScope: boolean; hasImpact: boolean; goodLength: boolean; hasTags: boolean } {
+    const hasNumber = /\d+/.test(text);
+    const scopeWords = /(\d+\s*(equipe|personne|utilisateur|membre|marque|marche|boutique|pays|client|interview|test))|pour\s+\d+|(\d+\+?\s)/i.test(text);
+    const impactWords = /(impact|amelior|optimis|structur|redon|refon|deploie|coherence|facilitant|reduisant|augmentant|pilotage|conception|mise en place)/i.test(text);
+    return {
+      hasScope: hasNumber || scopeWords,
+      hasImpact: impactWords,
+      goodLength: text.length >= 60 && text.length <= 200,
+      hasTags: tags.length > 0,
+    };
+  }
 
   // Init
   useEffect(() => {
@@ -336,7 +346,6 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
     }
     if (bulletCount > 0) {
       setStep("list");
-      evaluateAllBullets();
     } else {
       fetchAxes();
     }
@@ -353,25 +362,6 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
       setAxes(suggested);
       setStep(suggested.length > 0 ? "axes" : "edit");
     } catch { setStep("edit"); }
-  };
-
-  // Evaluate all bullets for list display
-  const evaluateAllBullets = async () => {
-    if (!bullets?.length) return;
-    const evals: typeof bulletEvals = {};
-    for (const b of bullets) {
-      try {
-        const res = await fetch(`/api/experiences/${experience.id}/tag-evaluate`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: b.text }), credentials: "include",
-        });
-        const data = await res.json();
-        evals[b.id] = { eval: data.evaluation || {}, reasons: data.reasons || {}, suggestion: data.suggestion || null };
-      } catch {
-        evals[b.id] = { eval: {}, reasons: {}, suggestion: null };
-      }
-    }
-    setBulletEvals(evals);
   };
 
   const openEdit = (id: string | null, text: string, tags: string[]) => {
@@ -427,7 +417,6 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
         toast({ title: "Bullet enregistre" });
       }
       setStep("list");
-      evaluateAllBullets();
     } catch (e: any) {
       if (e.message?.includes("similaire")) {
         toast({ title: "Doublon", description: "Un bullet similaire existe deja." });
@@ -508,11 +497,15 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
       {step === "list" && (
         <div className="flex-1 overflow-y-auto p-6 space-y-3">
           {bullets?.map((b: any) => {
-            const ev = bulletEvals[b.id];
-            const orangeKeys = ev ? CRITERIA.filter(c => ev.eval[c.key] === false) : [];
+            const qc = quickCheck(b.text, b.tags || []);
+            const warnings: string[] = [];
+            if (!qc.goodLength) warnings.push(b.text.length < 60 ? "Trop court (min 60 car)" : "Trop long (max 200 car)");
+            if (!qc.hasScope) warnings.push("Pas de chiffre ou d'echelle");
+            if (!qc.hasTags) warnings.push("Pas de tags");
+            const isOk = warnings.length === 0;
             return (
               <div key={b.id} onClick={() => openEdit(b.id, b.text, b.tags || [])}
-                className="p-3 rounded-lg border border-border hover:border-primary/40 transition-colors cursor-pointer space-y-2">
+                className={`p-3 rounded-lg border transition-colors cursor-pointer space-y-2 ${isOk ? "border-green-200 dark:border-green-800/30" : "border-amber-200 dark:border-amber-800/30"}`}>
                 {b.tags?.length > 0 && (
                   <div className="flex gap-1.5 flex-wrap">
                     {b.tags.map((tag: string, i: number) => (
@@ -521,25 +514,15 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
                   </div>
                 )}
                 <p className="text-sm leading-relaxed">{b.text}</p>
-                {ev && (
-                  <div className="space-y-1.5">
-                    <div className="flex gap-1.5 flex-wrap">
-                      {CRITERIA.map(({ key, label }) => (
-                        <span key={key} className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
-                          ev.eval[key] !== false ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400" : "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
-                        }`}>
-                          {ev.eval[key] !== false ? "✓" : "○"} {label}
-                        </span>
-                      ))}
-                    </div>
-                    {orangeKeys.length > 0 && (
-                      <div className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/10 p-2 rounded">
-                        {orangeKeys.map(c => (
-                          <p key={c.key} className="leading-snug"><span className="font-medium">{c.label} :</span> {ev.reasons[c.key] || "A completer"}</p>
-                        ))}
-                      </div>
-                    )}
+                {warnings.length > 0 && (
+                  <div className="flex gap-1.5 flex-wrap">
+                    {warnings.map((w, i) => (
+                      <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">○ {w}</span>
+                    ))}
                   </div>
+                )}
+                {isOk && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400">✓ Pret pour le tailoring</span>
                 )}
               </div>
             );
@@ -562,9 +545,11 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
             <Textarea
               ref={textRef}
               value={editText}
-              onChange={e => { if (e.target.value.length <= MAX_CHARS) { setEditText(e.target.value); setEditEval(null); } }}
-              placeholder="Ex: Premier designer CRM Accor : structuration produit, vision et refonte des parcours pour une coherence globale"
+              onChange={e => { const val = e.target.value.slice(0, MAX_CHARS); setEditText(val); setEditEval(null); }}
+              onPaste={e => { e.preventDefault(); const pasted = e.clipboardData.getData("text").slice(0, MAX_CHARS); setEditText(pasted); setEditEval(null); }}
+              placeholder="Ex: Conception et deploiement d'un design system pour 3 equipes produit, reduisant le temps de maquettage de 30%"
               className="min-h-[90px] text-sm resize-none"
+              maxLength={MAX_CHARS}
             />
             {charCount > 0 && charCount < MIN_CHARS && (
               <p className="text-xs text-amber-600 mt-1">Minimum {MIN_CHARS} caracteres ({MIN_CHARS - charCount} restants)</p>
