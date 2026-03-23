@@ -869,7 +869,7 @@ JSON :
         return res.json({ tags: ["general"], evaluation: null, suggestion: null });
       }
 
-      const prompt = `Tu recois un bullet CV. Tu fais 3 choses SIMPLES :
+      const prompt = `Tu recois un bullet CV. Tu fais 4 choses SIMPLES :
 
 1. TAGGER avec 3-6 mots-cles pour le matching ATS
    - Mots-cles que les recruteurs et ATS utilisent REELLEMENT (product-design, user-research, design-system, CRM, B2B, stakeholder-management, prototyping, figma, user-flows, A/B-testing...)
@@ -882,7 +882,12 @@ JSON :
    - impact : consequence visible (qualitative OK) ?
    - completude : matiere suffisante ?
 
-3. SUGGERER une amelioration (optionnel)
+3. EXPLIQUER chaque critere (reasons)
+   - Pour chaque critere, donne une explication COURTE (10 mots max)
+   - Si true → cite les elements du bullet qui valident (ex: "CRM Accor, structuration produit, vision")
+   - Si false → dis ce qui manque + un exemple concret (ex: "Pas d'echelle. Ex: pour combien d'equipes ?")
+
+4. SUGGERER une amelioration (optionnel)
    - Si un critere est false → UNE suggestion courte (15 mots max)
    - Si tout est true → suggestion = null
    - Ne demande JAMAIS un % ou KPI exact
@@ -894,6 +899,7 @@ JSON uniquement :
 {
   "tags": ["tag1", "tag2"],
   "evaluation": {"clarte": true, "contexte": true, "scope": false, "impact": true, "completude": true},
+  "reasons": {"clarte": "CRM Accor, structuration, vision, DA", "contexte": "CRM chez Accor", "scope": "Pas d'echelle. Ex: combien d'equipes ?", "impact": "Coherence globale", "completude": "Matiere suffisante"},
   "suggestion": "Tu pourrais preciser le nombre d'equipes concernees" ou null
 }`;
 
@@ -906,11 +912,12 @@ JSON uniquement :
 
       let result;
       try { result = JSON.parse(response.choices[0].message.content || "{}"); }
-      catch { result = { tags: ["general"], evaluation: null, suggestion: null }; }
+      catch { result = { tags: ["general"], evaluation: null, reasons: null, suggestion: null }; }
 
       res.json({
         tags: Array.isArray(result.tags) ? result.tags : ["general"],
         evaluation: result.evaluation || null,
+        reasons: result.reasons || null,
         suggestion: result.suggestion || null,
       });
     } catch (err: any) {
