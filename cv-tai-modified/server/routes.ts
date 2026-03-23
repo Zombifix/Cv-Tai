@@ -872,8 +872,10 @@ JSON :
       const prompt = `Tu recois un bullet CV. Tu fais 4 choses SIMPLES :
 
 1. TAGGER avec 3-6 mots-cles pour le matching ATS
-   - Mots-cles que les recruteurs et ATS utilisent REELLEMENT (product-design, user-research, design-system, CRM, B2B, stakeholder-management, prototyping, figma, user-flows, A/B-testing...)
-   - Specifiques au contenu (pas de tags generiques comme "travail" ou "experience")
+   - Des mots SIMPLES qu'un recruteur taperait : "CRM", "B2B", "Product Design", "Figma", "User Research", "Partnership", "Loyalty"
+   - PAS de mots composes avec tirets : "partnership-management" → juste "Partnership"
+   - PAS de termes generiques : "travail", "experience", "UX" (trop vague)
+   - Specifiques au contenu reel du bullet
    
 2. EVALUER sur 5 criteres (true/false)
    - clarte : comprehensible en 5 secondes ?
