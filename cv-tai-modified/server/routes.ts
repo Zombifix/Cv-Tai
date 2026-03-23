@@ -598,6 +598,57 @@ Reponds UNIQUEMENT en JSON :
   });
 
   // ══════════════════════════════════════════════════════════════
+  // EXTRACT AXES — parse description + bullets into mission axes
+  // ══════════════════════════════════════════════════════════════
+  app.post("/api/experiences/:id/extract-axes", async (req, res) => {
+    try {
+      const exp = await storage.getExperience(req.params.id);
+      if (!exp) return res.status(404).json({ message: "Experience not found" });
+
+      const existingBullets = await storage.getBulletsByExperience(exp.id);
+      const bulletTexts = existingBullets.map(b => `- ${b.text}`).join("\n");
+
+      if (!openai || (!exp.description && existingBullets.length === 0)) {
+        return res.json({ axes: [] });
+      }
+
+      const prompt = `Analyse cette experience et identifie les grands AXES de mission / perimetres de travail distincts.
+
+EXPERIENCE :
+- Poste : ${exp.title}
+- Entreprise : ${exp.company}
+- Description : ${exp.description || "Aucune"}
+${existingBullets.length > 0 ? `\nBULLETS EXISTANTS :\n${bulletTexts}` : ""}
+
+REGLES :
+- Un axe = un projet, un produit, ou un scope de responsabilite distinct (ex: "CRM B2B", "Refonte page produit", "Accompagnement UX equipes")
+- Une competence transversale (design system, user research, figma) n'est PAS un axe
+- Max 5 axes
+- Classe-les du plus important au moins important (temps passe, impact)
+- Si la description est vague ou courte, propose 2-3 axes generiques bases sur le titre du poste
+
+Reponds en JSON : {"axes": [{"text": "description courte de l'axe", "source": "description|bullet|inferred"}]}`;
+
+      const response = await openai.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+      });
+
+      let result;
+      try {
+        result = JSON.parse(response.choices[0].message.content || "{}");
+      } catch { result = { axes: [] }; }
+
+      res.json({ axes: (result.axes || []).slice(0, 5) });
+    } catch (err: any) {
+      console.error("[AXES] Error:", err.message);
+      res.json({ axes: [] });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════
   // GAP DETECTION — analyze experience + bullets, find what's missing
   // ══════════════════════════════════════════════════════════════
   app.post("/api/experiences/:id/detect-gaps", async (req, res) => {
@@ -701,57 +752,52 @@ Reponds UNIQUEMENT en JSON valide :
         });
       }
 
-      const prompt = `Tu es un expert en redaction de CV. Tu transformes des reponses brutes en bullets CV percutants.
+      // Count how many exchanges already happened
+      const exchangeCount = history.length;
+      const userSaysIDontKnow = /je (ne )?sais? pas|j'?en sais rien|aucune idee|pas de chiffre|je me souviens? pas/i.test(answer);
 
-ETAPE 1 — DETECTER PLUSIEURS MISSIONS
-Si la reponse couvre 2+ missions/perimetres distincts (ex: CRM + B2B, app mobile + back-office), cree un bullet SEPARE par mission.
-Une competence transversale (design system, user research) n'est PAS une mission distincte.
+      const prompt = `Tu es un expert CV. Tu reformules des reponses en bullets CV percutants.
 
-ETAPE 2 — REFORMULER CHAQUE BULLET
-Un bon bullet CV suit la structure : ACTION + CONTEXTE + RESULTAT/IMPACT
-- ACTION : verbe fort au passe (Concu, Pilote, Deploye, Restructure, Optimise...)
-- CONTEXTE : pour qui, dans quel cadre, quelle echelle (equipe de X, Y utilisateurs, Z marques)
-- RESULTAT : impact mesurable, chiffre, amelioration concrete
-
-EXEMPLES DE BONS BULLETS :
-✅ "Concu et deploye un design system (40+ composants) pour 3 equipes produit, reduisant le temps de maquettage de 40%"
-✅ "Pilote la refonte du parcours loyalty B2C pour 10+ marques, avec une hausse de 25% du taux de conversion post-achat"
-✅ "Structure les pratiques UX (ateliers, cadrage, design review) pour une equipe de 8 personnes, en tant que premier designer CRM"
-
-EXEMPLES DE MAUVAIS BULLETS :
-❌ "Mise en place du design system" (pas de contexte, pas d'impact)
-❌ "Amelioration des parcours clients" (vague, pas de chiffre)
-❌ "Travail sur le CRM en tant que designer" (descriptif, pas d'action)
-
-ETAPE 3 — RELANCE OBLIGATOIRE SI QUALITE INSUFFISANTE
-La relance est OBLIGATOIRE si :
-- Aucun chiffre/metrique dans la reponse → demande un chiffre precis
-- Pas d'impact visible → demande "ca a change quoi concretement ?"
-- Trop vague → demande un detail specifique
-La relance est inutile SEULEMENT si la reponse contient deja un chiffre ET un impact concret.
-
-EXPERIENCE :
+CONTEXTE :
 - Poste : ${exp.title}
 - Entreprise : ${exp.company}
-- Description : ${exp.description || ""}
+- Description : ${exp.description || "Aucune"}
+- Dimension exploree : ${dimension || "general"}
+- Question posee : ${question || "ajout libre"}
+- Nombre d'echanges deja faits : ${exchangeCount}
+${userSaysIDontKnow ? "- L'utilisateur a dit qu'il ne sait pas ou n'a pas les chiffres. RESPECTE CA. Ne redemande PAS.\n" : ""}
+TOUTES LES REPONSES :
+${allAnswers}
 
-CONVERSATION :
-- Dimension : ${dimension || "general"}
-- Question : ${question || "ajout libre"}
-- Reponse(s) : ${allAnswers}
+MISSION : Construire le MEILLEUR bullet possible avec TOUTE la matiere disponible.
 
-REGLES :
-- Si la reponse manque de substance, reformule au mieux MAIS propose une relance pour enrichir
-- Garde tous les chiffres mentionnes
+REGLES DE REFORMULATION :
+- Structure : ACTION + OBJET + CONTEXTE + IMPACT (si disponible)
+- Verbe d'action fort au passe (Pilote, Concu, Deploye, Structure, Refonte...)
+- Integre TOUS les details donnes dans les reponses (chiffres, equipes, contexte, outils)
+- Si pas de chiffre → impact qualitatif OK ("ameliorant l'ergonomie", "facilitant l'onboarding")
 - Max 200 caracteres par bullet
-- Tags : 3-6 mots-cles concrets (CRM, b2b, design-system, mobile-ios, retail...)
-- Ecris en francais
+- En francais
+
+EXEMPLES :
+Bon : "Pilote la refonte de la page produit Dior Parfums (120M visites/an), ameliorant l'ergonomie et le taux de conversion (+4%)"
+Bon sans chiffre : "Pilote la refonte UX de la page produit Dior Parfums, ameliorant l'ergonomie et la fidelisation client"
+Mauvais : "Pilote la refonte produit" (trop court, pas de contexte)
+
+SPLIT MULTI-MISSIONS :
+Si la matiere couvre 2+ missions/perimetres distincts → un bullet SEPARE par mission.
+(Competence transversale ≠ mission distincte)
+
+RELANCE :
+${exchangeCount >= 2 || userSaysIDontKnow ? "NE POSE PAS de relance. isComplete = true. L'utilisateur a deja assez contribue." : "Tu peux poser UNE question courte (10 mots max) UNIQUEMENT si un detail cle manque et que l'utilisateur semble pouvoir y repondre. Sinon isComplete = true."}
+
+TAGS : 3-6 mots-cles concrets pour le matching (ex: UX, refonte, e-commerce, conversion, fidelisation)
 
 JSON UNIQUEMENT :
 {
   "bullets": [{"bullet": "...", "tags": ["..."]}],
-  "followUp": "question courte 10 mots max" ou null,
-  "isComplete": false si relance necessaire, true sinon
+  "followUp": "..." ou null,
+  "isComplete": true ou false
 }`;
 
       const response = await openai.chat.completions.create({
