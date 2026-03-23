@@ -880,7 +880,7 @@ JSON :
 2. EVALUER sur 5 criteres (true/false)
    - clarte : comprehensible en 5 secondes ?
    - contexte : on sait pour qui/quoi/dans quel cadre ?
-   - scope : ordre de grandeur (equipe, users, marches) present ?
+   - scope : ordre de grandeur (equipe, users, marches) present ? "20+ interviews", "CRM & B2B", "3 equipes", "100M utilisateurs" = scope OK. Il suffit d'un chiffre OU d'un perimetre nomme.
    - impact : consequence visible (qualitative OK) ?
    - completude : matiere suffisante ?
 
