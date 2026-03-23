@@ -26,7 +26,7 @@ interface Gap { id: string; dimension: string; question: string; priority: numbe
 function getDepthInfo(bulletCount: number) {
   if (bulletCount === 0) return { label: "Vide", color: "#C45050", bg: "#FEF0EF", dots: 0 };
   if (bulletCount <= 2) return { label: "Ebauche", color: "#B8941F", bg: "#FEF9EC", dots: 1 };
-  if (bulletCount <= 5) return { label: "Structure", color: "#4D8A5E", bg: "#EEF5EF", dots: 3 };
+  if (bulletCount <= 3) return { label: "Structure", color: "#4D8A5E", bg: "#EEF5EF", dots: 3 };
   return { label: "Complet", color: "#2D7A3D", bg: "#E0F0E0", dots: 5 };
 }
 
@@ -208,6 +208,28 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
   const [editTags, setEditTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState("");
   const [retagging, setRetagging] = useState<string | null>(null);
+  const [editEval, setEditEval] = useState<Record<string, boolean> | null>(null);
+  const [editReasons, setEditReasons] = useState<Record<string, string> | null>(null);
+  const [editSuggestion, setEditSuggestion] = useState<string | null>(null);
+  const [evaluating, setEvaluating] = useState(false);
+
+  const handleReEvaluate = async () => {
+    if (!editText.trim()) return;
+    setEvaluating(true);
+    try {
+      const res = await fetch(`/api/experiences/${experience.id}/tag-evaluate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: editText.trim() }),
+        credentials: "include",
+      });
+      const data = await res.json();
+      setEditTags(data.tags || editTags);
+      setEditEval(data.evaluation || null);
+      setEditReasons(data.reasons || null);
+      setEditSuggestion(data.suggestion || null);
+    } catch {} finally { setEvaluating(false); }
+  };
 
   const handleSaveEdit = async () => {
     if (!editingId || !editText.trim()) return;
@@ -272,7 +294,7 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
           <div className="flex flex-col items-start text-left gap-1">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Building className="w-3 h-3" /> {experience.company}
-              {experience.contractType && <Badge variant="outline" className="text-[9px] px-1.5 py-0">{experience.contractType}</Badge>}
+              {experience.contractType && <Badge variant="outline" className="text-xs px-2 py-0.5">{experience.contractType}</Badge>}
               <span className="opacity-40">|</span>
               <Calendar className="w-3 h-3" />
               {experience.startDate ? format(new Date(experience.startDate), "MMM yyyy") : "N/A"} - {experience.endDate ? format(new Date(experience.endDate), "MMM yyyy") : "Present"}
@@ -292,9 +314,11 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={onEdit}>
             <Pencil className="w-4 h-4" />
           </Button>
-          <Button variant="outline" size="sm" className="h-8 text-xs gap-1" onClick={onEnrich}>
-            <Sparkles className="w-3.5 h-3.5" /> Enrichir
-          </Button>
+          {bulletCount < 5 && (
+            <Button variant="outline" size="sm" className="h-8 text-xs gap-1" onClick={onEnrich}>
+              <Sparkles className="w-3.5 h-3.5" /> Enrichir
+            </Button>
+          )}
         </div>
       </div>
       <AccordionContent className="p-0">
@@ -311,11 +335,11 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
             <div key={bullet.id} className="group relative bg-muted/30 rounded-lg p-3 border border-border/30 hover:border-border transition-colors">
               {editingId === bullet.id ? (
                 <div className="space-y-3">
-                  <Textarea value={editText} onChange={e => setEditText(e.target.value)} className="text-sm resize-none min-h-[50px]" />
+                  <Textarea value={editText} onChange={e => { setEditText(e.target.value); setEditEval(null); setEditReasons(null); setEditSuggestion(null); }} className="text-sm resize-none min-h-[50px]" />
                   {/* Editable tags */}
-                  <div className="flex gap-1 flex-wrap items-center">
+                  <div className="flex gap-1.5 flex-wrap items-center">
                     {editTags.map((tag, i) => (
-                      <span key={i} className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 bg-secondary text-secondary-foreground rounded-md">
+                      <span key={i} className="inline-flex items-center gap-0.5 text-xs px-2.5 py-1 bg-secondary text-secondary-foreground rounded-md">
                         {tag}
                         <button onClick={() => setEditTags(prev => prev.filter((_, j) => j !== i))} className="ml-0.5 hover:text-destructive">×</button>
                       </span>
@@ -323,29 +347,56 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
                     <input
                       type="text" value={newTag} onChange={e => setNewTag(e.target.value)}
                       onKeyDown={e => { if (e.key === "Enter" && newTag.trim()) { e.preventDefault(); setEditTags(prev => [...prev, newTag.trim()]); setNewTag(""); } }}
-                      placeholder="+ tag" className="text-[10px] w-20 bg-transparent border-b border-dashed border-muted-foreground/30 outline-none px-1 py-0.5"
+                      placeholder="+ tag" className="text-xs w-20 bg-transparent border-b border-dashed border-muted-foreground/30 outline-none px-1 py-0.5"
                     />
                   </div>
+                  {/* Evaluation badges with reasons */}
+                  {editEval && (
+                    <div className="flex gap-2 flex-wrap">
+                      {[
+                        { key: "clarte", label: "Clarte" },
+                        { key: "contexte", label: "Contexte" },
+                        { key: "scope", label: "Scope" },
+                        { key: "impact", label: "Impact" },
+                        { key: "completude", label: "Completude" },
+                      ].map(({ key, label }) => (
+                        <span key={key} title={editReasons?.[key] || ""} className={`text-xs px-2.5 py-1 rounded-full font-medium cursor-help ${
+                          editEval[key] ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400" : "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+                        }`}>
+                          {editEval[key] ? "✓" : "○"} {label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {editSuggestion && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/10 p-2 rounded-lg">
+                      <span className="font-medium">Suggestion :</span> {editSuggestion}
+                    </p>
+                  )}
                   <div className="flex gap-2">
                     <Button size="sm" onClick={handleSaveEdit} disabled={!editText.trim()} className="h-7 text-xs">Enregistrer</Button>
-                    <Button size="sm" variant="ghost" onClick={() => { setEditingId(null); setNewTag(""); }} className="h-7 text-xs">Annuler</Button>
+                    <Button size="sm" variant="outline" onClick={handleReEvaluate} disabled={!editText.trim() || evaluating} className="h-7 text-xs">
+                      {evaluating ? <RefreshCw className="w-3 h-3 animate-spin mr-1" /> : <Sparkles className="w-3 h-3 mr-1" />}
+                      Evaluer
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setEditingId(null); setNewTag(""); setEditEval(null); setEditReasons(null); setEditSuggestion(null); }} className="h-7 text-xs">Annuler</Button>
                   </div>
                 </div>
               ) : (
                 <>
                   {bullet.tags && bullet.tags.length > 0 ? (
-                    <div className="flex gap-1 mb-1.5 flex-wrap">
+                    <div className="flex gap-1.5 mb-1.5 flex-wrap">
                       {bullet.tags.map((tag: string, i: number) => (
-                        <Badge key={i} variant="secondary" className="text-[9px] px-1.5 py-0">{tag}</Badge>
+                        <Badge key={i} variant="secondary" className="text-xs px-2 py-0.5">{tag}</Badge>
                       ))}
                     </div>
                   ) : (
                     <button
                       onClick={() => handleRetag(bullet.id, bullet.text)}
                       disabled={retagging === bullet.id}
-                      className="text-[10px] text-primary hover:underline mb-1.5 flex items-center gap-1"
+                      className="text-xs text-primary hover:underline mb-1.5 flex items-center gap-1"
                     >
-                      {retagging === bullet.id ? <RefreshCw className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
+                      {retagging === bullet.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                       Generer les tags
                     </button>
                   )}
@@ -354,7 +405,7 @@ function ExperienceAccordionItem({ experience, onEdit, onEnrich }: {
               )}
               {editingId !== bullet.id && (
                 <div className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                  <button onClick={() => { setEditingId(bullet.id); setEditText(bullet.text); setEditTags(bullet.tags || []); }} className="text-muted-foreground hover:text-primary p-0.5"><Pencil className="w-3 h-3" /></button>
+                  <button onClick={() => { setEditingId(bullet.id); setEditText(bullet.text); setEditTags(bullet.tags || []); setEditEval(null); setEditReasons(null); setEditSuggestion(null); }} className="text-muted-foreground hover:text-primary p-0.5"><Pencil className="w-3 h-3" /></button>
                   <button onClick={() => handleDelete(bullet.id)} className="text-muted-foreground hover:text-destructive p-0.5"><X className="w-3 h-3" /></button>
                 </div>
               )}
@@ -388,6 +439,7 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
   const [editText, setEditText] = useState("");
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editEval, setEditEval] = useState<Record<string, boolean> | null>(null);
+  const [editReasons, setEditReasons] = useState<Record<string, string> | null>(null);
   const [editSuggestion, setEditSuggestion] = useState<string | null>(null);
   const [newTagText, setNewTagText] = useState("");
   const [processing, setProcessing] = useState(false);
@@ -441,6 +493,7 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
       const data = await res.json();
       setEditTags(data.tags || []);
       setEditEval(data.evaluation || null);
+      setEditReasons(data.reasons || null);
       setEditSuggestion(data.suggestion || null);
       setEvaluated(true);
     } catch {
@@ -466,6 +519,7 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
         finalTags = data.tags || ["general"];
         setEditTags(finalTags);
         setEditEval(data.evaluation || null);
+        setEditReasons(data.reasons || null);
       } catch { finalTags = ["general"]; }
     }
     try {
@@ -560,7 +614,7 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
                   {b.tags?.length > 0 && (
                     <div className="flex gap-1 mt-2 flex-wrap">
                       {b.tags.map((tag: string, i: number) => (
-                        <Badge key={i} variant="secondary" className="text-[9px] px-1.5 py-0">{tag}</Badge>
+                        <Badge key={i} variant="secondary" className="text-xs px-2 py-0.5">{tag}</Badge>
                       ))}
                     </div>
                   )}
@@ -592,7 +646,7 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
             <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Tags</p>
             <div className="flex gap-1 flex-wrap items-center">
               {editTags.map((tag, i) => (
-                <span key={i} className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 bg-secondary text-secondary-foreground rounded-md">
+                <span key={i} className="inline-flex items-center gap-0.5 text-xs px-2.5 py-1 bg-secondary text-secondary-foreground rounded-md">
                   {tag}
                   <button onClick={() => removeTag(i)} className="ml-0.5 hover:text-destructive">×</button>
                 </span>
@@ -603,7 +657,7 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
                 onChange={e => setNewTagText(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
                 placeholder="+ tag"
-                className="text-[10px] w-20 bg-transparent border-b border-dashed border-muted-foreground/30 outline-none px-1 py-0.5"
+                className="text-xs w-20 bg-transparent border-b border-dashed border-muted-foreground/30 outline-none px-1 py-0.5"
               />
             </div>
             {editTags.length === 0 && !evaluated && (
@@ -614,16 +668,16 @@ function EnrichmentPanel({ experience }: { experience: Experience }) {
           {/* Evaluation badges */}
           {editEval && (
             <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Evaluation</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Evaluation</p>
               <div className="flex gap-2 flex-wrap">
                 {[
-                  { key: "clarte", label: "Clarte", tip: "Le recruteur comprend en 5 secondes ce que tu as fait" },
-                  { key: "contexte", label: "Contexte", tip: "On sait pour qui, dans quel cadre, quel produit" },
-                  { key: "scope", label: "Scope", tip: "L'echelle est claire : equipe, utilisateurs, marches" },
-                  { key: "impact", label: "Impact", tip: "Il y a une consequence visible (chiffre ou qualitative)" },
-                  { key: "completude", label: "Completude", tip: "La matiere est suffisante pour un bon bullet CV" },
-                ].map(({ key, label, tip }) => (
-                  <span key={key} title={tip} className={`text-xs px-2.5 py-1 rounded-full font-medium cursor-help ${
+                  { key: "clarte", label: "Clarte" },
+                  { key: "contexte", label: "Contexte" },
+                  { key: "scope", label: "Scope" },
+                  { key: "impact", label: "Impact" },
+                  { key: "completude", label: "Completude" },
+                ].map(({ key, label }) => (
+                  <span key={key} title={editReasons?.[key] || ""} className={`text-xs px-2.5 py-1 rounded-full font-medium cursor-help ${
                     editEval[key] ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400" : "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
                   }`}>
                     {editEval[key] ? "✓" : "○"} {label}
