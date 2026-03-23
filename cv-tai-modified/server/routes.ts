@@ -854,6 +854,71 @@ JSON :
     }
   });
 
+  // ══════════════════════════════════════════════════════════════
+  // TAG + EVALUATE — user writes bullet, LLM tags + evaluates
+  // ══════════════════════════════════════════════════════════════
+  app.post("/api/experiences/:id/tag-evaluate", async (req, res) => {
+    try {
+      const exp = await storage.getExperience(req.params.id);
+      if (!exp) return res.status(404).json({ message: "Experience not found" });
+
+      const { text } = req.body;
+      if (!text || !text.trim()) return res.status(400).json({ message: "text required" });
+
+      if (!openai) {
+        return res.json({ tags: ["general"], evaluation: null, suggestion: null });
+      }
+
+      const prompt = `Tu recois un bullet CV. Tu fais 3 choses SIMPLES :
+
+1. TAGGER avec 3-6 mots-cles pour le matching ATS
+   - Mots-cles que les recruteurs et ATS utilisent REELLEMENT (product-design, user-research, design-system, CRM, B2B, stakeholder-management, prototyping, figma, user-flows, A/B-testing...)
+   - Specifiques au contenu (pas de tags generiques comme "travail" ou "experience")
+   
+2. EVALUER sur 5 criteres (true/false)
+   - clarte : comprehensible en 5 secondes ?
+   - contexte : on sait pour qui/quoi/dans quel cadre ?
+   - scope : ordre de grandeur (equipe, users, marches) present ?
+   - impact : consequence visible (qualitative OK) ?
+   - completude : matiere suffisante ?
+
+3. SUGGERER une amelioration (optionnel)
+   - Si un critere est false → UNE suggestion courte (15 mots max)
+   - Si tout est true → suggestion = null
+   - Ne demande JAMAIS un % ou KPI exact
+
+EXPERIENCE : ${exp.title} chez ${exp.company}
+BULLET : ${text.trim()}
+
+JSON uniquement :
+{
+  "tags": ["tag1", "tag2"],
+  "evaluation": {"clarte": true, "contexte": true, "scope": false, "impact": true, "completude": true},
+  "suggestion": "Tu pourrais preciser le nombre d'equipes concernees" ou null
+}`;
+
+      const response = await openai.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.2,
+      });
+
+      let result;
+      try { result = JSON.parse(response.choices[0].message.content || "{}"); }
+      catch { result = { tags: ["general"], evaluation: null, suggestion: null }; }
+
+      res.json({
+        tags: Array.isArray(result.tags) ? result.tags : ["general"],
+        evaluation: result.evaluation || null,
+        suggestion: result.suggestion || null,
+      });
+    } catch (err: any) {
+      console.error("[TAG-EVAL] Error:", err.message);
+      res.json({ tags: ["general"], evaluation: null, suggestion: null });
+    }
+  });
+
   // Tailor — Pipeline V2
   app.post(api.tailor.generate.path, async (req, res) => {
     try {
