@@ -8,8 +8,24 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { WandSparkles, Link as LinkIcon, FileText, Target, RefreshCw, Info, SlidersHorizontal, Sparkles } from "lucide-react";
+import { WandSparkles, Link as LinkIcon, FileText, Target, RefreshCw, Info, SlidersHorizontal, Sparkles, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+const SCRAPE_BLOCKED_DOMAINS = [
+  "indeed.com", "linkedin.com", "glassdoor.com", "monster.com",
+  "apec.fr", "francetravail.fr", "pole-emploi.fr", "hellowork.com", "cadremploi.fr",
+];
+
+function getUrlWarning(url: string): string | null {
+  if (!url) return null;
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    if (SCRAPE_BLOCKED_DOMAINS.some(d => hostname.includes(d))) {
+      return "Ce site bloque le scraping automatique. Copie-colle le texte de l'annonce directement dans le champ ci-dessous.";
+    }
+  } catch {}
+  return null;
+}
 
 type Mode = "fidele" | "optimise";
 
@@ -58,6 +74,8 @@ export default function Tailor() {
       }
     } catch {}
   }, []);
+
+  const urlWarning = getUrlWarning(url);
 
   const handleUrlChange = (value: string) => {
     const { url: normalized, converted } = normalizeLinkedInUrl(value);
@@ -126,7 +144,13 @@ export default function Tailor() {
                       onChange={e => handleUrlChange(e.target.value)}
                     />
                   </div>
-                  {urlConverted && (
+                  {urlWarning && (
+                    <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 p-3 rounded-lg">
+                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                      <span>{urlWarning}</span>
+                    </div>
+                  )}
+                  {urlConverted && !urlWarning && (
                     <div className="flex items-center gap-2 text-xs text-primary bg-primary/5 p-2 rounded-lg">
                       <Info className="w-3.5 h-3.5 flex-shrink-0" />
                       <span>URL LinkedIn convertie automatiquement.</span>

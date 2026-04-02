@@ -342,13 +342,30 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
   const missingSkills = allJobSkills.filter(js => !skills.some(s => s.name.toLowerCase().includes(js) || js.includes(s.name.toLowerCase())));
   const avg = total > 0 ? Math.round(allBullets.reduce((s, b) => s + b.totalScore, 0) / total) : 0;
   const kwCov = job.criticalKeywords.length > 0 ? Math.round(postRules.keywordsCovered.length / job.criticalKeywords.length * 100) : 50;
-  const confidence = Math.min(100, Math.round(avg * 0.5 + kwCov * 0.3 + (total >= 6 ? 20 : total * 3)));
+  // Removed flat +20 bullets bonus — it was inflating scores regardless of match quality.
+  // New formula: avg score (0-100) × 0.45 + keyword coverage × 0.45 + small bullets bonus (max 10).
+  const bulletBonus = total >= 6 ? Math.min(10, Math.round(kwCov * 0.1)) : Math.round(total * 1.5);
+  const confidence = Math.min(100, Math.round(avg * 0.45 + kwCov * 0.45 + bulletBonus));
   const tips: string[] = [];
   if (postRules.keywordsMissing.length) tips.push(`Keywords manquants: ${postRules.keywordsMissing.join(", ")}.`);
   if (postRules.bulletsWithNumbers < total * 0.3) tips.push("Moins de 30% de tes bullets contiennent des chiffres.");
   if (missingSkills.length > 3) tips.push(`${missingSkills.length} competences demandees absentes.`);
   if (job.positioning === "consultant" && !allBullets.some(b => /accompagn|structur|pratiqu|form|maturit|conseil/i.test(b.bullet.text))) {
     tips.push("Offre conseil : aucun bullet ne mentionne accompagnement ou structuration de pratiques.");
+  }
+
+  // Role mismatch detection
+  const jobTitleLow = job.title.toLowerCase();
+  const isPOJob = /\bproduct owner\b|\bpo\b|\bchef de produit\b|\bscrum master\b|\bproduct manager\b|\bpm\b/.test(jobTitleLow);
+  const isDesignJob = /\bdesigner\b|\bux\b|\bui\b|\bdesign\b/.test(jobTitleLow);
+  const userIsDesigner = allBullets.some(b => /figma|maquett|prototype|design system|ux|ui|parcours|wireframe/i.test(b.bullet.text));
+  const userIsPO = allBullets.some(b => /backlog|sprint|user stor|roadmap|priorisation|epic|okr/i.test(b.bullet.text));
+
+  if (isPOJob && userIsDesigner && !userIsPO) {
+    tips.push("Attention : ce poste est Product Owner/PM. Tes bullets sont orientés Design. Le match est partiel — les compétences de discovery se transfèrent, mais la gestion de backlog est absente.");
+  }
+  if (isDesignJob && userIsPO && !userIsDesigner) {
+    tips.push("Attention : ce poste est Design mais tes bullets sont orientés Product/PO. Le match UX craft est limité.");
   }
   return { jobTitle: job.title, jobCompany: job.company, jobSeniority: job.seniority, jobDomain: job.domain, detectedKeywords: { requiredSkills: job.requiredSkills, preferredSkills: job.preferredSkills, responsibilities: job.responsibilities, keywords: job.keywords, criticalKeywords: job.criticalKeywords }, matchedSkills: matched.map(s => s.name), missingSkills: missingSkills.slice(0, 10), selectedExperiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, score: Math.round(se.score), reason: se.reason, matchedAspects: se.matchedAspects, bulletCount: se.selectedBullets.length, charBudget: se.charBudget })), rejectedExperiences: [], selectedBullets: allBullets.map(sb => ({ text: sb.bullet.text, experienceTitle: sb.experience.title, score: sb.totalScore, deterministicScore: sb.deterministicScore, llmScore: sb.llmScore, matchedKeywords: sb.matchedKeywords, dimension: sb.dimension })), postRules, confidence, confidenceReasoning: `Avg score: ${avg}/100. KW coverage: ${kwCov}%. ${total} bullets.`, fallbackUsed: total === 0, detectedLanguage: job.language, positioning: job.positioning, intentions: job.intentions, tips };
 }

@@ -821,6 +821,23 @@ JSON uniquement :
         return res.status(400).json({ message: "Please provide a job description or URL." });
       }
 
+      // Block known non-scrapable domains before even trying
+      if (!effectiveJobText && normalizedUrl) {
+        const BLOCKED_DOMAINS = [
+          "indeed.com", "linkedin.com", "glassdoor.com", "monster.com",
+          "apec.fr", "francetravail.fr", "pole-emploi.fr", "hellowork.com", "cadremploi.fr",
+        ];
+        try {
+          const hostname = new URL(normalizedUrl).hostname.toLowerCase();
+          if (BLOCKED_DOMAINS.some(d => hostname.includes(d))) {
+            return res.status(400).json({
+              message: "Ce site bloque le scraping automatique (acces restreint). Copiez-collez la description du poste directement dans le champ texte.",
+              scrapeFailed: true,
+            });
+          }
+        } catch {}
+      }
+
       // Scrape URL if needed
       if (!effectiveJobText && normalizedUrl) {
         try {
@@ -843,6 +860,23 @@ JSON uniquement :
       if (!effectiveJobText || effectiveJobText.length < 150) {
         return res.status(400).json({
           message: "Impossible de recuperer le contenu de cette URL (acces restreint ou timeout). Veuillez coller la description du poste directement dans le champ texte.",
+          scrapeFailed: true,
+        });
+      }
+
+      // Detect Cloudflare / bot-blocker pages
+      const lowerText = effectiveJobText.toLowerCase();
+      const isBlocked =
+        lowerText.includes("cloudflare") ||
+        lowerText.includes("just a moment") ||
+        lowerText.includes("checking your browser") ||
+        lowerText.includes("enable javascript") ||
+        lowerText.includes("access denied") ||
+        lowerText.includes("403 forbidden") ||
+        (lowerText.includes("indeed") && lowerText.includes("robot") && effectiveJobText.length < 2000);
+      if (isBlocked) {
+        return res.status(400).json({
+          message: "Ce site bloque le scraping automatique (protection anti-bot). Copiez-collez la description du poste directement dans le champ texte.",
           scrapeFailed: true,
         });
       }
