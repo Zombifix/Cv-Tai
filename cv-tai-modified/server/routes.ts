@@ -930,7 +930,7 @@ JSON uniquement :
   // Tailor — Pipeline V2
   app.post(api.tailor.generate.path, async (req, res) => {
     try {
-      const { url, text, mode, outputLength, customMaxChars, introMaxChars, bodyMaxChars } = api.tailor.generate.input.parse(req.body);
+      const { url, text, mode, outputLength, customMaxChars, introMaxChars, bodyMaxChars, extraContext } = api.tailor.generate.input.parse(req.body);
 
       // Normalize LinkedIn URL
       const normalizedUrl = url ? normalizeLinkedInUrl(url) : undefined;
@@ -959,6 +959,10 @@ JSON uniquement :
 
       if (!effectiveJobText) {
         effectiveJobText = `Job posting at: ${normalizedUrl}. Could not retrieve content. Please paste the job description.`;
+      }
+
+      if (extraContext?.trim()) {
+        effectiveJobText += `\n\n---\nAdditional context provided by the candidate:\n${extraContext.trim()}`;
       }
 
       if (!openai) {

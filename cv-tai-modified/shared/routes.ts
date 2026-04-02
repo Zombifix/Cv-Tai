@@ -168,6 +168,7 @@ export const api = {
         customMaxChars: z.number().int().min(500).max(10000).optional(),
         introMaxChars: z.number().int().min(50).max(2000).optional(),
         bodyMaxChars: z.number().int().min(500).max(10000).optional(),
+        extraContext: z.string().max(1000).optional(),
       }),
       responses: {
         201: z.custom<Run>(),

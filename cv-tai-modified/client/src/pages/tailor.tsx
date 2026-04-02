@@ -39,6 +39,7 @@ export default function Tailor() {
   const [urlConverted, setUrlConverted] = useState(false);
   const [introMaxChars, setIntroMaxChars] = useState("");
   const [bodyMaxChars, setBodyMaxChars] = useState("");
+  const [extraContext, setExtraContext] = useState("");
 
   useEffect(() => {
     try {
@@ -80,6 +81,7 @@ export default function Tailor() {
         mode: mode === "fidele" ? "original" : "polished",
         introMaxChars: introChars && introChars >= 50 ? introChars : undefined,
         bodyMaxChars: bodyChars && bodyChars >= 500 ? bodyChars : undefined,
+        extraContext: extraContext.trim() || undefined,
       });
       toast({ title: "CV genere", description: "Ton CV a ete optimise !" });
       setLocation(`/results/${run.id}`);
@@ -231,6 +233,24 @@ export default function Tailor() {
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* ── EXTRA CONTEXT ── */}
+              <div className="space-y-3 pt-2">
+                <div className="space-y-1">
+                  <Label className="text-sm font-semibold">Contexte additionnel <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
+                  <p className="text-xs text-muted-foreground">Info sur la boite, signal recruteur, axe strategique a mettre en avant...</p>
+                </div>
+                <Textarea
+                  placeholder="Ex : Accor investit fortement sur l'IA dans le design produit. Le recruteur cherche quelqu'un qui peut structurer les pratiques design au sein d'equipes produit."
+                  className="min-h-[80px] bg-background text-sm rounded-xl resize-y"
+                  value={extraContext}
+                  onChange={e => setExtraContext(e.target.value)}
+                  maxLength={1000}
+                />
+                {extraContext.length > 0 && (
+                  <p className="text-xs text-muted-foreground text-right">{extraContext.length}/1000</p>
+                )}
               </div>
 
               {/* ── SUBMIT ── */}
