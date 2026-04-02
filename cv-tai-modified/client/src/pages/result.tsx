@@ -24,7 +24,7 @@ function ConfidenceRing({ value, size = 72 }: { value: number; size?: number }) 
   const offset = circumference * (1 - Math.max(0, Math.min(100, value)) / 100);
 
   const color = value >= 70 ? "#22c55e" : value >= 40 ? "#f59e0b" : "#ef4444";
-  const label = value >= 70 ? "Strong Match" : value >= 40 ? "Partial Match" : "Weak Match";
+  const label = value >= 70 ? "Fort match" : value >= 40 ? "Match partiel" : "Match faible";
   const textColor = value >= 70 ? "text-green-600 dark:text-green-400" : value >= 40 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
 
   return (
@@ -154,9 +154,9 @@ function FormattedCV({ text, keywords = [] }: { text: string; keywords?: string[
 // ─── Report Sections ──────────────────────────────────────────────────────────
 
 const MODE_META: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  original: { label: "Original", icon: <ShieldCheck className="w-3 h-3" />, color: "bg-primary/10 text-primary" },
-  polished: { label: "Polished", icon: <Zap className="w-3 h-3" />, color: "bg-accent/10 text-accent" },
-  adaptive: { label: "Adaptive", icon: <RefreshCw className="w-3 h-3" />, color: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" },
+  original: { label: "Fidèle", icon: <ShieldCheck className="w-3 h-3" />, color: "bg-primary/10 text-primary" },
+  polished: { label: "Optimisé", icon: <Zap className="w-3 h-3" />, color: "bg-accent/10 text-accent" },
+  adaptive: { label: "Adaptatif", icon: <RefreshCw className="w-3 h-3" />, color: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" },
 };
 
 function MatchScore({ confidence, reasoning, fallbackUsed }: { confidence: number; reasoning?: string; fallbackUsed?: boolean }) {
@@ -166,7 +166,7 @@ function MatchScore({ confidence, reasoning, fallbackUsed }: { confidence: numbe
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - Math.max(0, Math.min(100, confidence)) / 100);
   const color = confidence >= 70 ? "#22c55e" : confidence >= 40 ? "#f59e0b" : "#ef4444";
-  const label = confidence >= 70 ? "Strong Match" : confidence >= 40 ? "Partial Match" : "Weak Match";
+  const label = confidence >= 70 ? "Fort match" : confidence >= 40 ? "Match partiel" : "Match faible";
   const textColor = confidence >= 70 ? "text-green-600 dark:text-green-400" : confidence >= 40 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
 
   const insightSentence = reasoning
@@ -192,7 +192,7 @@ function MatchScore({ confidence, reasoning, fallbackUsed }: { confidence: numbe
           <div className="flex-1 min-w-0">
             <p className={`text-sm font-bold ${textColor}`} data-testid="text-match-score-label">{label}</p>
             {fallbackUsed && (
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Low match — fallback bullets used</p>
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Match faible — bullets de substitution utilisés</p>
             )}
           </div>
         </div>
@@ -228,8 +228,8 @@ function SkillsCoverage({ matched, missing }: { matched: string[]; missing: stri
     <Card className="border-border/60 shadow-none" data-testid="section-skills-coverage">
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold text-foreground">Compétences</h4>
-          <span className="text-xs font-bold text-primary tabular-nums">{matched.length}/{total} matched</span>
+          <h4 className="text-sm font-semibold text-foreground">Skills de l'offre</h4>
+          <span className="text-xs font-bold text-primary tabular-nums">{matched.length}/{total} dans ta biblio</span>
         </div>
         <div className="h-1.5 bg-muted rounded-full overflow-hidden">
           <div
@@ -249,7 +249,7 @@ function SkillsCoverage({ matched, missing }: { matched: string[]; missing: stri
         {missing.length > 0 && (
           <div>
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 font-semibold">
-              {matched.length === 0 ? "Aucune trouvée — ajouter à la bibliothèque" : "Manquantes — cliquer pour ajouter"}
+              {matched.length === 0 ? "Absentes de ta bibliothèque — cliquer pour ajouter" : "Manquantes — cliquer pour ajouter"}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {missing.map((s, i) => {
@@ -294,7 +294,7 @@ function KeyTips({ tips, insight }: { tips: string[]; insight?: string }) {
     <Card className="border-yellow-200/60 dark:border-yellow-900/40 bg-yellow-50/50 dark:bg-yellow-900/10 shadow-none" data-testid="section-tips">
       <CardContent className="p-4 space-y-2">
         <h4 className="text-sm font-semibold flex items-center gap-2 text-foreground">
-          <Lightbulb className="w-4 h-4 text-yellow-500 flex-shrink-0" /> Key Insights
+          <Lightbulb className="w-4 h-4 text-yellow-500 flex-shrink-0" /> Points d'attention
         </h4>
         {insight && (
           <p className="text-xs text-foreground/70 leading-relaxed italic border-l-2 border-yellow-400/50 pl-2" data-testid="text-insight">{insight}</p>
@@ -334,7 +334,7 @@ function DetailsDisclosure({ report }: { report: any }) {
         className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
         data-testid="button-toggle-details"
       >
-        <span className="flex items-center gap-2"><BookOpen className="w-3.5 h-3.5" /> Detailed Breakdown</span>
+        <span className="flex items-center gap-2"><BookOpen className="w-3.5 h-3.5" /> Analyse détaillée</span>
         {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
 
@@ -344,7 +344,7 @@ function DetailsDisclosure({ report }: { report: any }) {
           {/* Selected Experiences */}
           {report.selectedExperiences?.length > 0 && (
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Selected Experiences</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Expériences sélectionnées</p>
               <div className="space-y-2">
                 {report.selectedExperiences.map((exp: any, i: number) => {
                   const bullets = bulletsByExp.get(exp.title) || [];
@@ -397,7 +397,7 @@ function DetailsDisclosure({ report }: { report: any }) {
                 data-testid="button-toggle-rejected-exps"
               >
                 <Ban className="w-3 h-3" />
-                Not Selected ({report.rejectedExperiences.length})
+                Non sélectionnées ({report.rejectedExperiences.length})
                 {showRejExps ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
               </button>
               {showRejExps && (
@@ -422,7 +422,7 @@ function DetailsDisclosure({ report }: { report: any }) {
                 data-testid="button-toggle-rejected-bullets"
               >
                 <Tag className="w-3 h-3" />
-                Skipped Bullets ({report.rejectedBullets.length})
+                Bullets ignorés ({report.rejectedBullets.length})
                 {showRejBullets ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
               </button>
               {showRejBullets && (
@@ -447,16 +447,16 @@ function DetailsDisclosure({ report }: { report: any }) {
                 data-testid="button-toggle-keywords"
               >
                 <Hash className="w-3 h-3" />
-                Job Keywords
+                Mots-clés détectés
                 {showKeywords ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
               </button>
               {showKeywords && (
                 <div className="space-y-2">
                   {[
-                    { label: "Required Skills", items: report.detectedKeywords.requiredSkills, cls: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400" },
-                    { label: "Preferred Skills", items: report.detectedKeywords.preferredSkills, cls: "bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400" },
-                    { label: "Responsibilities", items: report.detectedKeywords.responsibilities, cls: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400" },
-                    { label: "Domain", items: report.detectedKeywords.keywords, cls: "bg-muted text-muted-foreground" },
+                    { label: "Compétences requises", items: report.detectedKeywords.requiredSkills, cls: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400" },
+                    { label: "Compétences souhaitées", items: report.detectedKeywords.preferredSkills, cls: "bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400" },
+                    { label: "Responsabilités", items: report.detectedKeywords.responsibilities, cls: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400" },
+                    { label: "Domaine", items: report.detectedKeywords.keywords, cls: "bg-muted text-muted-foreground" },
                   ].filter(g => g.items?.length).map(g => (
                     <div key={g.label}>
                       <p className="text-[9px] uppercase tracking-wide text-muted-foreground/70 mb-1">{g.label}</p>
@@ -573,7 +573,7 @@ export default function Result() {
       <Layout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
           <div className="w-16 h-16 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-          <h2 className="text-xl font-semibold text-muted-foreground animate-pulse" data-testid="text-loading">Crafting your optimized CV...</h2>
+          <h2 className="text-xl font-semibold text-muted-foreground animate-pulse" data-testid="text-loading">Génération du CV en cours...</h2>
         </div>
       </Layout>
     );
@@ -584,9 +584,9 @@ export default function Result() {
       <Layout>
         <div className="flex flex-col items-center justify-center min-h-[50vh] text-center max-w-md mx-auto gap-4">
           <AlertCircle className="w-12 h-12 text-destructive" />
-          <h2 className="text-2xl font-bold" data-testid="text-error-title">Result not found</h2>
-          <p className="text-muted-foreground" data-testid="text-error-message">This tailored CV may have been deleted or an error occurred.</p>
-          <Link href="/tailor"><Button data-testid="button-try-again">Try Again</Button></Link>
+          <h2 className="text-2xl font-bold" data-testid="text-error-title">Résultat introuvable</h2>
+          <p className="text-muted-foreground" data-testid="text-error-message">Ce CV a peut-être été supprimé ou une erreur s'est produite.</p>
+          <Link href="/tailor"><Button data-testid="button-try-again">Réessayer</Button></Link>
         </div>
       </Layout>
     );
@@ -667,7 +667,7 @@ export default function Result() {
             data-testid="button-copy-header"
           >
             {copied ? <Check className="w-4 h-4 mr-2 text-green-500" /> : <Copy className="w-4 h-4 mr-2" />}
-            {copied ? "Copied!" : "Copy"}
+            {copied ? "Copié !" : "Copier"}
           </Button>
         </div>
 
@@ -683,8 +683,8 @@ export default function Result() {
                 <Tabs defaultValue="generated" className="flex-1">
                   <div className="flex items-center justify-between gap-3">
                     <TabsList className="h-7 text-xs gap-0.5 bg-background/70">
-                      <TabsTrigger value="generated" className="text-xs h-6 px-2.5" data-testid="tab-generated">Generated CV</TabsTrigger>
-                      <TabsTrigger value="source" className="text-xs h-6 px-2.5" data-testid="tab-source">Source Bullets</TabsTrigger>
+                      <TabsTrigger value="generated" className="text-xs h-6 px-2.5" data-testid="tab-generated">CV généré</TabsTrigger>
+                      <TabsTrigger value="source" className="text-xs h-6 px-2.5" data-testid="tab-source">Bullets sources</TabsTrigger>
                     </TabsList>
                     <Button
                       variant="ghost"
@@ -693,7 +693,7 @@ export default function Result() {
                       className="text-xs h-7 px-2.5 text-muted-foreground hover:text-foreground gap-1.5"
                       data-testid="button-edit-cv"
                     >
-                      <Pencil className="w-3 h-3" /> Edit
+                      <Pencil className="w-3 h-3" /> Modifier
                     </Button>
                   </div>
 
@@ -709,7 +709,7 @@ export default function Result() {
                   <TabsContent value="source" className="mt-0">
                     <div className="bg-white dark:bg-zinc-950 px-8 py-10 md:px-14 md:py-12 min-h-[300px]" data-testid="section-source-bullets">
                       <p className="text-xs text-muted-foreground italic mb-6 pb-4 border-b">
-                        Original bullets from your library — before any AI rewriting.
+                        Bullets originaux de ta bibliothèque — avant toute réécriture IA.
                       </p>
                       {report?.selectedExperiences?.map((exp: any, i: number) => {
                         const bullets = (report.selectedBullets || []).filter((b: any) => b.experienceTitle === exp.title);
@@ -727,20 +727,20 @@ export default function Result() {
                                   <p className="text-[13px] text-foreground/85 leading-relaxed">{b.text}</p>
                                 </div>
                               ))}
-                              {bullets.length === 0 && <p className="text-xs text-muted-foreground italic pl-3">No bullets recorded.</p>}
+                              {bullets.length === 0 && <p className="text-xs text-muted-foreground italic pl-3">Aucun bullet enregistré.</p>}
                             </div>
                           </div>
                         );
                       })}
                       {!report?.selectedExperiences?.length && (
-                        <p className="text-sm text-muted-foreground italic">No source data available.</p>
+                        <p className="text-sm text-muted-foreground italic">Aucune donnée source disponible.</p>
                       )}
                     </div>
                   </TabsContent>
                 </Tabs>
               ) : (
                 <div className="flex items-center justify-between w-full gap-3">
-                  <span className="text-xs text-muted-foreground font-medium">Editing CV text</span>
+                  <span className="text-xs text-muted-foreground font-medium">Modification en cours</span>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -748,7 +748,7 @@ export default function Result() {
                     className="text-xs h-7 px-2.5 text-muted-foreground hover:text-foreground gap-1.5"
                     data-testid="button-cancel-edit"
                   >
-                    <X className="w-3 h-3" /> Cancel
+                    <X className="w-3 h-3" /> Annuler
                   </Button>
                 </div>
               )}
@@ -795,10 +795,6 @@ export default function Result() {
             {/* Details Disclosure */}
             <DetailsDisclosure report={report || {}} />
 
-            {/* Library Suggestions */}
-            {report?.missingSkills?.length > 0 && (
-              <LibrarySuggestions missingSkills={report.missingSkills} />
-            )}
 
           </div>
         </div>
@@ -812,11 +808,11 @@ export default function Result() {
               className="rounded-xl gap-2 text-sm"
               data-testid="button-tailor-again"
             >
-              <WandSparkles className="w-4 h-4" /> Tailor Again
+              <WandSparkles className="w-4 h-4" /> Nouveau tailoring
             </Button>
             <Link href="/library">
               <Button variant="ghost" className="rounded-xl gap-2 text-sm text-muted-foreground hover:text-foreground" data-testid="button-improve-library">
-                <Library className="w-4 h-4" /> Improve Library
+                <Library className="w-4 h-4" /> Améliorer la bibliothèque
               </Button>
             </Link>
           </div>
@@ -826,7 +822,7 @@ export default function Result() {
             data-testid="button-copy-footer"
           >
             {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            {copied ? "Copied to clipboard!" : "Copy to Clipboard"}
+            {copied ? "Copié !" : "Copier le CV"}
           </Button>
         </div>
 

@@ -23,6 +23,11 @@ export async function checkLLMHealth(openai: OpenAI | null): Promise<LLMHealthRe
   r.responseTimeMs = Date.now() - start; return r;
 }
 
+// ─── Shared helpers ──────────────────────────────────────────────────────────
+function normalizeSkillKey(s: string): string {
+  return s.toLowerCase().replace(/[/\-]/g, " ").replace(/\s+/g, " ").replace(/s$/, "").trim();
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 export interface ParsedJob {
   title: string; company: string; seniority: string; domain: string;
@@ -236,7 +241,6 @@ export async function buildStructuredCV(job: ParsedJob, selExps: ScoredExperienc
   const allKw = [...job.requiredSkills, ...job.preferredSkills, ...job.keywords].map(k => k.toLowerCase());
   const allTags = selExps.flatMap(se => se.selectedBullets.flatMap(sb => (sb.bullet.tags || []).filter(Boolean).map(t => t.toLowerCase())));
   const relSkills = skills.filter(s => { const sl = s.name.toLowerCase(); return allKw.some(k => k.includes(sl) || sl.includes(k)) || allTags.some(t => t.includes(sl) || sl.includes(t)); }).map(s => s.name).slice(0, 12);
-  const normalizeSkillKey = (s: string) => s.toLowerCase().replace(/[/\-]/g, " ").replace(/\s+/g, " ").replace(/s$/, "").trim();
   const seen = new Set<string>(); const dedupSkills = relSkills.filter(s => { const l = normalizeSkillKey(s); if (seen.has(l)) return false; seen.add(l); return true; });
 
   let summary = extras?.profileSummary || "";
@@ -275,7 +279,7 @@ export async function reformulateBullets(cv: StructuredCV, job: ParsedJob, opena
   const lang = job.language === "FR" ? "Reformule en francais." : "Reformulate in English.";
   try {
     const res = await openai.chat.completions.create({ model: MODEL, messages: [
-      { role: "system", content: `CV optimization. Reformulate bullets:\n1. Embed keywords naturally: ${job.criticalKeywords.join(", ")}\n2. Start with an action verb\n3. NO invention — only use information present in the bullet or its context\n4. Preserve proper nouns, brand names, and specific numbers exactly\n5. If a bullet already starts with an action verb and is ≤160 chars, return it unchanged\n6. Max 200 chars\n7. ${lang}\n8. ${job.positioning} role: ${job.positioning === "consultant" ? "emphasize accompagnement, structuration, impact on teams" : job.positioning === "lead" ? "emphasize vision, leadership" : "emphasize delivery, results"}` },
+      { role: "system", content: `CV optimization. Reformulate bullets:\n1. Embed keywords naturally: ${job.criticalKeywords.join(", ")}\n2. Start with an action verb\n3. NO invention — only use information present in the bullet or its context\n4. Preserve proper nouns, brand names, and specific numbers exactly\n5. Do NOT change the nature of activities: "tests utilisateurs" ≠ "A/B testing", "interviews" ≠ "surveys"\n6. If a bullet already starts with an action verb and is ≤160 chars, return it unchanged\n7. Max 200 chars\n8. ${lang}\n9. ${job.positioning} role: ${job.positioning === "consultant" ? "emphasize accompagnement, structuration, impact on teams" : job.positioning === "lead" ? "emphasize vision, leadership" : "emphasize delivery, results"}` },
       { role: "user", content: `Target: "${job.title}" at "${job.company}"\nKeywords: ${job.keywords.slice(0,10).join(", ")}\nIntentions: ${job.intentions.slice(0,3).join("; ")}\n\nBullets (with experience context when available):\n${list}\n\nReturn JSON: {"bullets": [{"index": 0, "text": "..."}]}` },
     ], response_format: { type: "json_object" }, temperature: 0.4 });
     const r = JSON.parse(res.choices[0].message.content || "{}");
@@ -296,7 +300,7 @@ export function applyPostRules(cv: StructuredCV, job: ParsedJob): PostRuleResult
     kw.split(/\s+/).length <= 3 &&
     !/\d+\+?\s*years?/i.test(kw) &&
     !/\b(experience|communication|portfolio|environments?|solution|quality|skills?|management|ability|knowledge|insights?|fidelity|deliverables?|approaches?|practices?|iterative|exceptional|strong|proven|thinking|mindset|oriented)\b/i.test(kw);
-  for (const kw of missing) { if (isSkillLike(kw) && !cv.skills.some(s => s.toLowerCase() === kw.toLowerCase())) { cv.skills.push(kw); rules.push(`Injected "${kw}" into skills`); } }
+  for (const kw of missing) { if (isSkillLike(kw) && !cv.skills.some(s => normalizeSkillKey(s) === normalizeSkillKey(kw))) { cv.skills.push(kw); rules.push(`Injected "${kw}" into skills`); } }
   let longCount = 0;
   for (const exp of cv.experiences) { for (let i = 0; i < exp.bullets.length; i++) { if (exp.bullets[i].length > 200) { exp.bullets[i] = exp.bullets[i].slice(0, 200).replace(/[,;]?\s*\S*$/, ""); longCount++; rules.push(`Truncated bullet in ${exp.company}`); } } }
   const total = cv.experiences.reduce((s, e) => s + e.bullets.length, 0);
