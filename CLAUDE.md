@@ -1,6 +1,6 @@
 # CV Tailor — Vision & Objectifs
 
-## Projet
+## Projet 
 Outil de tailoring de CV : l'IA sélectionne et adapte intelligemment
 les expériences et bullets d'une librairie personnelle pour les aligner
 sur une offre d'emploi donnée.
