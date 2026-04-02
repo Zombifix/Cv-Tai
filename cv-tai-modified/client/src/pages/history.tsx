@@ -3,7 +3,36 @@ import { Layout } from "@/components/layout";
 import { useRuns } from "@/hooks/use-tailor";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Clock, WandSparkles, ArrowRight, Gauge, ShieldCheck, Zap, RefreshCw, AlertCircle } from "lucide-react";
+import { Clock, WandSparkles, ArrowRight, ShieldCheck, Zap, RefreshCw, AlertCircle, Send, Check, X } from "lucide-react";
+
+function getTracking(runId: string) {
+  try { return JSON.parse(localStorage.getItem(`app-tracking-${runId}`) || "null"); }
+  catch { return null; }
+}
+
+function TrackingBadge({ runId }: { runId: string }) {
+  const t = getTracking(runId);
+  if (!t?.applied) return null;
+  if (t.status === "interview") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium flex-shrink-0">
+        <Check className="w-2.5 h-2.5" /> Entretien
+      </span>
+    );
+  }
+  if (t.status === "rejected") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-medium flex-shrink-0">
+        <X className="w-2.5 h-2.5" /> Refus
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium flex-shrink-0">
+      <Send className="w-2.5 h-2.5" /> Postulé
+    </span>
+  );
+}
 
 const MODE_META: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
   original: { label: "Original", icon: <ShieldCheck className="w-3 h-3" />, color: "bg-primary/10 text-primary" },
@@ -115,6 +144,7 @@ export default function History() {
                               {report.detectedLanguage}
                             </span>
                           )}
+                          <TrackingBadge runId={run.id} />
                           <span className="text-[10px] text-muted-foreground">{formatDate(run.createdAt)}</span>
                         </div>
                         {report?.confidence != null && (

@@ -9,7 +9,8 @@ import {
   ArrowLeft, Copy, Check, AlertCircle, CheckCircle,
   Lightbulb, Hash, ChevronDown, ChevronUp,
   Globe, ShieldCheck, Zap, RefreshCw, Pencil, X,
-  WandSparkles, Library, BookOpen, Ban, Tag, ExternalLink, Plus, Sparkles
+  WandSparkles, Library, BookOpen, Ban, Tag, ExternalLink, Plus, Sparkles,
+  Send, Calendar
 } from "lucide-react";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -533,6 +534,152 @@ function LibrarySuggestions({ missingSkills }: { missingSkills: string[] }) {
   );
 }
 
+// ─── Critical Keywords Coverage ──────────────────────────────────────────────
+
+function CriticalKeywordsCoverage({ covered, missing }: { covered: string[]; missing: string[] }) {
+  const total = covered.length + missing.length;
+  if (total === 0) return null;
+  const pct = Math.round((covered.length / total) * 100);
+  const scoreColor = pct >= 70 ? "text-green-600 dark:text-green-400" : pct >= 40 ? "text-amber-600 dark:text-amber-400" : "text-red-500 dark:text-red-400";
+  const barColor = pct >= 70 ? "bg-green-500" : pct >= 40 ? "bg-amber-500" : "bg-red-500";
+
+  return (
+    <Card className="border-border/60 shadow-none" data-testid="section-critical-keywords">
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-semibold flex items-center gap-2 text-foreground">
+            <Hash className="w-4 h-4 text-muted-foreground" /> Keywords critiques
+          </h4>
+          <span className={`text-xs font-bold tabular-nums ${scoreColor}`}>{covered.length}/{total} dans le CV</span>
+        </div>
+        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+          <div className={`h-full rounded-full transition-all duration-700 ${barColor}`} style={{ width: `${pct}%` }} />
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {covered.map((k, i) => (
+            <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium">
+              <Check className="w-2.5 h-2.5 flex-shrink-0" /> {k}
+            </span>
+          ))}
+          {missing.map((k, i) => (
+            <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 font-medium">
+              <X className="w-2.5 h-2.5 flex-shrink-0" /> {k}
+            </span>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Application Tracker ──────────────────────────────────────────────────────
+
+interface AppTracking {
+  applied: boolean;
+  appliedAt: string;
+  status: "waiting" | "interview" | "rejected" | "offer";
+  responseAt: string;
+}
+
+const TRACKING_DEFAULT: AppTracking = { applied: false, appliedAt: "", status: "waiting", responseAt: "" };
+
+const STATUS_OPTIONS: { value: AppTracking["status"]; label: string; activeClass: string }[] = [
+  { value: "waiting",   label: "En attente", activeClass: "bg-muted text-foreground border-border" },
+  { value: "interview", label: "Entretien",  activeClass: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700" },
+  { value: "rejected",  label: "Refus",      activeClass: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-300 dark:border-red-700" },
+];
+
+function ApplicationTracker({ runId }: { runId: string }) {
+  const storageKey = `app-tracking-${runId}`;
+  const [tracking, setTracking] = useState<AppTracking>(() => {
+    try { return JSON.parse(localStorage.getItem(storageKey) || "null") ?? TRACKING_DEFAULT; }
+    catch { return TRACKING_DEFAULT; }
+  });
+
+  const save = (updates: Partial<AppTracking>) => {
+    const next = { ...tracking, ...updates };
+    setTracking(next);
+    localStorage.setItem(storageKey, JSON.stringify(next));
+  };
+
+  const today = new Date().toISOString().split("T")[0];
+
+  return (
+    <Card className="border-border/60 shadow-none" data-testid="section-application-tracker">
+      <CardContent className="p-4 space-y-3">
+        <h4 className="text-sm font-semibold flex items-center gap-2 text-foreground">
+          <Send className="w-3.5 h-3.5 text-muted-foreground" /> Suivi de candidature
+        </h4>
+
+        {!tracking.applied ? (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">Tu as postulé avec ce CV ?</p>
+            <Button size="sm" variant="outline" className="w-full gap-2 text-xs" onClick={() => save({ applied: true, appliedAt: today })}>
+              <Check className="w-3.5 h-3.5" /> J'ai postulé
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* Applied row */}
+            <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-border/40">
+              <span className="text-xs font-medium text-green-600 dark:text-green-400 flex items-center gap-1">
+                <Check className="w-3 h-3" /> Postulé
+              </span>
+              <input
+                type="date"
+                value={tracking.appliedAt}
+                onChange={e => save({ appliedAt: e.target.value })}
+                className="text-xs border-b border-dashed border-muted-foreground/30 bg-transparent outline-none text-muted-foreground cursor-pointer"
+              />
+            </div>
+
+            {/* Status */}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Réponse reçue</p>
+              <div className="grid grid-cols-3 gap-1">
+                {STATUS_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => save({ status: opt.value })}
+                    className={`text-[11px] px-1 py-1.5 rounded-md border transition-all font-medium ${
+                      tracking.status === opt.value ? opt.activeClass : "border-border/60 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Response date */}
+            {(tracking.status === "interview" || tracking.status === "rejected") && (
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> Date réponse
+                </span>
+                <input
+                  type="date"
+                  value={tracking.responseAt}
+                  onChange={e => save({ responseAt: e.target.value })}
+                  className="text-xs border-b border-dashed border-muted-foreground/30 bg-transparent outline-none text-muted-foreground cursor-pointer"
+                />
+              </div>
+            )}
+
+            {/* Reset */}
+            <button
+              onClick={() => save(TRACKING_DEFAULT)}
+              className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors block mt-1"
+            >
+              Réinitialiser
+            </button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Main Result Page ─────────────────────────────────────────────────────────
 
 export default function Result() {
@@ -778,7 +925,15 @@ export default function Result() {
               />
             )}
 
-            {/* 2. Skills Coverage */}
+            {/* 2. Critical Keywords Coverage */}
+            {(report?.postRules?.keywordsCovered?.length > 0 || report?.postRules?.keywordsMissing?.length > 0) && (
+              <CriticalKeywordsCoverage
+                covered={report.postRules.keywordsCovered || []}
+                missing={report.postRules.keywordsMissing || []}
+              />
+            )}
+
+            {/* 3. Skills Coverage */}
             {(report?.matchedSkills || report?.missingSkills) && (
               <SkillsCoverage
                 matched={report.matchedSkills || []}
@@ -795,6 +950,8 @@ export default function Result() {
             {/* Details Disclosure */}
             <DetailsDisclosure report={report || {}} />
 
+            {/* Application Tracker */}
+            <ApplicationTracker runId={run.id} />
 
           </div>
         </div>
