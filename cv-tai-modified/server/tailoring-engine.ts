@@ -34,7 +34,7 @@ export interface ParsedJob {
 export interface ScoredBullet { bullet: Bullet; experience: Experience; deterministicScore: number; llmScore: number; totalScore: number; matchedTags: string[]; matchedKeywords: string[]; dimension: string; }
 export interface ScoredExperience { experience: Experience; score: number; reason: string; matchedAspects: string[]; selectedBullets: ScoredBullet[]; charBudget: number; }
 export interface CompositionPlan { targetTitle: string; summary: string; sections: { experience: Experience; experienceScore: number; experienceReason: string; bullets: ScoredBullet[]; }[]; relevantSkills: string[]; rejectedBullets: { text: string; score: number; reason: string }[]; rejectedExperiences: { title: string; company: string; score: number; reason: string }[]; }
-export interface StructuredCV { name?: string; targetTitle: string; summary: string; experiences: { title: string; company: string; contractType?: string; dates: string; bullets: string[]; }[]; skills: string[]; formations: { degree: string; school: string; year?: string }[]; languages: { name: string; level?: string }[]; }
+export interface StructuredCV { name?: string; targetTitle: string; summary: string; experiences: { title: string; company: string; contractType?: string; dates: string; bullets: string[]; description?: string; }[]; skills: string[]; formations: { degree: string; school: string; year?: string }[]; languages: { name: string; level?: string }[]; }
 
 // ─── Step 1: Parse Job (with intentions + positioning) ───────────────────────
 export async function parseJobDescription(jobText: string, openai: OpenAI): Promise<ParsedJob> {
@@ -197,7 +197,8 @@ export async function buildStructuredCV(job: ParsedJob, selExps: ScoredExperienc
   const allKw = [...job.requiredSkills, ...job.preferredSkills, ...job.keywords].map(k => k.toLowerCase());
   const allTags = selExps.flatMap(se => se.selectedBullets.flatMap(sb => (sb.bullet.tags || []).filter(Boolean).map(t => t.toLowerCase())));
   const relSkills = skills.filter(s => { const sl = s.name.toLowerCase(); return allKw.some(k => k.includes(sl) || sl.includes(k)) || allTags.some(t => t.includes(sl) || sl.includes(t)); }).map(s => s.name).slice(0, 12);
-  const seen = new Set<string>(); const dedupSkills = relSkills.filter(s => { const l = s.toLowerCase().replace(/\s+/g, " "); if (seen.has(l)) return false; seen.add(l); return true; });
+  const normalizeSkillKey = (s: string) => s.toLowerCase().replace(/[/\-]/g, " ").replace(/\s+/g, " ").replace(/s$/, "").trim();
+  const seen = new Set<string>(); const dedupSkills = relSkills.filter(s => { const l = normalizeSkillKey(s); if (seen.has(l)) return false; seen.add(l); return true; });
 
   let summary = extras?.profileSummary || "";
   const topExps = selExps.filter(se => se.selectedBullets.length > 0).slice(0, 3);
@@ -210,7 +211,7 @@ export async function buildStructuredCV(job: ParsedJob, selExps: ScoredExperienc
   if (topExps.length > 0) {
     try {
       const res = await openai.chat.completions.create({ model: MODEL, messages: [
-        { role: "system", content: `Write a 2-3 sentence CV summary. Max 50 words. No first person. ${posGuide[job.positioning]} ${job.language === "FR" ? "In French." : "In English."}` },
+        { role: "system", content: `Write a 2-3 sentence CV summary. Max 45 words. No first person. ${posGuide[job.positioning]} ${job.language === "FR" ? "In French." : "In English."} IMPORTANT: Only reference companies listed in the experiences below. Do not invent metrics, achievements, or projects not explicitly mentioned in the provided context.` },
         { role: "user", content: `Target: "${job.title}" at "${job.company}" (${job.domain})\nPositioning: ${job.positioning}\n${extras?.profileSummary ? `Bio: ${extras.profileSummary}\n` : ""}Exps: ${topExps.map(se => `${se.experience.title} at ${se.experience.company}`).join(", ")}\nSkills: ${dedupSkills.slice(0,6).join(", ")}\nRequired: ${job.requiredSkills.slice(0,5).join(", ")}\nIntentions: ${job.intentions.slice(0,3).join("; ")}` },
       ] });
       summary = (res.choices[0].message.content || summary).trim();
@@ -220,7 +221,7 @@ export async function buildStructuredCV(job: ParsedJob, selExps: ScoredExperienc
   const fmtDate = (d: string | null | undefined, lang: string) => { if (!d) return "Present"; try { return new Date(d).toLocaleDateString(lang === "FR" ? "fr-FR" : "en-US", { month: "short", year: "numeric" }); } catch { return d; } };
   return {
     name: extras?.profileName || undefined, targetTitle: job.title, summary,
-    experiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, contractType: (se.experience as any).contractType || undefined, dates: `${fmtDate(se.experience.startDate, job.language)} – ${fmtDate(se.experience.endDate, job.language)}`, bullets: se.selectedBullets.map(sb => sb.bullet.text) })),
+    experiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, contractType: (se.experience as any).contractType || undefined, dates: `${fmtDate(se.experience.startDate, job.language)} – ${fmtDate(se.experience.endDate, job.language)}`, bullets: se.selectedBullets.map(sb => sb.bullet.text), description: se.experience.description || undefined })),
     skills: dedupSkills,
     formations: (extras?.formations || []).map((f: any) => ({ degree: f.degree, school: f.school, year: f.year })),
     languages: (extras?.languages || []).map((l: any) => ({ name: l.name, level: l.level })),
@@ -229,14 +230,14 @@ export async function buildStructuredCV(job: ParsedJob, selExps: ScoredExperienc
 
 // ─── Step 6: Reformulate ─────────────────────────────────────────────────────
 export async function reformulateBullets(cv: StructuredCV, job: ParsedJob, openai: OpenAI): Promise<StructuredCV> {
-  const all = cv.experiences.flatMap((exp, ei) => exp.bullets.map((b, bi) => ({ ei, bi, text: b, ctx: `${exp.title} @ ${exp.company}` })));
+  const all = cv.experiences.flatMap((exp, ei) => exp.bullets.map((b, bi) => ({ ei, bi, text: b, ctx: `${exp.title} @ ${exp.company}`, desc: exp.description ? exp.description.slice(0, 150) : "" })));
   if (all.length === 0) return cv;
-  const list = all.map((b, i) => `[${i}] (${b.ctx}): ${b.text}`).join("\n");
+  const list = all.map((b, i) => `[${i}] (${b.ctx}${b.desc ? ` | context: ${b.desc}` : ""}): ${b.text}`).join("\n");
   const lang = job.language === "FR" ? "Reformule en francais." : "Reformulate in English.";
   try {
     const res = await openai.chat.completions.create({ model: MODEL, messages: [
-      { role: "system", content: `CV optimization. Reformulate bullets:\n1. Embed keywords: ${job.criticalKeywords.join(", ")}\n2. Action verb start\n3. NO invention\n4. Max 200 chars\n5. ${lang}\n6. ${job.positioning} role: ${job.positioning === "consultant" ? "emphasize accompagnement, structuration, impact on teams" : job.positioning === "lead" ? "emphasize vision, leadership" : "emphasize delivery, results"}` },
-      { role: "user", content: `Target: "${job.title}" at "${job.company}"\nKeywords: ${job.keywords.slice(0,10).join(", ")}\nIntentions: ${job.intentions.slice(0,3).join("; ")}\n\nBullets:\n${list}\n\nReturn JSON: {"bullets": [{"index": 0, "text": "..."}]}` },
+      { role: "system", content: `CV optimization. Reformulate bullets:\n1. Embed keywords naturally: ${job.criticalKeywords.join(", ")}\n2. Start with an action verb\n3. NO invention — only use information present in the bullet or its context\n4. Preserve proper nouns, brand names, and specific numbers exactly\n5. If a bullet already starts with an action verb and is ≤160 chars, return it unchanged\n6. Max 200 chars\n7. ${lang}\n8. ${job.positioning} role: ${job.positioning === "consultant" ? "emphasize accompagnement, structuration, impact on teams" : job.positioning === "lead" ? "emphasize vision, leadership" : "emphasize delivery, results"}` },
+      { role: "user", content: `Target: "${job.title}" at "${job.company}"\nKeywords: ${job.keywords.slice(0,10).join(", ")}\nIntentions: ${job.intentions.slice(0,3).join("; ")}\n\nBullets (with experience context when available):\n${list}\n\nReturn JSON: {"bullets": [{"index": 0, "text": "..."}]}` },
     ], response_format: { type: "json_object" }, temperature: 0.4 });
     const r = JSON.parse(res.choices[0].message.content || "{}");
     for (const rb of (r.bullets || [])) { if (rb.index >= 0 && rb.index < all.length && rb.text?.length > 10) { cv.experiences[all[rb.index].ei].bullets[all[rb.index].bi] = rb.text; } }
@@ -251,7 +252,12 @@ export function applyPostRules(cv: StructuredCV, job: ParsedJob): PostRuleResult
   const text = [cv.summary, ...cv.experiences.flatMap(e => e.bullets), cv.skills.join(" ")].join(" ").toLowerCase();
   const covered: string[] = []; const missing: string[] = [];
   for (const kw of job.criticalKeywords) { (text.includes(kw.toLowerCase()) ? covered : missing).push(kw); }
-  for (const kw of missing) { if (!cv.skills.some(s => s.toLowerCase() === kw.toLowerCase())) { cv.skills.push(kw); rules.push(`Injected "${kw}" into skills`); } }
+  const isSkillLike = (kw: string) =>
+    kw.length <= 35 &&
+    kw.split(/\s+/).length <= 4 &&
+    !/\d+\+?\s*years?/i.test(kw) &&
+    !/\b(experience|communication|portfolio|environment|solution|quality|skills?|management|ability|knowledge)\b/i.test(kw);
+  for (const kw of missing) { if (isSkillLike(kw) && !cv.skills.some(s => s.toLowerCase() === kw.toLowerCase())) { cv.skills.push(kw); rules.push(`Injected "${kw}" into skills`); } }
   let longCount = 0;
   for (const exp of cv.experiences) { for (let i = 0; i < exp.bullets.length; i++) { if (exp.bullets[i].length > 200) { exp.bullets[i] = exp.bullets[i].slice(0, 200).replace(/[,;]?\s*\S*$/, ""); longCount++; rules.push(`Truncated bullet in ${exp.company}`); } } }
   const total = cv.experiences.reduce((s, e) => s + e.bullets.length, 0);
