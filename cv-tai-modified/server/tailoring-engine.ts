@@ -45,7 +45,8 @@ export async function parseJobDescription(jobText: string, openai: OpenAI): Prom
       { role: "system", content: `Extract structured info from a job posting. Return JSON:
 - title, company, seniority (junior/mid/senior/lead/director), domain
 - requiredSkills[], preferredSkills[], responsibilities[]
-- keywords[] (10-20 ATS terms), criticalKeywords[] (5-8 MUST-HAVE ATS terms)
+- keywords[] (10-20 ATS terms: concrete tools, technologies, methodologies — max 3 words each, NO soft skills, NO descriptive phrases)
+- criticalKeywords[] (5-8 MUST-HAVE skills: short skill/tool/method names only, max 3 words, examples: "Figma", "User Research", "Design System", "A/B Testing" — NEVER phrases like "data-driven insights", "high-fidelity designs", "iterative mindset")
 - language ("EN"/"FR")
 - intentions[] (5-10 phrases: what the role REALLY needs beyond keywords. Ex: "structurer les pratiques design", "influencer les stakeholders", "mesurer l'impact business du design". VERBS + OUTCOMES.)
 - positioning: "consultant" (conseil, accompagnement, formation) | "lead" (management, vision, equipe) | "ic" (craft, delivery) | "manager" (people management)` },
@@ -254,9 +255,9 @@ export function applyPostRules(cv: StructuredCV, job: ParsedJob): PostRuleResult
   for (const kw of job.criticalKeywords) { (text.includes(kw.toLowerCase()) ? covered : missing).push(kw); }
   const isSkillLike = (kw: string) =>
     kw.length <= 35 &&
-    kw.split(/\s+/).length <= 4 &&
+    kw.split(/\s+/).length <= 3 &&
     !/\d+\+?\s*years?/i.test(kw) &&
-    !/\b(experience|communication|portfolio|environment|solution|quality|skills?|management|ability|knowledge)\b/i.test(kw);
+    !/\b(experience|communication|portfolio|environments?|solution|quality|skills?|management|ability|knowledge|insights?|fidelity|deliverables?|approaches?|practices?|iterative|exceptional|strong|proven|thinking|mindset|oriented)\b/i.test(kw);
   for (const kw of missing) { if (isSkillLike(kw) && !cv.skills.some(s => s.toLowerCase() === kw.toLowerCase())) { cv.skills.push(kw); rules.push(`Injected "${kw}" into skills`); } }
   let longCount = 0;
   for (const exp of cv.experiences) { for (let i = 0; i < exp.bullets.length; i++) { if (exp.bullets[i].length > 200) { exp.bullets[i] = exp.bullets[i].slice(0, 200).replace(/[,;]?\s*\S*$/, ""); longCount++; rules.push(`Truncated bullet in ${exp.company}`); } } }
