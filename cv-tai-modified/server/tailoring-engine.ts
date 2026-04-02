@@ -1,8 +1,8 @@
 import type OpenAI from "openai";
 import type { Experience, Bullet, Skill } from "@shared/schema";
 
-export const MODEL = "llama-3.3-70b-versatile";
-const BASE_URL = "https://api.groq.com/openai/v1";
+export const MODEL = "gpt-4o-mini";
+const BASE_URL = "https://api.openai.com/v1";
 
 function log(step: string, data?: any) {
   const summary = data ? (typeof data === "string" ? data.slice(0, 500) : JSON.stringify(data).slice(0, 500)) : "";
@@ -16,8 +16,8 @@ export function normalizeLinkedInUrl(rawUrl: string): string {
 
 export interface LLMHealthResult { provider: string; model: string; baseUrl: string; apiKeyPresent: boolean; success: boolean; rawText: string; responseTimeMs: number; error?: string; }
 export async function checkLLMHealth(openai: OpenAI | null): Promise<LLMHealthResult> {
-  const r: LLMHealthResult = { provider: "Groq", model: MODEL, baseUrl: BASE_URL, apiKeyPresent: !!process.env.GROQ_API_KEY, success: false, rawText: "", responseTimeMs: 0 };
-  if (!openai) { r.error = "GROQ_API_KEY not set"; return r; }
+  const r: LLMHealthResult = { provider: "OpenAI", model: MODEL, baseUrl: BASE_URL, apiKeyPresent: !!process.env.OPENAI_API_KEY, success: false, rawText: "", responseTimeMs: 0 };
+  if (!openai) { r.error = "OPENAI_API_KEY not set"; return r; }
   const start = Date.now();
   try { const res = await openai.chat.completions.create({ model: MODEL, messages: [{ role: "user", content: "Reply OK" }], max_tokens: 10 }); r.rawText = res.choices[0]?.message?.content || ""; r.success = true; } catch (e: any) { r.error = e.message; }
   r.responseTimeMs = Date.now() - start; return r;
