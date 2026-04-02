@@ -14,10 +14,9 @@ import {
 } from "./tailoring-engine";
 
 let openai: OpenAI | null = null;
-if (process.env.GROQ_API_KEY) {
+if (process.env.OPENAI_API_KEY) {
   openai = new OpenAI({
-    apiKey: process.env.GROQ_API_KEY,
-    baseURL: "https://api.groq.com/openai/v1",
+    apiKey: process.env.OPENAI_API_KEY,
   });
 }
 
@@ -109,7 +108,7 @@ export async function registerRoutes(
       const truncated = rawText.slice(0, 8000);
 
       if (!openai) {
-        return res.status(500).json({ message: "Service IA non configuré (GROQ_API_KEY manquant)." });
+        return res.status(500).json({ message: "Service IA non configuré (OPENAI_API_KEY manquant)." });
       }
 
       const prompt = `Analyse ce CV et extrais TOUTES les expériences professionnelles.
@@ -963,7 +962,7 @@ JSON uniquement :
       }
 
       if (!openai) {
-        return res.status(500).json({ message: "AI service not configured. Please set GROQ_API_KEY." });
+        return res.status(500).json({ message: "AI service not configured. Please set OPENAI_API_KEY." });
       }
 
       // Load all data
