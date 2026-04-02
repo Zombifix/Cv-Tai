@@ -162,22 +162,48 @@ export function allocateCharBudget(exps: Experience[], scored: ScoredBullet[], t
     return { exp, score: Math.max(minScore, pertinence * recency), years, bulletCount: bullets.length, strongBullets };
   });
 
+  // Budget mode: compact (≤2000) = impact only, standard (2001-3000) = balanced, rich (>3000) = storytelling
+  const budgetMode: "compact" | "standard" | "rich" = totalChars <= 2000 ? "compact" : totalChars <= 3000 ? "standard" : "rich";
+
   const totalScore = expData.reduce((s, e) => s + e.score, 0);
   return expData.map(ed => {
     const prop = ed.score / totalScore;
     let budget = Math.round(pool * prop);
     const minBudget = ed.years <= 5 ? 250 : 120;
     budget = Math.max(minBudget, Math.min(Math.round(pool * 0.4), budget));
-    const maxB = Math.max(1, Math.min(Math.max(ed.strongBullets, 1), Math.floor(budget / 100)));
+
+    // Adaptive maxBullets: compact = impact bullets only, rich = allow storytelling
+    let maxB: number;
+    if (budgetMode === "compact") {
+      // Only strong bullets (score ≥ 30 or has numbers)
+      maxB = Math.max(1, Math.min(ed.strongBullets, Math.floor(budget / 120)));
+    } else if (budgetMode === "rich") {
+      // Allow more bullets including context/storytelling
+      maxB = Math.max(1, Math.min(Math.max(ed.bulletCount, 2), Math.floor(budget / 80)));
+    } else {
+      maxB = Math.max(1, Math.min(Math.max(ed.strongBullets, 1), Math.floor(budget / 100)));
+    }
+
     const imp: "critical" | "standard" | "minimal" = ed.score > totalScore * 0.2 ? "critical" : ed.years > 6 ? "minimal" : "standard";
     return { experience: ed.exp, charBudget: budget, maxBullets: maxB, importance: imp };
   });
 }
 
+// ─── Narrative dedup helpers ─────────────────────────────────────────────────
+function tokenize(text: string): Set<string> {
+  return new Set(text.toLowerCase().replace(/[^a-zàâçéèêëîïôùûüÿñæœ0-9]/g, " ").split(/\s+/).filter(w => w.length >= 4));
+}
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  const inter = [...a].filter(w => b.has(w)).length;
+  const union = new Set([...a, ...b]).size;
+  return union === 0 ? 0 : inter / union;
+}
+
 // ─── Step 4: Select & Deduplicate ────────────────────────────────────────────
 export function selectBullets(scored: ScoredBullet[], allocs: BudgetAlloc[]): ScoredExperience[] {
   const dimCounts = new Map<string, number>();
-  return allocs.map(alloc => {
+  // First pass: select per experience
+  const result = allocs.map(alloc => {
     const bullets = scored.filter(sb => sb.experience.id === alloc.experience.id).sort((a, b) => b.totalScore - a.totalScore);
     const sel: ScoredBullet[] = []; let chars = 0;
     for (const sb of bullets) {
@@ -191,6 +217,18 @@ export function selectBullets(scored: ScoredBullet[], allocs: BudgetAlloc[]): Sc
     const avg = sel.length > 0 ? sel.reduce((s, b) => s + b.totalScore, 0) / sel.length : 0;
     return { experience: alloc.experience, score: avg, reason: alloc.importance === "critical" ? "Highly relevant" : alloc.importance === "minimal" ? "Timeline continuity" : "Relevant", matchedAspects: [...new Set(sel.flatMap(sb => sb.matchedKeywords))], selectedBullets: sel, charBudget: alloc.charBudget };
   });
+
+  // Second pass: cross-experience narrative dedup (Jaccard > 0.45 = too similar)
+  const seenTokens: Set<string>[] = [];
+  for (const se of result) {
+    se.selectedBullets = se.selectedBullets.filter(sb => {
+      const tokens = tokenize(sb.bullet.text);
+      const tooSimilar = seenTokens.some(prev => jaccardSimilarity(prev, tokens) > 0.45);
+      if (!tooSimilar) seenTokens.push(tokens);
+      return !tooSimilar;
+    });
+  }
+  return result;
 }
 
 // ─── Step 5: Build Structured CV (adaptive) ──────────────────────────────────

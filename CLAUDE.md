@@ -101,11 +101,11 @@ qui passe l'ATS ET accroche un recruteur humain.
 15. [done] UI polish (tags agrandis, chevron, tri stable, espacement)
 
 ### À faire
-16. [ ] Cohérence narrative entre expériences
-17. [ ] Sélection budget-adaptive (contenu selon 2k/3k chars)
-18. [ ] Autocomplétion des tags (réutiliser existants)
-19. [ ] Nettoyage code mort (ancien enrichissement dans routes.ts)
+16. [done] Cohérence narrative entre expériences (Jaccard dedup cross-experiences)
+17. [done] Sélection budget-adaptive (compact ≤2000 = impact only, rich >3000 = storytelling)
+18. [done] Nettoyage code mort (ancien endpoint /enrich supprimé)
+19. [ ] Autocomplétion des tags (réutiliser existants)
 20. [ ] Scraping fallback propre
-21. [ ] Multi-user / auth
+21. [ ] Multi-user / auth — near-term : partage avec 2-3 personnes, base pour SaaS futur
 22. [ ] Accept/reject bullet par l'utilisateur
 23. [ ] Embeddings sémantiques (pgvector)
