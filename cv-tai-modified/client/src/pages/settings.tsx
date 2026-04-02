@@ -62,7 +62,7 @@ export default function Settings() {
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Provider actuel</Label>
                 <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg border border-border/50">
-                  <span className="text-sm font-medium">Groq — llama-3.3-70b-versatile</span>
+                  <span className="text-sm font-medium">OpenAI — gpt-4o-mini</span>
                   <span className="ml-auto text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">Actif</span>
                 </div>
               </div>

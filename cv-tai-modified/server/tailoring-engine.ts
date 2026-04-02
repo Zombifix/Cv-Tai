@@ -258,7 +258,16 @@ export async function buildStructuredCV(job: ParsedJob, selExps: ScoredExperienc
         { role: "user", content: `Target: "${job.title}" at "${job.company}" (${job.domain})\nPositioning: ${job.positioning}\n${extras?.profileSummary ? `Bio: ${extras.profileSummary}\n` : ""}Exps: ${topExps.map(se => `${se.experience.title} at ${se.experience.company}`).join(", ")}\nSkills: ${dedupSkills.slice(0,6).join(", ")}\nRequired: ${job.requiredSkills.slice(0,5).join(", ")}\nIntentions: ${job.intentions.slice(0,3).join("; ")}` },
       ] });
       summary = (res.choices[0].message.content || summary).trim();
-    } catch {}
+    } catch (e: any) {
+      log("summary LLM failed — deterministic fallback", e.message);
+      if (!summary) {
+        const expStr = topExps.slice(0, 2).map(se => `${se.experience.title} chez ${se.experience.company}`).join(", ");
+        const skillStr = dedupSkills.slice(0, 3).join(", ");
+        summary = job.language === "FR"
+          ? `Profil ${job.title} avec experience en ${expStr}${skillStr ? `. Competences : ${skillStr}` : ""}.`
+          : `${job.title} profile with experience at ${expStr}${skillStr ? `. Skills: ${skillStr}` : ""}.`;
+      }
+    }
   }
 
   const fmtDate = (d: string | null | undefined, lang: string) => { if (!d) return "Present"; try { return new Date(d).toLocaleDateString(lang === "FR" ? "fr-FR" : "en-US", { month: "short", year: "numeric" }); } catch { return d; } };

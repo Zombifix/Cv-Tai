@@ -353,7 +353,15 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
   const [editReasons, setEditReasons] = useState<Record<string, string> | null>(null);
   const [editSuggestion, setEditSuggestion] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [allTags, setAllTags] = useState<string[]>([]);
   const textRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    fetch("/api/bullets/tags", { credentials: "include" })
+      .then(r => r.json())
+      .then((tags: string[]) => setAllTags(tags))
+      .catch(() => {});
+  }, []);
 
   function quickCheck(text: string, tags: string[]): string[] {
     const w: string[] = [];
@@ -587,10 +595,26 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
                   <button onClick={() => setEditTags(prev => prev.filter((_, j) => j !== i))} className="hover:text-destructive text-muted-foreground">×</button>
                 </span>
               ))}
-              <input type="text" value={newTagText} onChange={e => setNewTagText(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && newTagText.trim()) { e.preventDefault(); setEditTags(prev => [...prev, newTagText.trim()]); setNewTagText(""); } }}
+              <input
+                list="all-tags-list"
+                type="text"
+                value={newTagText}
+                onChange={e => setNewTagText(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && newTagText.trim()) {
+                    e.preventDefault();
+                    setEditTags(prev => [...prev, newTagText.trim()]);
+                    setNewTagText("");
+                  }
+                }}
                 placeholder="+ ajouter un tag"
-                className="text-[13px] min-w-[120px] flex-1 bg-transparent border-b border-dashed border-muted-foreground/30 outline-none px-2 py-1" />
+                className="text-[13px] min-w-[120px] flex-1 bg-transparent border-b border-dashed border-muted-foreground/30 outline-none px-2 py-1"
+              />
+              <datalist id="all-tags-list">
+                {allTags.filter(t => !editTags.includes(t)).map(tag => (
+                  <option key={tag} value={tag} />
+                ))}
+              </datalist>
             </div>
           </div>
 

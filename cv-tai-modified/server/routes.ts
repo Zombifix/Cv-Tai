@@ -337,6 +337,13 @@ ${text}`,
     res.json({ success: true, count });
   });
 
+  // All unique tags across all bullets (for autocomplete)
+  app.get("/api/bullets/tags", async (_req, res) => {
+    const allBullets = await storage.getAllBullets();
+    const tags = [...new Set(allBullets.flatMap(b => b.tags || []).filter(Boolean))].sort();
+    res.json(tags);
+  });
+
   // Skills
   app.get(api.skills.list.path, async (req, res) => {
     const s = await storage.getSkills();
@@ -825,14 +832,19 @@ JSON uniquement :
           if (jinaRes.ok) {
             effectiveJobText = (await jinaRes.text()).slice(0, 6000).trim();
             console.log("[TAILOR] Scraped", effectiveJobText.length, "chars");
+          } else {
+            console.warn("[TAILOR] Scrape HTTP error:", jinaRes.status);
           }
         } catch (e: any) {
           console.warn("[TAILOR] Scrape failed:", e.message);
         }
       }
 
-      if (!effectiveJobText) {
-        effectiveJobText = `Job posting at: ${normalizedUrl}. Could not retrieve content. Please paste the job description.`;
+      if (!effectiveJobText || effectiveJobText.length < 150) {
+        return res.status(400).json({
+          message: "Impossible de recuperer le contenu de cette URL (acces restreint ou timeout). Veuillez coller la description du poste directement dans le champ texte.",
+          scrapeFailed: true,
+        });
       }
 
       if (extraContext?.trim()) {

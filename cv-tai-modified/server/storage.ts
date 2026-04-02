@@ -177,13 +177,13 @@ export class DatabaseStorage implements IStorage {
     return { ...run, jobPost };
   }
   async getRuns(): Promise<RunResponse[]> {
-    const allRuns = await db.select().from(runs).orderBy(desc(runs.createdAt)).limit(50);
-    const results: RunResponse[] = [];
-    for (const run of allRuns) {
-      const [jobPost] = await db.select().from(jobPosts).where(eq(jobPosts.id, run.jobPostId));
-      if (jobPost) results.push({ ...run, jobPost });
-    }
-    return results;
+    const rows = await db
+      .select()
+      .from(runs)
+      .innerJoin(jobPosts, eq(runs.jobPostId, jobPosts.id))
+      .orderBy(desc(runs.createdAt))
+      .limit(50);
+    return rows.map(row => ({ ...row.runs, jobPost: row.job_posts }));
   }
 }
 
