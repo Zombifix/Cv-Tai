@@ -160,7 +160,7 @@ const MODE_META: Record<string, { label: string; icon: React.ReactNode; color: s
   adaptive: { label: "Adaptatif", icon: <RefreshCw className="w-3 h-3" />, color: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" },
 };
 
-function MatchScore({ confidence, reasoning, fallbackUsed }: { confidence: number; reasoning?: string; fallbackUsed?: boolean }) {
+function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { confidence: number; reasoning?: string; fallbackUsed?: boolean; scoreBreakdown?: { ats: number; semantic: number; domainMismatch?: string; cappedByKeywords?: boolean } }) {
   const size = 56;
   const strokeWidth = 5;
   const radius = (size - strokeWidth * 2) / 2;
@@ -177,6 +177,16 @@ function MatchScore({ confidence, reasoning, fallbackUsed }: { confidence: numbe
   return (
     <Card className="border-border/60 shadow-none" data-testid="section-match-score">
       <CardContent className="p-4">
+        {/* Domain mismatch warning — prominent, above the ring */}
+        {scoreBreakdown?.domainMismatch && (
+          <div className="flex items-start gap-2 mb-3 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug font-medium">
+              Mismatch détecté ({scoreBreakdown.domainMismatch}) — les compétences se croisent partiellement mais le cœur du rôle diffère.
+            </p>
+          </div>
+        )}
+
         <div className="flex items-center gap-4">
           <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
             <svg width={size} height={size} className="-rotate-90" style={{ display: "block" }}>
@@ -192,12 +202,42 @@ function MatchScore({ confidence, reasoning, fallbackUsed }: { confidence: numbe
           </div>
           <div className="flex-1 min-w-0">
             <p className={`text-sm font-bold ${textColor}`} data-testid="text-match-score-label">{label}</p>
-            {fallbackUsed && (
+            {scoreBreakdown?.cappedByKeywords && (
+              <p className="text-[10px] text-red-500 dark:text-red-400 font-medium mt-0.5">Plafonné — keywords critiques absents du CV</p>
+            )}
+            {fallbackUsed && !scoreBreakdown?.cappedByKeywords && (
               <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Match faible — bullets de substitution utilisés</p>
             )}
           </div>
         </div>
-        {insightSentence && (
+
+        {/* Score breakdown — ATS vs semantic */}
+        {scoreBreakdown && (
+          <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-border/50">
+            <div className="space-y-1">
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">ATS Keywords</p>
+              <div className="flex items-center gap-1.5">
+                <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${scoreBreakdown.ats >= 70 ? "bg-green-500" : scoreBreakdown.ats >= 40 ? "bg-amber-500" : "bg-red-500"}`}
+                    style={{ width: `${scoreBreakdown.ats}%` }} />
+                </div>
+                <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown.ats}%</span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Bullets sémantique</p>
+              <div className="flex items-center gap-1.5">
+                <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${scoreBreakdown.semantic >= 70 ? "bg-green-500" : scoreBreakdown.semantic >= 40 ? "bg-amber-500" : "bg-red-500"}`}
+                    style={{ width: `${scoreBreakdown.semantic}%` }} />
+                </div>
+                <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown.semantic}%</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {insightSentence && !scoreBreakdown && (
           <p className="text-[11px] text-muted-foreground leading-relaxed mt-3 pt-3 border-t border-border/50 italic" data-testid="text-match-score-insight">
             {insightSentence}.
           </p>
@@ -922,6 +962,7 @@ export default function Result() {
                 confidence={report.confidence}
                 reasoning={report.confidenceReasoning}
                 fallbackUsed={report.fallbackUsed}
+                scoreBreakdown={report.scoreBreakdown}
               />
             )}
 

@@ -51,7 +51,12 @@ export async function parseJobDescription(jobText: string, openai: OpenAI): Prom
 - title, company, seniority (junior/mid/senior/lead/director), domain
 - requiredSkills[], preferredSkills[], responsibilities[]
 - keywords[] (10-20 ATS terms: concrete tools, technologies, methodologies — max 3 words each, NO soft skills, NO descriptive phrases)
-- criticalKeywords[] (5-8 MUST-HAVE skills: short skill/tool/method names only, max 3 words, examples: "Figma", "User Research", "Design System", "A/B Testing" — NEVER phrases like "data-driven insights", "high-fidelity designs", "iterative mindset")
+- criticalKeywords[] (5-8 ROLE-DISCRIMINATING must-haves — CRITICAL RULE: choose terms that a professional from an ADJACENT but different field would NOT have. Examples:
+  * For Product Owner: "Backlog Management", "Sprint Planning", "User Stories", "Roadmap" — NOT "User Research" (designers have this too)
+  * For Product Designer: "Figma", "Prototyping", "Design System", "Usability Testing" — NOT "Stakeholder Management" (POs have this too)
+  * For Chef de Projet: "Gestion de projet", "Planning", "Budget", "Reporting" — NOT "Product Discovery"
+  * For Data Analyst: "SQL", "Python", "Data Viz", "Dashboard" — NOT "Analytics" (too generic)
+  The goal: if someone with the wrong background reads these 5-8 keywords, they should immediately know they don't qualify.)
 - language ("EN"/"FR")
 - intentions[] (5-10 phrases: what the role REALLY needs beyond keywords. Ex: "structurer les pratiques design", "influencer les stakeholders", "mesurer l'impact business du design". VERBS + OUTCOMES.)
 - positioning: "consultant" (conseil, accompagnement, formation) | "lead" (management, vision, equipe) | "ic" (craft, delivery) | "manager" (people management)` },
@@ -332,7 +337,7 @@ export function renderCVText(cv: StructuredCV, job: ParsedJob): string {
 }
 
 // ─── Report ──────────────────────────────────────────────────────────────────
-export interface OptimizationReport { jobTitle: string; jobCompany: string; jobSeniority: string; jobDomain: string; detectedKeywords: { requiredSkills: string[]; preferredSkills: string[]; responsibilities: string[]; keywords: string[]; criticalKeywords: string[]; }; matchedSkills: string[]; missingSkills: string[]; selectedExperiences: { title: string; company: string; score: number; reason: string; matchedAspects: string[]; bulletCount: number; charBudget: number; }[]; rejectedExperiences: { title: string; company: string; score: number; reason: string }[]; selectedBullets: { text: string; experienceTitle: string; score: number; deterministicScore: number; llmScore: number; matchedKeywords: string[]; dimension: string; }[]; postRules: PostRuleResult; confidence: number; confidenceReasoning: string; fallbackUsed: boolean; detectedLanguage: "EN" | "FR"; positioning: string; intentions: string[]; tips: string[]; }
+export interface OptimizationReport { jobTitle: string; jobCompany: string; jobSeniority: string; jobDomain: string; detectedKeywords: { requiredSkills: string[]; preferredSkills: string[]; responsibilities: string[]; keywords: string[]; criticalKeywords: string[]; }; matchedSkills: string[]; missingSkills: string[]; selectedExperiences: { title: string; company: string; score: number; reason: string; matchedAspects: string[]; bulletCount: number; charBudget: number; }[]; rejectedExperiences: { title: string; company: string; score: number; reason: string }[]; selectedBullets: { text: string; experienceTitle: string; score: number; deterministicScore: number; llmScore: number; matchedKeywords: string[]; dimension: string; }[]; postRules: PostRuleResult; confidence: number; confidenceReasoning: string; fallbackUsed: boolean; detectedLanguage: "EN" | "FR"; positioning: string; intentions: string[]; tips: string[]; scoreBreakdown: { ats: number; semantic: number; domainMismatch?: string; cappedByKeywords: boolean; }; }
 
 export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperience[], skills: Skill[], postRules: PostRuleResult, cv: StructuredCV): OptimizationReport {
   const allBullets = selExps.flatMap(se => se.selectedBullets);
@@ -343,9 +348,13 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
   const avg = total > 0 ? Math.round(allBullets.reduce((s, b) => s + b.totalScore, 0) / total) : 0;
   const kwCov = job.criticalKeywords.length > 0 ? Math.round(postRules.keywordsCovered.length / job.criticalKeywords.length * 100) : 50;
   // Removed flat +20 bullets bonus — it was inflating scores regardless of match quality.
-  // New formula: avg score (0-100) × 0.45 + keyword coverage × 0.45 + small bullets bonus (max 10).
+  // New formula: avg score (0-120 scale) × 0.45 + keyword coverage × 0.45 + small bullets bonus (max 10).
   const bulletBonus = total >= 6 ? Math.min(10, Math.round(kwCov * 0.1)) : Math.round(total * 1.5);
-  const confidence = Math.min(100, Math.round(avg * 0.45 + kwCov * 0.45 + bulletBonus));
+  const rawConfidence = Math.round(avg * 0.45 + kwCov * 0.45 + bulletBonus);
+  // Hard cap: if less than 25% of critical keywords are present in the CV, it's a weak match regardless of bullet quality.
+  // This catches cases where the profile domain is fundamentally different from the job (e.g. Designer → PO).
+  const critKwHardCap = job.criticalKeywords.length >= 4 && kwCov < 25 ? 40 : 100;
+  const confidence = Math.min(critKwHardCap, Math.min(100, rawConfidence));
   const tips: string[] = [];
   if (postRules.keywordsMissing.length) tips.push(`Keywords manquants: ${postRules.keywordsMissing.join(", ")}.`);
   if (postRules.bulletsWithNumbers < total * 0.3) tips.push("Moins de 30% de tes bullets contiennent des chiffres.");
@@ -367,7 +376,14 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
   if (isDesignJob && userIsPO && !userIsDesigner) {
     tips.push("Attention : ce poste est Design mais tes bullets sont orientés Product/PO. Le match UX craft est limité.");
   }
-  return { jobTitle: job.title, jobCompany: job.company, jobSeniority: job.seniority, jobDomain: job.domain, detectedKeywords: { requiredSkills: job.requiredSkills, preferredSkills: job.preferredSkills, responsibilities: job.responsibilities, keywords: job.keywords, criticalKeywords: job.criticalKeywords }, matchedSkills: matched.map(s => s.name), missingSkills: missingSkills.slice(0, 10), selectedExperiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, score: Math.round(se.score), reason: se.reason, matchedAspects: se.matchedAspects, bulletCount: se.selectedBullets.length, charBudget: se.charBudget })), rejectedExperiences: [], selectedBullets: allBullets.map(sb => ({ text: sb.bullet.text, experienceTitle: sb.experience.title, score: sb.totalScore, deterministicScore: sb.deterministicScore, llmScore: sb.llmScore, matchedKeywords: sb.matchedKeywords, dimension: sb.dimension })), postRules, confidence, confidenceReasoning: `Avg score: ${avg}/100. KW coverage: ${kwCov}%. ${total} bullets.`, fallbackUsed: total === 0, detectedLanguage: job.language, positioning: job.positioning, intentions: job.intentions, tips };
+
+  const domainMismatch = isPOJob && userIsDesigner && !userIsPO ? "PO/PM vs Designer"
+    : isDesignJob && userIsPO && !userIsDesigner ? "Designer vs PO"
+    : undefined;
+  const semanticScore = Math.min(100, Math.round(avg * 100 / 120));
+  const cappedByKeywords = critKwHardCap < 100 && rawConfidence > critKwHardCap;
+
+  return { jobTitle: job.title, jobCompany: job.company, jobSeniority: job.seniority, jobDomain: job.domain, detectedKeywords: { requiredSkills: job.requiredSkills, preferredSkills: job.preferredSkills, responsibilities: job.responsibilities, keywords: job.keywords, criticalKeywords: job.criticalKeywords }, matchedSkills: matched.map(s => s.name), missingSkills: missingSkills.slice(0, 10), selectedExperiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, score: Math.round(se.score), reason: se.reason, matchedAspects: se.matchedAspects, bulletCount: se.selectedBullets.length, charBudget: se.charBudget })), rejectedExperiences: [], selectedBullets: allBullets.map(sb => ({ text: sb.bullet.text, experienceTitle: sb.experience.title, score: sb.totalScore, deterministicScore: sb.deterministicScore, llmScore: sb.llmScore, matchedKeywords: sb.matchedKeywords, dimension: sb.dimension })), postRules, confidence, confidenceReasoning: `ATS keywords: ${kwCov}%. Semantic: ${semanticScore}%. ${total} bullets.${cappedByKeywords ? " Score plafonné : keywords critiques absents." : ""}`, fallbackUsed: total === 0, detectedLanguage: job.language, positioning: job.positioning, intentions: job.intentions, tips, scoreBreakdown: { ats: kwCov, semantic: semanticScore, domainMismatch, cappedByKeywords } };
 }
 
 // ─── Master Pipeline ─────────────────────────────────────────────────────────
