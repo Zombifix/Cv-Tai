@@ -67,3 +67,9 @@
 - Fichiers : `client/src/pages/result.tsx`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
 - Impact : la page Result doit afficher un texte lisible meme quand le backend ou le scrape remonte encore du texte partiellement mal encode
 - Verification : `git diff --check -- client/src/pages/result.tsx`
+
+### Job posting cleanup for LinkedIn scrapes
+- Quoi : refonte de `cleanJobPostingForAnalysis` pour couper les preambles LinkedIn, supprimer les blocs de connexion/recommandations, et reformatter l'annonce en sections lisibles avec une zone `Infos LinkedIn`
+- Fichiers : `client/src/pages/result.tsx`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
+- Impact : l'onglet `Annonce utilisee` doit afficher une version beaucoup plus compacte et lisible des scrapes LinkedIn au lieu d'un pavé parasite
+- Verification : revue manuelle du nettoyeur + `git diff --check -- client/src/pages/result.tsx`

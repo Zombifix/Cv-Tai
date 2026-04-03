@@ -922,29 +922,136 @@ function toCodeFence(label: string, value: unknown): string[] {
   return [`## ${label}`, "```text", content.replace(/```/g, "'''"), "```"];
 }
 
+function findMarkerIndex(text: string, markers: RegExp[]): number {
+  let bestIndex = -1;
+  for (const marker of markers) {
+    const match = marker.exec(text);
+    if (match && (bestIndex === -1 || match.index < bestIndex)) {
+      bestIndex = match.index;
+    }
+  }
+  return bestIndex;
+}
+
+function formatJobPostingLines(lines: string[]): string {
+  const output: string[] = [];
+  const metadata: string[] = [];
+  const listSectionHeadings = new Set(["Vos responsabilites", "Vos responsabilités", "Profil", "Responsibilities", "Requirements", "Qualifications"]);
+  let currentHeading = "";
+
+  const pushLine = (value: string) => {
+    const line = trimBlock(value);
+    if (!line) return;
+    if (output[output.length - 1] === line) return;
+    output.push(line);
+  };
+
+  for (const rawLine of lines) {
+    const line = trimBlock(rawLine);
+    if (!line) continue;
+
+    const metadataMatch = line.match(/^(Seniority level|Employment type|Job function|Industries)\s+(.+)$/i);
+    if (metadataMatch) {
+      metadata.push(`- ${metadataMatch[1]}: ${metadataMatch[2].trim()}`);
+      continue;
+    }
+
+    const isHeading = /^(Votre mission|Vos responsabilites|Vos responsabilités|Profil|About the job|Responsibilities|Requirements|Qualifications)$/i.test(line);
+    if (isHeading) {
+      if (output.length > 0 && output[output.length - 1] !== "") output.push("");
+      currentHeading = line;
+      pushLine(line);
+      output.push("");
+      continue;
+    }
+
+    if (listSectionHeadings.has(currentHeading)) {
+      pushLine(line.startsWith("- ") ? line : `- ${line}`);
+      continue;
+    }
+
+    pushLine(line);
+  }
+
+  while (output[output.length - 1] === "") output.pop();
+
+  if (metadata.length > 0) {
+    if (output.length > 0) output.push("");
+    output.push("Infos LinkedIn");
+    output.push("");
+    output.push(...metadata);
+  }
+
+  return output
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function cleanJobPostingForAnalysis(rawText: unknown): string {
   const text = trimBlock(rawText);
   if (!text) return "";
 
-  const normalized = text.replace(/\r\n/g, "\n");
+  const normalized = text
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n");
+
   const startMarkers = [
+    /(?:^|\n)Chez\s+[^\n]+/i,
+    /(?:^|\n)Nous recherchons\b/i,
+    /(?:^|\n)Votre mission\b/i,
+    /(?:^|\n)Vos responsabilites\b/i,
+    /(?:^|\n)Vos responsabilités\b/i,
+    /(?:^|\n)Profil\b/i,
     /(?:^|\n)Le poste\b/i,
     /(?:^|\n)Descriptif du poste\b/i,
     /(?:^|\n)About the job\b/i,
     /(?:^|\n)Job description\b/i,
     /(?:^|\n)Responsibilities\b/i,
   ];
+  const endMarkers = [
+    /\n(?:Referrals increase|Get notified about new|Similar jobs|People also viewed|Show more jobs like this|Show fewer jobs like this)\b/i,
+    /\n(?:Assistant Designer|ALTERNANCE PRODUCT DESIGNER|Designer produit|UX\/UI designer)\b/i,
+  ];
 
   let cleaned = normalized;
-  for (const marker of startMarkers) {
-    const match = marker.exec(normalized);
-    if (match?.index != null) {
-      cleaned = normalized.slice(match.index).trim();
-      break;
-    }
+  const startIndex = findMarkerIndex(normalized, startMarkers);
+  if (startIndex >= 0) {
+    cleaned = normalized.slice(startIndex).trim();
+  }
+
+  const endIndex = findMarkerIndex(cleaned, endMarkers);
+  if (endIndex >= 0) {
+    cleaned = cleaned.slice(0, endIndex).trim();
   }
 
   const noiseLinePatterns = [
+    /^s a list of search options/i,
+    /^Jobs$/i,
+    /^People$/i,
+    /^Learning$/i,
+    /^Clear text$/i,
+    /^Sign in Join now$/i,
+    /^Apply$/i,
+    /^Join or sign in to find your next job$/i,
+    /^Join to apply\b/i,
+    /^Email or phone$/i,
+    /^Password$/i,
+    /^Show$/i,
+    /^Forgot password\?$/i,
+    /^Sign in$/i,
+    /^Sign in with Email$/i,
+    /^or$/i,
+    /^New to LinkedIn\? Join now$/i,
+    /^By clicking Continue to join or sign in/i,
+    /^Save$/i,
+    /^Report this job$/i,
+    /^See who .+ has hired for this role$/i,
+    /^Be among the first \d+ applicants$/i,
+    /^Show more$/i,
+    /^Show less$/i,
+    /^\d+\s+(?:hours?|days?|weeks?|months?)\s+ago$/i,
     /^Blah blah blah Cookie/i,
     /^Axeptio consent/i,
     /^Consentements certifies/i,
@@ -964,6 +1071,7 @@ function cleanJobPostingForAnalysis(rawText: unknown): string {
     /^Je choisis$/i,
     /^OK pour moi$/i,
     /^Questions et reponses sur l'offre$/i,
+    /^Questions et réponses sur l'offre$/i,
     /^L'envoi d'un CV/i,
     /^Le teletravail est-il possible/i,
     /^Quel est le type de contrat/i,
@@ -973,22 +1081,18 @@ function cleanJobPostingForAnalysis(rawText: unknown): string {
   ];
 
   const filteredLines = cleaned
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/^(?:Blah blah blah Cookie ![\s\S]*?)?(?=(?:Le poste|Descriptif du poste|About the job|Job description))/i, "")
-    .replace(/Axeptio consent[\s\S]*?(?=\n(?:Le poste|Descriptif du poste|About the job|Job description)\b)/i, "")
-    .replace(/\n(?:Questions et reponses sur l'offre|Cette offre vous tente \?|Postuler|Sauvegarder)\b[\s\S]*?(?=\n(?:Le poste|Descriptif du poste))/i, "\n")
+    .replace(/^(?:Blah blah blah Cookie ![\s\S]*?)?(?=(?:Chez|Nous recherchons|Votre mission|Le poste|Descriptif du poste|About the job|Job description))/i, "")
+    .replace(/Axeptio consent[\s\S]*?(?=\n(?:Chez|Nous recherchons|Votre mission|Le poste|Descriptif du poste|About the job|Job description)\b)/i, "")
+    .replace(/\n(?:Questions et reponses sur l'offre|Cette offre vous tente \?|Postuler|Sauvegarder)\b[\s\S]*?(?=\n(?:Chez|Nous recherchons|Votre mission|Le poste|Descriptif du poste))/i, "\n")
     .split("\n")
     .map(line => line.trim())
     .filter(line => {
       if (!line) return false;
       return !noiseLinePatterns.some(pattern => pattern.test(line));
     })
-    .filter((line, index, lines) => line !== lines[index - 1])
-    .join("\n");
+    .filter((line, index, lines) => line !== lines[index - 1]);
 
-  return filteredLines
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return formatJobPostingLines(filteredLines);
 }
 
 function buildAnalysisPayload({

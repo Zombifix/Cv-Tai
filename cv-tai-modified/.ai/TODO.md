@@ -27,6 +27,7 @@
 - Verifier dans l'UI Tailor que `Intro / Resume pro` et `Corps (experiences)` restent memorises apres refresh/navigation.
 - Verifier en vrai sur une offre scrapee que le texte nettoye commence bien au contenu metier et non aux cookies/navigation.
 - Verifier en prod que la page Result n'affiche plus de libelles mojibake visibles dans `Fit offre`, `Points d'attention`, `Mots-cles detectes`, `Ameliorer la bibliotheque` et les badges de langue/seniorite.
+- Verifier en prod qu'une annonce LinkedIn longue est maintenant reformatee en sections lisibles (`Votre mission`, `Vos responsabilites`, `Profil`, `Infos LinkedIn`) au lieu d'un bloc de 50 lignes parasite.
 - Verifier qu'un run `polished` ne sort plus avec une confiance inferieure au baseline `original` a contenu equivalent.
 - Result: purger les libelles mojibake visibles directement dans `client/src/pages/result.tsx` et eviter toute reparation DOM globale.
 - Installer les deps de dev ou remettre `tsc` dispo pour relancer `npm run check`.
