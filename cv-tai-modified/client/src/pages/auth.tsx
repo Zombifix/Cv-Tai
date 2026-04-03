@@ -1,21 +1,30 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileText } from "lucide-react";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { useLogin, useRegister } from "@/hooks/use-auth";
+import { useCurrentUser, useLogin, useRegister } from "@/hooks/use-auth";
 
 export default function AuthPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [, setLocation] = useLocation();
+  const { data: user } = useCurrentUser();
 
   const login = useLogin();
   const register = useRegister();
 
   const mutation = mode === "login" ? login : register;
+
+  useEffect(() => {
+    if (user) {
+      setLocation("/library");
+    }
+  }, [user, setLocation]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

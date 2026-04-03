@@ -76,6 +76,12 @@
 
 ## 2026-04-04
 
+### Auth UX redirect fix
+- Quoi : redirection automatique vers `/library` apres login/register reussi et protection de la route `/login` quand une session existe deja
+- Fichiers : `client/src/pages/auth.tsx`, `client/src/App.tsx`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
+- Impact : evite l'impression que les boutons `S'inscrire` / `Se connecter` "ne font rien" alors que l'auth peut avoir reussi; l'utilisateur est renvoye vers l'app des qu'une session est presente
+- Verification : revue manuelle du flow; verification navigateur a faire en prod
+
 ### Railway auth session hardening
 - Quoi : ajout de `trust proxy` et du mode `proxy`/`sameSite=lax` sur la session Express pour que les cookies securises fonctionnent derriere Railway
 - Fichiers : `server/index.ts`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`

@@ -33,10 +33,28 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function LoginRoute() {
+  const { data: user, isLoading } = useCurrentUser();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background/50">
+        <div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  if (user) {
+    return <Redirect to="/library" />;
+  }
+
+  return <AuthPage />;
+}
+
 function Router() {
   return (
     <Switch>
-      <Route path="/login" component={AuthPage} />
+      <Route path="/login" component={LoginRoute} />
       <Route path="/" component={() => <Redirect to="/library" />} />
       <Route path="/library" component={() => <AuthGate><Library /></AuthGate>} />
       <Route path="/tailor" component={() => <AuthGate><Tailor /></AuthGate>} />

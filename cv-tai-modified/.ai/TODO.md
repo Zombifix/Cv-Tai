@@ -18,6 +18,7 @@
   - afficher une cause principale explicite + une action recommandee
 
 ## Next
+- Verifier en prod que login/register redirigent maintenant bien vers `/library` au lieu de rester silencieusement sur `/login`.
 - Verifier en prod que la connexion fonctionne a nouveau apres ajout de `trust proxy` / cookie session Railway, puis confirmer que les endpoints proteges (`/api/check-match`, `/api/tailor/*`) ne renvoient plus `401` a tort.
 - Verifier sur Railway que l'erreur de build `Unexpected smart quote` sur `runFastDryRun` a disparu et qu'aucune seconde erreur serveur ne suit.
 - Rejouer le cas EY / role adjacent pour verifier qu'un `polished` n'explose plus artificiellement le score quand l'ATS vient surtout d'injections de keywords.
@@ -50,6 +51,8 @@
 ## Touched files
 - `CLAUDE.md`
 - `server/index.ts`
+- `client/src/App.tsx`
+- `client/src/pages/auth.tsx`
 - `client/src/pages/result.tsx`
 - `client/src/pages/tailor.tsx`
 - `server/routes.ts`
