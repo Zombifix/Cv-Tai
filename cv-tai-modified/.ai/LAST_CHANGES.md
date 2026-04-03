@@ -19,3 +19,9 @@
 - Fichiers : `server/tailoring-engine.ts`, `server/routes.ts`, `client/src/pages/result.tsx`
 - Impact : le report doit mieux correspondre au CV final, le mode optimise ne doit plus sortir moins bon que son baseline interne, et les exports/resultats affichent moins de mojibake
 - Verification : revue manuelle du diff; `npm run check` non executable car `tsc` absent dans l'environnement
+
+### Result UI mojibake fallback
+- Quoi : ajout d'une reparation DOM sur la page Result et d'un composant de suivi candidature en texte ASCII propre
+- Fichiers : `client/src/pages/result.tsx`
+- Impact : les libelles encore casses comme `Tu as postule avec ce CV ?`, `CV genere` et les diagnostics reportes doivent s'afficher correctement meme si la source contient encore du mojibake
+- Verification : revue manuelle du diff; pas de verification navigateur dans cet environnement

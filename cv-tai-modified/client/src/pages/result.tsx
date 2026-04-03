@@ -12,7 +12,7 @@ import {
   WandSparkles, Library, BookOpen, ExternalLink, Plus, Sparkles, FileDown,
   Send, Calendar
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -588,10 +588,11 @@ function sourceBadge(meta?: JobInputInfo) {
 function MatchDiagnosisCard({ confidence, diagnosis, fallbackUsed, scoreBreakdown }: { confidence: number; diagnosis?: ReportDiagnosis; fallbackUsed?: boolean; scoreBreakdown?: { ats: number; semantic: number; domainMismatch?: string; cappedByKeywords?: boolean } }) {
   const label = confidence >= 70 ? "Fort match" : confidence >= 40 ? "Match partiel" : "Match faible";
   const textColor = confidence >= 70 ? "text-green-600 dark:text-green-400" : confidence >= 40 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
-  const verdict = diagnosis?.verdict || "Le moteur a estime un niveau de correspondance global pour cette annonce.";
-  const whatMatches = diagnosis?.whatMatches || [];
-  const whatMissing = diagnosis?.whatMissing || [];
-  const nextActions = diagnosis?.nextActions || [];
+  const primaryDiagnosis = repairMojibake(diagnosis?.primaryDiagnosis || "");
+  const verdict = repairMojibake(diagnosis?.verdict || "Le moteur a estime un niveau de correspondance global pour cette annonce.");
+  const whatMatches = (diagnosis?.whatMatches || []).map(item => repairMojibake(item));
+  const whatMissing = (diagnosis?.whatMissing || []).map(item => repairMojibake(item));
+  const nextActions = (diagnosis?.nextActions || []).map(item => repairMojibake(item));
 
   return (
     <Card className="border-border/60 shadow-none" data-testid="section-match-diagnosis">
@@ -609,8 +610,8 @@ function MatchDiagnosisCard({ confidence, diagnosis, fallbackUsed, scoreBreakdow
           <ConfidenceRing value={confidence} size={56} />
           <div className="flex-1 min-w-0">
             <p className={`text-sm font-bold ${textColor}`}>{label}</p>
-            {diagnosis?.primaryDiagnosis && (
-              <p className="text-[11px] text-foreground font-medium mt-0.5">{diagnosis.primaryDiagnosis}</p>
+            {primaryDiagnosis && (
+              <p className="text-[11px] text-foreground font-medium mt-0.5">{primaryDiagnosis}</p>
             )}
             {scoreBreakdown?.cappedByKeywords && (
               <p className="text-[10px] text-red-500 dark:text-red-400 font-medium mt-0.5">Plafonne : keywords critiques absents du CV</p>
@@ -724,6 +725,34 @@ function toCodeFence(label: string, value: unknown): string[] {
   return [`## ${label}`, "```text", content.replace(/```/g, "'''"), "```"];
 }
 
+function cleanJobPostingForAnalysis(rawText: unknown): string {
+  const text = trimBlock(rawText);
+  if (!text) return "";
+
+  const normalized = text.replace(/\r\n/g, "\n");
+  const startMarkers = [
+    /(?:^|\n)Le poste\b/i,
+    /(?:^|\n)Descriptif du poste\b/i,
+    /(?:^|\n)About the job\b/i,
+    /(?:^|\n)Job description\b/i,
+    /(?:^|\n)Responsibilities\b/i,
+  ];
+
+  let cleaned = normalized;
+  for (const marker of startMarkers) {
+    const match = marker.exec(normalized);
+    if (match?.index != null) {
+      cleaned = normalized.slice(match.index).trim();
+      break;
+    }
+  }
+
+  return cleaned
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/Axeptio consent[\s\S]*?(?=\n(?:Le poste|Descriptif du poste|About the job|Job description)\b)/i, "")
+    .trim();
+}
+
 function buildAnalysisPayload({
   run,
   report,
@@ -783,6 +812,38 @@ function buildAnalysisPayload({
       scrapeMessage: trimBlock(jobInput?.scrapeMessage) || "n/a",
       normalizedUrl: trimBlock(jobInput?.normalizedUrl || run?.jobPost?.url) || "n/a",
     },
+    jobAnalysis: {
+      positioning: trimBlock(report?.positioning) || "unknown",
+      intentions: compactList(report?.intentions, 8),
+      requiredSkills: compactList(report?.detectedKeywords?.requiredSkills, 12),
+      preferredSkills: compactList(report?.detectedKeywords?.preferredSkills, 12),
+      responsibilities: compactList(report?.detectedKeywords?.responsibilities, 10),
+      criticalKeywords: compactList(report?.detectedKeywords?.criticalKeywords, 10),
+    },
+    selectionDebug: {
+      selectedExperiences: (Array.isArray(report?.selectedExperiences) ? report.selectedExperiences : []).map((exp: any) => ({
+        title: trimBlock(exp?.title) || "Experience",
+        company: trimBlock(exp?.company) || "",
+        score: exp?.score ?? null,
+        reason: trimBlock(exp?.reason) || "n/a",
+        matchedAspects: compactList(exp?.matchedAspects, 8),
+        bulletCount: exp?.bulletCount ?? 0,
+        charBudget: exp?.charBudget ?? null,
+      })),
+      selectedBullets: (Array.isArray(report?.selectedBullets) ? report.selectedBullets : []).map((bullet: any) => ({
+        experienceTitle: trimBlock(bullet?.experienceTitle) || "Experience",
+        text: trimBlock(bullet?.text),
+        totalScore: bullet?.score ?? null,
+        deterministicScore: bullet?.deterministicScore ?? null,
+        llmScore: bullet?.llmScore ?? null,
+        dimension: trimBlock(bullet?.dimension) || "unknown",
+        matchedKeywords: compactList(bullet?.matchedKeywords, 8),
+      })),
+      unavailable: [
+        "Rejected bullets are not saved in the current run payload.",
+        "Source-to-generated reformulation diff is not saved explicitly.",
+      ],
+    },
     sourceExperiences,
   };
 }
@@ -801,6 +862,7 @@ function buildAnalysisExport({
   pageTitle: string;
 }) {
   const payload = buildAnalysisPayload({ run, report, jobInput, pageTitle });
+  const cleanedJobPosting = cleanJobPostingForAnalysis(run?.jobPost?.rawText);
 
   const sourceSections = payload.sourceExperiences.length
     ? payload.sourceExperiences.flatMap((exp: { title: string; company: string; bullets: string[] }) => [
@@ -809,6 +871,41 @@ function buildAnalysisExport({
         "",
       ])
     : ["No source bullets saved for this run."];
+
+  const experienceDebugSections = payload.selectionDebug.selectedExperiences.length
+    ? payload.selectionDebug.selectedExperiences.flatMap((exp: {
+        title: string;
+        company: string;
+        score: number | null;
+        reason: string;
+        matchedAspects: string[];
+        bulletCount: number;
+        charBudget: number | null;
+      }) => [
+        `### ${[exp.title, exp.company].filter(Boolean).join(" | ")}`,
+        `- score: ${exp.score ?? "n/a"}`,
+        `- reason: ${exp.reason}`,
+        `- matched aspects: ${exp.matchedAspects.join(", ") || "none"}`,
+        `- selected bullets: ${exp.bulletCount}`,
+        `- char budget: ${exp.charBudget ?? "n/a"}`,
+        "",
+      ])
+    : ["No selected experience debug saved for this run."];
+
+  const bulletDebugSections = payload.selectionDebug.selectedBullets.length
+    ? payload.selectionDebug.selectedBullets.map((bullet: {
+        experienceTitle: string;
+        text: string;
+        totalScore: number | null;
+        deterministicScore: number | null;
+        llmScore: number | null;
+        dimension: string;
+        matchedKeywords: string[];
+      }) => [
+        `- [${bullet.experienceTitle}] total=${bullet.totalScore ?? "n/a"} det=${bullet.deterministicScore ?? "n/a"} llm=${bullet.llmScore ?? "n/a"} dim=${bullet.dimension} kw=${bullet.matchedKeywords.join(", ") || "none"}`,
+        `  ${bullet.text || "n/a"}`,
+      ].join("\n"))
+    : ["No selected bullet debug saved for this run."];
 
   const lines = [
     "# CV-TAI REVIEW PACK",
@@ -853,14 +950,30 @@ function buildAnalysisExport({
     `- Scrape message: ${payload.jobInput.scrapeMessage}`,
     `- Source URL: ${payload.jobInput.normalizedUrl}`,
     "",
+    "## Job Analysis",
+    `- Positioning: ${payload.jobAnalysis.positioning}`,
+    `- Intentions: ${payload.jobAnalysis.intentions.join(" | ") || "none"}`,
+    `- Required skills: ${payload.jobAnalysis.requiredSkills.join(", ") || "none"}`,
+    `- Preferred skills: ${payload.jobAnalysis.preferredSkills.join(", ") || "none"}`,
+    `- Responsibilities: ${payload.jobAnalysis.responsibilities.join(" | ") || "none"}`,
+    `- Critical keywords: ${payload.jobAnalysis.criticalKeywords.join(", ") || "none"}`,
+    "",
     "## Tips",
     ...(payload.diagnosis.tips.length ? payload.diagnosis.tips.map(item => `- ${item}`) : ["- n/a"]),
     "",
     "## Source Bullets",
     ...sourceSections,
+    "## Selection Debug - Experiences",
+    ...experienceDebugSections,
+    "## Selection Debug - Bullets",
+    ...bulletDebugSections,
+    "",
+    "## Selection Debug - Unavailable",
+    ...payload.selectionDebug.unavailable.map(item => `- ${item}`),
+    "",
     ...toCodeFence("Generated CV", displayText),
     "",
-    ...toCodeFence("Used Job Posting", run?.jobPost?.rawText),
+    ...toCodeFence("Used Job Posting", cleanedJobPosting || run?.jobPost?.rawText),
     "",
     "## Compact JSON",
     "```json",
@@ -899,6 +1012,93 @@ const STATUS_OPTIONS: { value: AppTracking["status"]; label: string; activeClass
   { value: "interview", label: "Entretien",  activeClass: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700" },
   { value: "rejected",  label: "Refus",      activeClass: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-300 dark:border-red-700" },
 ];
+
+function ApplicationTrackerSafe({ runId }: { runId: string }) {
+  const storageKey = `app-tracking-${runId}`;
+  const [tracking, setTracking] = useState<AppTracking>(() => {
+    try { return JSON.parse(localStorage.getItem(storageKey) || "null") ?? TRACKING_DEFAULT; }
+    catch { return TRACKING_DEFAULT; }
+  });
+
+  const save = (updates: Partial<AppTracking>) => {
+    const next = { ...tracking, ...updates };
+    setTracking(next);
+    localStorage.setItem(storageKey, JSON.stringify(next));
+  };
+
+  const today = new Date().toISOString().split("T")[0];
+
+  return (
+    <Card className="border-border/60 shadow-none" data-testid="section-application-tracker">
+      <CardContent className="p-4 space-y-3">
+        <h4 className="text-sm font-semibold flex items-center gap-2 text-foreground">
+          <Send className="w-3.5 h-3.5 text-muted-foreground" /> Suivi de candidature
+        </h4>
+
+        {!tracking.applied ? (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">Tu as postule avec ce CV ?</p>
+            <Button size="sm" variant="outline" className="w-full gap-2 text-xs" onClick={() => save({ applied: true, appliedAt: today })}>
+              <Check className="w-3.5 h-3.5" /> J'ai postule
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-border/40">
+              <span className="text-xs font-medium text-green-600 dark:text-green-400 flex items-center gap-1">
+                <Check className="w-3 h-3" /> Postule
+              </span>
+              <input
+                type="date"
+                value={tracking.appliedAt}
+                onChange={e => save({ appliedAt: e.target.value })}
+                className="text-xs border-b border-dashed border-muted-foreground/30 bg-transparent outline-none text-muted-foreground cursor-pointer"
+              />
+            </div>
+
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Reponse recue</p>
+              <div className="grid grid-cols-3 gap-1">
+                {STATUS_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => save({ status: opt.value })}
+                    className={`text-[11px] px-1 py-1.5 rounded-md border transition-all font-medium ${
+                      tracking.status === opt.value ? opt.activeClass : "border-border/60 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {(tracking.status === "interview" || tracking.status === "rejected") && (
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> Date reponse
+                </span>
+                <input
+                  type="date"
+                  value={tracking.responseAt}
+                  onChange={e => save({ responseAt: e.target.value })}
+                  className="text-xs border-b border-dashed border-muted-foreground/30 bg-transparent outline-none text-muted-foreground cursor-pointer"
+                />
+              </div>
+            )}
+
+            <button
+              onClick={() => save(TRACKING_DEFAULT)}
+              className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors block mt-1"
+            >
+              Reinitialiser
+            </button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function ApplicationTracker({ runId }: { runId: string }) {
   const storageKey = `app-tracking-${runId}`;
@@ -996,6 +1196,7 @@ function ApplicationTracker({ runId }: { runId: string }) {
 export default function Result() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const { data: run, isLoading, error } = useRun(id || "");
   const [copied, setCopied] = useState(false);
   const [exported, setExported] = useState(false);
@@ -1027,6 +1228,51 @@ export default function Result() {
     setLocation("/tailor");
   };
 
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const textNodes: Text[] = [];
+    let current = walker.nextNode();
+    while (current) {
+      textNodes.push(current as Text);
+      current = walker.nextNode();
+    }
+
+    for (const node of textNodes) {
+      const original = node.nodeValue || "";
+      const repaired = repairMojibake(original);
+      if (repaired !== original) {
+        node.nodeValue = repaired;
+      }
+    }
+  }, [displayText, copied, exported, isEditing, run?.id]);
+
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+          <div className="w-16 h-16 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+          <h2 className="text-xl font-semibold text-muted-foreground animate-pulse" data-testid="text-loading">Generation du CV en cours...</h2>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error || !run) {
+    return (
+      <Layout>
+        <div className="flex flex-col items-center justify-center min-h-[50vh] text-center max-w-md mx-auto gap-4">
+          <AlertCircle className="w-12 h-12 text-destructive" />
+          <h2 className="text-2xl font-bold" data-testid="text-error-title">Resultat introuvable</h2>
+          <p className="text-muted-foreground" data-testid="text-error-message">Ce CV a peut-etre ete supprime ou une erreur s'est produite.</p>
+          <Link href="/tailor"><Button data-testid="button-try-again">Reessayer</Button></Link>
+        </div>
+      </Layout>
+    );
+  }
+
   if (isLoading) {
     return (
       <Layout>
@@ -1051,6 +1297,14 @@ export default function Result() {
     );
   }
   const report = run.outputReportJson as any;
+  const safeDiagnosis = report?.diagnosis ? {
+    ...report.diagnosis,
+    primaryDiagnosis: repairMojibake(report.diagnosis.primaryDiagnosis || ""),
+    verdict: repairMojibake(report.diagnosis.verdict || ""),
+    whatMatches: (report.diagnosis.whatMatches || []).map((item: string) => repairMojibake(item)),
+    whatMissing: (report.diagnosis.whatMissing || []).map((item: string) => repairMojibake(item)),
+    nextActions: (report.diagnosis.nextActions || []).map((item: string) => repairMojibake(item)),
+  } : undefined;
   const jobInput = ((run.jobPost?.extractedJson as any)?.jobInput || {
     sourceType: run.jobPost?.url ? "url" : "text",
     normalizedUrl: run.jobPost?.url,
@@ -1093,7 +1347,7 @@ export default function Result() {
 
   return (
     <Layout>
-      <div className="flex flex-col gap-6 animate-in fade-in duration-400">
+      <div ref={rootRef} className="flex flex-col gap-6 animate-in fade-in duration-400">
 
         {/* â”€â”€ HEADER â”€â”€ */}
         <div className="flex items-start gap-4 flex-wrap" data-testid="section-page-header">
@@ -1272,7 +1526,7 @@ export default function Result() {
             {report?.confidence != null && (
               <MatchDiagnosisCard
                 confidence={report.confidence}
-                diagnosis={report.diagnosis}
+                diagnosis={safeDiagnosis}
                 fallbackUsed={report.fallbackUsed}
                 scoreBreakdown={report.scoreBreakdown}
               />
@@ -1304,7 +1558,7 @@ export default function Result() {
             <DetailsDisclosure report={report || {}} scoreBreakdown={report?.scoreBreakdown} />
 
             {/* Application Tracker */}
-            <ApplicationTracker runId={run.id} />
+            <ApplicationTrackerSafe runId={run.id} />
 
           </div>
         </div>

@@ -13,6 +13,7 @@
 ## Next
 - Verifier en vrai sur une offre scrapee que le texte nettoye commence bien au contenu metier et non aux cookies/navigation.
 - Verifier qu'un run `polished` ne sort plus avec une confiance inferieure au baseline `original` a contenu equivalent.
+- Verifier dans l'UI Result que les libelles encore mojibake sont bien repares par le passage DOM (`CV genere`, suivi candidature, diagnostics).
 - Installer les deps de dev ou remettre `tsc` dispo pour relancer `npm run check`.
 
 ## Known risks / checks
