@@ -436,15 +436,28 @@ export type PrimaryDiagnosis =
   | "Experience proche mais preuves trop faibles"
   | "Bibliotheque insuffisamment detaillee";
 
+export type RecruiterCredibility = "forte" | "correcte" | "fragile" | "faible";
+
+export type DiagnosisCause =
+  | "job_parsing_issue"
+  | "library_too_thin"
+  | "bullets_too_generic"
+  | "mission_context_too_weak"
+  | "evidence_vs_ats_gap"
+  | "scoring_calibration_gap";
+
 export interface DiagnosticSummary {
   primaryDiagnosis: PrimaryDiagnosis;
   verdict: string;
   whatMatches: string[];
   whatMissing: string[];
   nextActions: string[];
+  primaryCause: DiagnosisCause;
+  secondaryCauses: DiagnosisCause[];
+  recommendedAction: string;
 }
 
-export interface OptimizationReport { jobTitle: string; jobCompany: string; jobSeniority: string; jobDomain: string; detectedKeywords: { requiredSkills: string[]; preferredSkills: string[]; responsibilities: string[]; keywords: string[]; criticalKeywords: string[]; }; matchedSkills: string[]; missingSkills: string[]; selectedExperiences: { title: string; company: string; score: number; reason: string; matchedAspects: string[]; bulletCount: number; charBudget: number; }[]; rejectedExperiences: { title: string; company: string; score: number; reason: string }[]; selectedBullets: { text: string; experienceTitle: string; score: number; deterministicScore: number; llmScore: number; matchedKeywords: string[]; dimension: string; }[]; postRules: PostRuleResult; confidence: number; confidenceReasoning: string; fallbackUsed: boolean; detectedLanguage: "EN" | "FR"; positioning: string; intentions: string[]; tips: string[]; diagnosis: DiagnosticSummary; scoreBreakdown: { ats: number; atsOptimized: number; atsBoost: number; contextSupport: number; semantic: number; domainMismatch?: string; cappedByKeywords: boolean; cappedByEvidence: boolean; }; }
+export interface OptimizationReport { jobTitle: string; jobCompany: string; jobSeniority: string; jobDomain: string; detectedKeywords: { requiredSkills: string[]; preferredSkills: string[]; responsibilities: string[]; keywords: string[]; criticalKeywords: string[]; }; matchedSkills: string[]; missingSkills: string[]; selectedExperiences: { title: string; company: string; score: number; reason: string; matchedAspects: string[]; bulletCount: number; charBudget: number; }[]; rejectedExperiences: { title: string; company: string; score: number; reason: string }[]; selectedBullets: { text: string; experienceTitle: string; score: number; deterministicScore: number; llmScore: number; matchedKeywords: string[]; dimension: string; }[]; postRules: PostRuleResult; confidence: number; confidenceReasoning: string; fallbackUsed: boolean; detectedLanguage: "EN" | "FR"; positioning: string; intentions: string[]; tips: string[]; diagnosis: DiagnosticSummary; scoreBreakdown: { fitOffer: number; ats: number; atsOptimized: number; atsBoost: number; contextSupport: number; semantic: number; recruiterCredibility: RecruiterCredibility; domainMismatch?: string; cappedByKeywords: boolean; cappedByEvidence: boolean; }; }
 
 function topItems(items: string[], count: number): string[] {
   const tally = new Map<string, number>();
@@ -468,6 +481,105 @@ function collectMissionContextSupport(selExps: ScoredExperience[], criticalKeywo
   return { contextKeywords, contextOnlyKeywords };
 }
 
+function getEvidenceProgressiveCap(evidenceScore: number, criticalKeywordCount: number): number {
+  if (criticalKeywordCount < 4) return 100;
+  if (evidenceScore <= 10) return 28;
+  if (evidenceScore <= 20) return 36;
+  if (evidenceScore < 25) return 40;
+  if (evidenceScore < 35) return 48;
+  if (evidenceScore < 45) return 58;
+  return 100;
+}
+
+function getAtsGapCap(atsBoost: number, fitBase: number, evidenceScore: number): number {
+  if (atsBoost < 15 || fitBase >= 55) return 100;
+  if (atsBoost >= 35 && evidenceScore < 25) return 45;
+  if (atsBoost >= 25 && evidenceScore < 35) return 52;
+  if (atsBoost >= 20 && evidenceScore < 45) return 60;
+  return 100;
+}
+
+function getRecruiterCredibility(params: {
+  fitOffer: number;
+  evidenceScore: number;
+  semanticScore: number;
+  domainMismatch?: string;
+  evidenceGapIsHigh: boolean;
+  libraryLooksThin: boolean;
+  evidenceIsWeak: boolean;
+}): RecruiterCredibility {
+  const { fitOffer, evidenceScore, semanticScore, domainMismatch, evidenceGapIsHigh, libraryLooksThin, evidenceIsWeak } = params;
+  if (domainMismatch || fitOffer < 35 || (evidenceGapIsHigh && evidenceScore < 35)) return "faible";
+  if (fitOffer < 50 || libraryLooksThin || evidenceIsWeak || evidenceGapIsHigh) return "fragile";
+  if (fitOffer < 70 || semanticScore < 70) return "correcte";
+  return "forte";
+}
+
+function rankDiagnosisCauses(params: {
+  job: ParsedJob;
+  selExps: ScoredExperience[];
+  fitOffer: number;
+  legacyConfidence: number;
+  evidenceScore: number;
+  atsOptimized: number;
+  atsBoost: number;
+  semanticScore: number;
+  contextSupport: number;
+  libraryLooksThin: boolean;
+  evidenceIsWeak: boolean;
+  domainMismatch?: string;
+}): DiagnosisCause[] {
+  const { job, selExps, fitOffer, legacyConfidence, evidenceScore, atsOptimized, atsBoost, semanticScore, contextSupport, libraryLooksThin, evidenceIsWeak, domainMismatch } = params;
+  const ranked: DiagnosisCause[] = [];
+  const roleFrameItems = [
+    ...job.roleFrame.workObjects,
+    ...job.roleFrame.deliverables,
+    ...job.roleFrame.decisions,
+    ...job.roleFrame.collaborators,
+    ...job.roleFrame.environments,
+  ].filter(Boolean);
+  const genericSignals = ["communication", "collaboration", "management", "strategie", "strategy", "business", "digital", "transformation", "project", "process", "operations", "delivery"];
+  const genericRoleFrameCount = roleFrameItems.filter(item => {
+    const normalized = normalizeEvidenceText(item);
+    return genericSignals.some(signal => normalized.includes(signal));
+  }).length;
+  const parsingLooksWeak = (job.responsibilities.length >= 4 && roleFrameItems.length < 4)
+    || (roleFrameItems.length > 0 && genericRoleFrameCount >= Math.ceil(roleFrameItems.length * 0.7))
+    || job.criticalKeywords.some(keyword => normalizeEvidenceText(keyword).split(" ").length > 4);
+  const descriptionsPresent = selExps.filter(se => normalizeEvidenceText(se.experience.description || "").split(" ").filter(Boolean).length >= 6).length;
+  const missionContextTooWeak = descriptionsPresent >= 2 && contextSupport === 0 && evidenceScore < 45;
+  const evidenceVsAtsGap = atsOptimized >= 70 && fitOffer < 45 && atsBoost >= 20;
+  const bulletsTooGeneric = !libraryLooksThin && !domainMismatch && semanticScore >= 55 && evidenceScore < 45;
+  const calibrationGap = Math.abs(legacyConfidence - fitOffer) >= 18;
+
+  if (evidenceVsAtsGap) ranked.push("evidence_vs_ats_gap");
+  if (libraryLooksThin) ranked.push("library_too_thin");
+  if (bulletsTooGeneric || evidenceIsWeak) ranked.push("bullets_too_generic");
+  if (missionContextTooWeak) ranked.push("mission_context_too_weak");
+  if (parsingLooksWeak) ranked.push("job_parsing_issue");
+  if (calibrationGap) ranked.push("scoring_calibration_gap");
+  return uniqueItems(ranked) as DiagnosisCause[];
+}
+
+function recommendedActionForCause(cause: DiagnosisCause, fallback: string): string {
+  switch (cause) {
+    case "job_parsing_issue":
+      return "Verifie l'annonce brute: si les mots-cles ou le role reel sont bruites, relance avec un texte plus propre ou corrige la source.";
+    case "library_too_thin":
+      return "Enrichis 1 ou 2 experiences proches avec 3 a 5 bullets concrets avant de retenter le tailoring.";
+    case "bullets_too_generic":
+      return "Rends 2 ou 3 bullets plus probants avec objets metier, scope, decisions et impact concret.";
+    case "mission_context_too_weak":
+      return "Reecris le contexte mission avec plus d'objets, livrables et contraintes pour aider le moteur sans surpromettre.";
+    case "evidence_vs_ats_gap":
+      return "Considere le CV comme ATS-compatible mais encore peu credible: ajoute des preuves reellement ancrees avant d'augmenter le score.";
+    case "scoring_calibration_gap":
+      return "Compare le fit offre et l'ATS plutot que le score legacy: si l'ecart persiste, il faut recalibrer le moteur plutot que le CV.";
+    default:
+      return fallback;
+  }
+}
+
 export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperience[], skills: Skill[], postRules: PostRuleResult, cv: StructuredCV): OptimizationReport {
   const allBullets = selExps.flatMap(se => se.selectedBullets);
   const total = allBullets.length;
@@ -483,13 +595,16 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
   const weightedEvidenceCount = postRules.evidenceKeywordsCovered.length + missionContextSupport.contextOnlyKeywords.length * 0.5;
   const evidenceScore = job.criticalKeywords.length > 0 ? Math.round(weightedEvidenceCount / job.criticalKeywords.length * 100) : atsEvidence;
   // Confidence should reflect what the source library really proves, with mission context as a secondary signal only.
+  const semanticScore = Math.min(100, Math.round(avg * 100 / 120));
   const bulletBonus = total >= 6 ? Math.min(10, Math.round(evidenceScore * 0.1)) : Math.round(total * 1.5);
+  const fitBase = Math.min(100, Math.round(semanticScore * 0.45 + evidenceScore * 0.45 + bulletBonus));
   const rawConfidence = Math.round(avg * 0.45 + evidenceScore * 0.45 + bulletBonus);
   // Hard cap: if less than 25% of critical keywords are present in the CV, it's a weak match regardless of bullet quality.
   // This catches cases where the profile domain is fundamentally different from the job (e.g. Designer â†’ PO).
-  const critKwHardCap = job.criticalKeywords.length >= 4 && evidenceScore < 25 ? 40 : 100;
+  const critKwHardCap = getEvidenceProgressiveCap(evidenceScore, job.criticalKeywords.length);
   const evidenceGapIsHigh = atsBoost >= 25 && evidenceScore <= 50;
-  const evidenceGapHardCap = evidenceGapIsHigh ? 55 : 100;
+  const evidenceGapHardCap = getAtsGapCap(atsBoost, fitBase, evidenceScore);
+  const fitOffer = Math.min(critKwHardCap, evidenceGapHardCap, fitBase);
   const confidence = Math.min(critKwHardCap, evidenceGapHardCap, Math.min(100, rawConfidence));
   const tips: string[] = [];
   if (postRules.evidenceKeywordsMissing.length) tips.push(`Keywords critiques non prouvees dans la bibliotheque: ${postRules.evidenceKeywordsMissing.join(", ")}.`);
@@ -518,7 +633,6 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
   const domainMismatch = isPOJob && userIsDesigner && !userIsPO ? "PO/PM vs Designer"
     : isDesignJob && userIsPO && !userIsDesigner ? "Designer vs PO"
     : undefined;
-  const semanticScore = Math.min(100, Math.round(avg * 100 / 120));
   const cappedByKeywords = critKwHardCap < 100 && rawConfidence > critKwHardCap;
   const cappedByEvidence = evidenceGapHardCap < 100 && rawConfidence > evidenceGapHardCap;
   const topMatchedAspects = topItems(selExps.flatMap(se => se.matchedAspects), 3);
@@ -599,7 +713,34 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
     nextActions.push("Garde cette base et renforce seulement les bullets les plus faibles pour augmenter le taux de match.");
   }
 
-  return { jobTitle: job.title, jobCompany: job.company, jobSeniority: job.seniority, jobDomain: job.domain, detectedKeywords: { requiredSkills: job.requiredSkills, preferredSkills: job.preferredSkills, responsibilities: job.responsibilities, keywords: job.keywords, criticalKeywords: job.criticalKeywords }, matchedSkills: matched.map(s => s.name), missingSkills: missingSkills.slice(0, 10), selectedExperiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, score: Math.round(se.score), reason: se.reason, matchedAspects: se.matchedAspects, bulletCount: se.selectedBullets.length, charBudget: se.charBudget })), rejectedExperiences: [], selectedBullets: allBullets.map(sb => ({ text: sb.bullet.text, experienceTitle: sb.experience.title, score: sb.totalScore, deterministicScore: sb.deterministicScore, llmScore: sb.llmScore, matchedKeywords: sb.matchedKeywords, dimension: sb.dimension })), postRules, confidence, confidenceReasoning: verdict, fallbackUsed: total === 0, detectedLanguage: job.language, positioning: job.positioning, intentions: job.intentions, tips, diagnosis: { primaryDiagnosis, verdict, whatMatches: whatMatches.slice(0, 3), whatMissing: whatMissing.slice(0, 3), nextActions: nextActions.slice(0, 3) }, scoreBreakdown: { ats: atsEvidence, atsOptimized, atsBoost, contextSupport, semantic: semanticScore, domainMismatch, cappedByKeywords, cappedByEvidence } };
+  const recruiterCredibility = getRecruiterCredibility({
+    fitOffer,
+    evidenceScore,
+    semanticScore,
+    domainMismatch,
+    evidenceGapIsHigh,
+    libraryLooksThin,
+    evidenceIsWeak,
+  });
+  const rankedCauses = rankDiagnosisCauses({
+    job,
+    selExps,
+    fitOffer,
+    legacyConfidence: confidence,
+    evidenceScore,
+    atsOptimized,
+    atsBoost,
+    semanticScore,
+    contextSupport,
+    libraryLooksThin,
+    evidenceIsWeak,
+    domainMismatch,
+  });
+  const primaryCause = rankedCauses[0] || "bullets_too_generic";
+  const secondaryCauses = rankedCauses.slice(1, 3);
+  const recommendedAction = recommendedActionForCause(primaryCause, nextActions[0] || "Renforce la preuve metier avant de regagner de l'ATS.");
+
+  return { jobTitle: job.title, jobCompany: job.company, jobSeniority: job.seniority, jobDomain: job.domain, detectedKeywords: { requiredSkills: job.requiredSkills, preferredSkills: job.preferredSkills, responsibilities: job.responsibilities, keywords: job.keywords, criticalKeywords: job.criticalKeywords }, matchedSkills: matched.map(s => s.name), missingSkills: missingSkills.slice(0, 10), selectedExperiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, score: Math.round(se.score), reason: se.reason, matchedAspects: se.matchedAspects, bulletCount: se.selectedBullets.length, charBudget: se.charBudget })), rejectedExperiences: [], selectedBullets: allBullets.map(sb => ({ text: sb.bullet.text, experienceTitle: sb.experience.title, score: sb.totalScore, deterministicScore: sb.deterministicScore, llmScore: sb.llmScore, matchedKeywords: sb.matchedKeywords, dimension: sb.dimension })), postRules, confidence, confidenceReasoning: verdict, fallbackUsed: total === 0, detectedLanguage: job.language, positioning: job.positioning, intentions: job.intentions, tips, diagnosis: { primaryDiagnosis, verdict, whatMatches: whatMatches.slice(0, 3), whatMissing: whatMissing.slice(0, 3), nextActions: nextActions.slice(0, 3), primaryCause, secondaryCauses, recommendedAction }, scoreBreakdown: { fitOffer, ats: atsEvidence, atsOptimized, atsBoost, contextSupport, semantic: semanticScore, recruiterCredibility, domainMismatch, cappedByKeywords, cappedByEvidence } };
 }
 
 // â”€â”€â”€ Dry Run Check (steps 1-4 only, no CV generation, no DB save) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -657,11 +798,20 @@ export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Pro
     const candidatePostRules = applyPostRules(candidateReportCv, parsedJob);
     const candidateReport = generateOptimizationReport(parsedJob, selExps, input.allSkills, candidatePostRules, candidateReportCv);
 
-    if (candidateReport.confidence >= baselineReport.confidence) {
+    if (
+      candidateReport.scoreBreakdown.fitOffer > baselineReport.scoreBreakdown.fitOffer
+      || (candidateReport.scoreBreakdown.fitOffer === baselineReport.scoreBreakdown.fitOffer
+        && candidateReport.confidence >= baselineReport.confidence)
+    ) {
       finalCv = candidateReportCv;
       finalReport = candidateReport;
     } else {
-      log("reformulate rejected", { baseline: baselineReport.confidence, candidate: candidateReport.confidence });
+      log("reformulate rejected", {
+        baselineFit: baselineReport.scoreBreakdown.fitOffer,
+        candidateFit: candidateReport.scoreBreakdown.fitOffer,
+        baselineLegacy: baselineReport.confidence,
+        candidateLegacy: candidateReport.confidence,
+      });
     }
   }
 

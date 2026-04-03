@@ -49,10 +49,7 @@ function ConfidenceRing({ value, size = 72 }: { value: number; size?: number }) 
   const radius = (size - strokeWidth * 2) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - Math.max(0, Math.min(100, value)) / 100);
-
-  const color = value >= 70 ? "#22c55e" : value >= 40 ? "#f59e0b" : "#ef4444";
-  const label = value >= 70 ? "Fort match" : value >= 40 ? "Match partiel" : "Match faible";
-  const textColor = value >= 70 ? "text-green-600 dark:text-green-400" : value >= 40 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
+  const fitMeta = getFitLabel(value);
 
   return (
     <div className="flex flex-col items-center gap-1 flex-shrink-0" data-testid="section-confidence-ring">
@@ -65,7 +62,7 @@ function ConfidenceRing({ value, size = 72 }: { value: number; size?: number }) 
           />
           <circle
             cx={size / 2} cy={size / 2} r={radius}
-            fill="none" stroke={color} strokeWidth={strokeWidth}
+            fill="none" stroke={fitMeta.ringColor} strokeWidth={strokeWidth}
             strokeDasharray={circumference}
             strokeDashoffset={offset}
             strokeLinecap="round"
@@ -76,7 +73,7 @@ function ConfidenceRing({ value, size = 72 }: { value: number; size?: number }) 
           <span className="text-base font-extrabold tabular-nums" data-testid="text-confidence-value">{value}%</span>
         </div>
       </div>
-      <span className={`text-[11px] font-semibold tracking-tight ${textColor}`} data-testid="text-confidence-label">{label}</span>
+      <span className={`text-[11px] font-semibold tracking-tight ${fitMeta.textColor}`} data-testid="text-confidence-label">{fitMeta.label}</span>
     </div>
   );
 }
@@ -194,15 +191,65 @@ const MODE_META: Record<string, { label: string; icon: React.ReactNode; color: s
 };
 
 type ReportScoreBreakdown = {
+  fitOffer?: number;
   ats: number;
   atsOptimized?: number;
   atsBoost?: number;
   contextSupport?: number;
   semantic: number;
+  recruiterCredibility?: "forte" | "correcte" | "fragile" | "faible";
   domainMismatch?: string;
   cappedByKeywords?: boolean;
   cappedByEvidence?: boolean;
 };
+
+type DiagnosisCause =
+  | "job_parsing_issue"
+  | "library_too_thin"
+  | "bullets_too_generic"
+  | "mission_context_too_weak"
+  | "evidence_vs_ats_gap"
+  | "scoring_calibration_gap";
+
+function getFitLabel(score: number) {
+  if (score >= 70) return { label: "Fit fort", textColor: "text-green-600 dark:text-green-400", ringColor: "#22c55e" };
+  if (score >= 40) return { label: "Fit partiel", textColor: "text-amber-600 dark:text-amber-400", ringColor: "#f59e0b" };
+  return { label: "Fit faible", textColor: "text-red-600 dark:text-red-400", ringColor: "#ef4444" };
+}
+
+function getCredibilityMeta(credibility?: ReportScoreBreakdown["recruiterCredibility"]) {
+  switch (credibility) {
+    case "forte":
+      return { label: "Credibilite forte", className: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700" };
+    case "correcte":
+      return { label: "Credibilite correcte", className: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-700" };
+    case "fragile":
+      return { label: "Credibilite fragile", className: "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700" };
+    case "faible":
+      return { label: "Credibilite faible", className: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-300 dark:border-red-700" };
+    default:
+      return { label: "Credibilite n/a", className: "bg-muted text-muted-foreground border-border/60" };
+  }
+}
+
+function getCauseLabel(cause?: DiagnosisCause) {
+  switch (cause) {
+    case "job_parsing_issue":
+      return "Annonce mal interpretee";
+    case "library_too_thin":
+      return "Bibliotheque trop fine";
+    case "bullets_too_generic":
+      return "Bullets trop generiques";
+    case "mission_context_too_weak":
+      return "Contexte mission trop faible";
+    case "evidence_vs_ats_gap":
+      return "ATS superieur aux preuves";
+    case "scoring_calibration_gap":
+      return "Calibrage moteur a surveiller";
+    default:
+      return "Cause non determinee";
+  }
+}
 
 function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { confidence: number; reasoning?: string; fallbackUsed?: boolean; scoreBreakdown?: ReportScoreBreakdown }) {
   const size = 56;
@@ -411,6 +458,8 @@ function KeyTips({ tips, insight }: { tips: string[]; insight?: string }) {
 function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreakdown?: ReportScoreBreakdown }) {
   const [open, setOpen] = useState(false);
   const [showKeywords, setShowKeywords] = useState(false);
+  const fitOffer = scoreBreakdown?.fitOffer ?? report?.confidence ?? 0;
+  const credibilityMeta = getCredibilityMeta(scoreBreakdown?.recruiterCredibility);
 
   return (
     <div className="rounded-xl border border-border/60" data-testid="section-details">
@@ -430,13 +479,24 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Detail du score</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <p className="text-[10px] text-muted-foreground font-medium">Keywords prouves par le CV source</p>
+                  <p className="text-[10px] text-muted-foreground font-medium">Fit offre</p>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${fitOffer >= 70 ? "bg-green-500" : fitOffer >= 40 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${fitOffer}%` }} />
+                    </div>
+                    <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{fitOffer}%</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">Mesure ce que ta bibliotheque prouve vraiment pour cette offre, avant le vernis ATS.</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] text-muted-foreground font-medium">ATS prouve par le CV source</p>
                   <div className="flex items-center gap-2">
                     <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                       <div className={`h-full rounded-full ${scoreBreakdown.ats >= 70 ? "bg-green-500" : scoreBreakdown.ats >= 40 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${scoreBreakdown.ats}%` }} />
                     </div>
                     <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown.ats}%</span>
                   </div>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">Correspond aux keywords critiques reellement soutenus par les bullets, skills et un peu de contexte mission.</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-[10px] text-muted-foreground font-medium">Alignement des bullets selectionnes</p>
@@ -447,6 +507,15 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
                     <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown.semantic}%</span>
                   </div>
                   <p className="text-[10px] text-muted-foreground leading-relaxed">Mesure a quel point les bullets retenus racontent quelque chose de proche du role, meme sans reprendre mot pour mot l'annonce.</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] text-muted-foreground font-medium">Credibilite recruteur</p>
+                  <div>
+                    <span className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-semibold ${credibilityMeta.className}`}>
+                      {credibilityMeta.label}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">Estime si un humain croirait a la promesse du CV final, au-dela des seuls mots-cles.</p>
                 </div>
               </div>
               {scoreBreakdown.atsOptimized !== undefined && (
@@ -593,7 +662,7 @@ function CriticalKeywordsCoverage({ covered, missing, injected }: { covered: str
         </div>
         {injected && injected.length > 0 && (
           <p className="text-[10px] text-muted-foreground leading-relaxed">
-            Optimisation ATS ajoutee dans le CV final : {injected.join(", ")}.
+            Keywords injectes pour l'optimisation ATS finale : {injected.join(", ")}.
           </p>
         )}
       </CardContent>
@@ -607,6 +676,9 @@ type ReportDiagnosis = {
   whatMatches?: string[];
   whatMissing?: string[];
   nextActions?: string[];
+  primaryCause?: DiagnosisCause;
+  secondaryCauses?: DiagnosisCause[];
+  recommendedAction?: string;
 };
 
 type JobInputInfo = {
@@ -623,14 +695,17 @@ function sourceBadge(meta?: JobInputInfo) {
   return "Texte colle";
 }
 
-function MatchDiagnosisCard({ confidence, diagnosis, fallbackUsed, scoreBreakdown }: { confidence: number; diagnosis?: ReportDiagnosis; fallbackUsed?: boolean; scoreBreakdown?: ReportScoreBreakdown }) {
-  const label = confidence >= 70 ? "Fort match" : confidence >= 40 ? "Match partiel" : "Match faible";
-  const textColor = confidence >= 70 ? "text-green-600 dark:text-green-400" : confidence >= 40 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
+function MatchDiagnosisCard({ fitOffer, diagnosis, fallbackUsed, scoreBreakdown }: { fitOffer: number; diagnosis?: ReportDiagnosis; fallbackUsed?: boolean; scoreBreakdown?: ReportScoreBreakdown }) {
+  const fitMeta = getFitLabel(fitOffer);
+  const credibilityMeta = getCredibilityMeta(scoreBreakdown?.recruiterCredibility);
   const primaryDiagnosis = repairMojibake(diagnosis?.primaryDiagnosis || "");
   const verdict = repairMojibake(diagnosis?.verdict || "Le moteur a estime un niveau de correspondance global pour cette annonce.");
   const whatMatches = (diagnosis?.whatMatches || []).map(item => repairMojibake(item));
   const whatMissing = (diagnosis?.whatMissing || []).map(item => repairMojibake(item));
   const nextActions = (diagnosis?.nextActions || []).map(item => repairMojibake(item));
+  const primaryCause = getCauseLabel(diagnosis?.primaryCause);
+  const secondaryCauses = (diagnosis?.secondaryCauses || []).map(cause => getCauseLabel(cause));
+  const recommendedAction = repairMojibake(diagnosis?.recommendedAction || "");
 
   return (
     <Card className="border-border/60 shadow-none" data-testid="section-match-diagnosis">
@@ -645,12 +720,30 @@ function MatchDiagnosisCard({ confidence, diagnosis, fallbackUsed, scoreBreakdow
         )}
 
         <div className="flex items-center gap-4">
-          <ConfidenceRing value={confidence} size={56} />
+          <div className="flex flex-col items-center gap-1.5">
+            <ConfidenceRing value={fitOffer} size={56} />
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Fit offre</span>
+          </div>
           <div className="flex-1 min-w-0">
-            <p className={`text-sm font-bold ${textColor}`}>{label}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className={`text-sm font-bold ${fitMeta.textColor}`}>{fitMeta.label}</p>
+              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${credibilityMeta.className}`}>
+                {credibilityMeta.label}
+              </span>
+            </div>
             {primaryDiagnosis && (
               <p className="text-[11px] text-foreground font-medium mt-0.5">{primaryDiagnosis}</p>
             )}
+            <div className="flex items-center gap-3 mt-2 flex-wrap">
+              <p className="text-[11px] text-muted-foreground">
+                ATS final: <span className="font-semibold text-foreground">{scoreBreakdown?.atsOptimized ?? scoreBreakdown?.ats ?? "n/a"}%</span>
+              </p>
+              {scoreBreakdown?.atsBoost ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Boost ATS: <span className="font-semibold text-foreground">+{scoreBreakdown.atsBoost}%</span>
+                </p>
+              ) : null}
+            </div>
             {scoreBreakdown?.cappedByKeywords && (
               <p className="text-[10px] text-red-500 dark:text-red-400 font-medium mt-0.5">Plafonne : keywords critiques absents du CV</p>
             )}
@@ -664,6 +757,21 @@ function MatchDiagnosisCard({ confidence, diagnosis, fallbackUsed, scoreBreakdow
         </div>
 
         <p className="text-[12px] text-foreground/80 leading-relaxed">{verdict}</p>
+
+        <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 space-y-1.5">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Cause principale</p>
+          <p className="text-[12px] font-medium text-foreground">{primaryCause}</p>
+          {secondaryCauses.length > 0 && (
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Causes secondaires : {secondaryCauses.join(", ")}.
+            </p>
+          )}
+          {recommendedAction && (
+            <p className="text-[11px] text-foreground/80 leading-relaxed">
+              Action recommandee : {recommendedAction}
+            </p>
+          )}
+        </div>
 
         {whatMatches.length > 0 && (
           <div>
@@ -857,6 +965,7 @@ function buildAnalysisPayload({
     },
     match: {
       confidence: report?.confidence ?? null,
+      fitOffer: report?.scoreBreakdown?.fitOffer ?? report?.confidence ?? null,
       primaryDiagnosis: trimBlock(report?.diagnosis?.primaryDiagnosis) || "n/a",
       verdict: trimBlock(report?.diagnosis?.verdict || report?.confidenceReasoning) || "n/a",
       atsScore: report?.scoreBreakdown?.ats ?? null,
@@ -864,12 +973,16 @@ function buildAnalysisPayload({
       atsBoost: report?.scoreBreakdown?.atsBoost ?? null,
       contextSupport: report?.scoreBreakdown?.contextSupport ?? null,
       semanticScore: report?.scoreBreakdown?.semantic ?? null,
+      recruiterCredibility: trimBlock(report?.scoreBreakdown?.recruiterCredibility) || "n/a",
       domainMismatch: trimBlock(report?.scoreBreakdown?.domainMismatch) || null,
       cappedByKeywords: Boolean(report?.scoreBreakdown?.cappedByKeywords),
       cappedByEvidence: Boolean(report?.scoreBreakdown?.cappedByEvidence),
       fallbackUsed: Boolean(report?.fallbackUsed),
     },
     diagnosis: {
+      primaryCause: trimBlock(report?.diagnosis?.primaryCause) || "n/a",
+      secondaryCauses: compactList(report?.diagnosis?.secondaryCauses, 6),
+      recommendedAction: trimBlock(report?.diagnosis?.recommendedAction) || "n/a",
       whatMatches: compactList(report?.diagnosis?.whatMatches, 8),
       whatMissing: compactList(report?.diagnosis?.whatMissing, 8),
       nextActions: compactList(report?.diagnosis?.nextActions, 8),
@@ -998,11 +1111,13 @@ function buildAnalysisExport({
     `- Seniority: ${payload.meta.seniority}`,
     "",
     "## Match",
-    `- Confidence: ${payload.match.confidence ?? "n/a"}%`,
-    `- Primary diagnosis: ${payload.match.primaryDiagnosis}`,
-    `- Verdict: ${payload.match.verdict}`,
+    `- Fit offer score: ${payload.match.fitOffer ?? "n/a"}%`,
     `- ATS score: ${payload.match.atsScore ?? "n/a"}`,
     `- ATS final score: ${payload.match.atsOptimizedScore ?? "n/a"}`,
+    `- Recruiter credibility: ${payload.match.recruiterCredibility || "n/a"}`,
+    `- Confidence (legacy): ${payload.match.confidence ?? "n/a"}%`,
+    `- Primary diagnosis: ${payload.match.primaryDiagnosis}`,
+    `- Verdict: ${payload.match.verdict}`,
     `- ATS boost from optimization: ${payload.match.atsBoost ?? "n/a"}`,
     `- Mission context support: ${payload.match.contextSupport ?? "n/a"}`,
     `- Semantic score: ${payload.match.semanticScore ?? "n/a"}`,
@@ -1010,6 +1125,9 @@ function buildAnalysisExport({
     `- Keywords capped: ${payload.match.cappedByKeywords ? "yes" : "no"}`,
     `- Evidence capped: ${payload.match.cappedByEvidence ? "yes" : "no"}`,
     `- Fallback used: ${payload.match.fallbackUsed ? "yes" : "no"}`,
+    `- Primary cause: ${payload.diagnosis.primaryCause}`,
+    `- Secondary causes: ${payload.diagnosis.secondaryCauses.join(", ") || "none"}`,
+    `- Recommended action: ${payload.diagnosis.recommendedAction}`,
     "",
     "## What Matches",
     ...(payload.diagnosis.whatMatches.length ? payload.diagnosis.whatMatches.map(item => `- ${item}`) : ["- n/a"]),
@@ -1389,6 +1507,7 @@ export default function Result() {
     whatMatches: (report.diagnosis.whatMatches || []).map((item: string) => repairMojibake(item)),
     whatMissing: (report.diagnosis.whatMissing || []).map((item: string) => repairMojibake(item)),
     nextActions: (report.diagnosis.nextActions || []).map((item: string) => repairMojibake(item)),
+    recommendedAction: repairMojibake(report.diagnosis.recommendedAction || ""),
   } : undefined;
   const jobInput = ((run.jobPost?.extractedJson as any)?.jobInput || {
     sourceType: run.jobPost?.url ? "url" : "text",
@@ -1400,6 +1519,7 @@ export default function Result() {
 
   const pageTitle = repairMojibake([report?.jobTitle, report?.jobCompany].filter(Boolean).join(" - ") || "Tailored CV");
   const keyInsight = report?.confidenceReasoning || null;
+  const fitOffer = report?.scoreBreakdown?.fitOffer ?? report?.confidence;
   const jobUrl = run?.jobPost?.url;
   const allKeywords = [
     ...(report?.detectedKeywords?.requiredSkills || []),
@@ -1443,8 +1563,11 @@ export default function Result() {
           </Link>
 
           <div className="flex-1 min-w-0 flex items-start gap-4">
-            {report?.confidence != null && (
-              <ConfidenceRing value={report.confidence} size={68} />
+            {fitOffer != null && (
+              <div className="flex flex-col items-center gap-1">
+                <ConfidenceRing value={fitOffer} size={68} />
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Fit offre</span>
+              </div>
             )}
 
             <div className="flex-1 min-w-0 pt-1">
@@ -1608,9 +1731,9 @@ export default function Result() {
           <div className="space-y-3" data-testid="section-report">
 
             {/* 1. Match Score */}
-            {report?.confidence != null && (
+            {fitOffer != null && (
               <MatchDiagnosisCard
-                confidence={report.confidence}
+                fitOffer={fitOffer}
                 diagnosis={safeDiagnosis}
                 fallbackUsed={report.fallbackUsed}
                 scoreBreakdown={report.scoreBreakdown}

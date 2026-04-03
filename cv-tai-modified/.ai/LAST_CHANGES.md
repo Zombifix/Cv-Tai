@@ -43,3 +43,15 @@
 - Fichiers : `server/tailoring-engine.ts`
 - Impact : le build serveur ne doit plus casser sur `Expected "]" but found ":"`
 - Verification : revue manuelle du bloc corrige; rebuild Railway a relancer
+
+### Tailor preferences persistence
+- Quoi : memorisation locale des limites `Intro / Resume pro` et `Corps (experiences)` sur la page Tailor
+- Fichiers : `client/src/pages/tailor.tsx`, `.ai/TODO.md`
+- Impact : les valeurs saisies comme `300` et `2000` restent pre-remplies apres refresh ou retour sur la page
+- Verification : revue manuelle du diff; verification navigateur a faire
+
+### Result scoring split
+- Quoi : refonte du report resultat pour afficher `Fit offre` comme score principal, `ATS` comme axe secondaire, `Credibilite recruteur` comme badge, et des causes explicites avec action recommandee
+- Fichiers : `server/tailoring-engine.ts`, `client/src/pages/result.tsx`, `CLAUDE.md`, `.ai/TODO.md`
+- Impact : le moteur separe mieux les preuves reelles du vernis ATS, l'UI masque le legacy `confidence`, et l'export IA embarque `Fit offer score`, `Recruiter credibility`, `Primary cause`, `Secondary causes`, `Recommended action`
+- Verification : revue manuelle du diff; `npm run build` bloque localement car `tsx` absent dans l'environnement, verification runtime a faire sur Railway / environnement avec deps de dev

@@ -21,6 +21,8 @@ const SCRAPE_BLOCKED_DOMAINS = [
   "apec.fr", "francetravail.fr", "pole-emploi.fr", "hellowork.com", "cadremploi.fr",
 ];
 
+const TAILOR_PREFS_KEY = "cv-tailor:preferences";
+
 function getUrlWarning(url: string): string | null {
   if (!url) return null;
   try {
@@ -66,6 +68,28 @@ export default function Tailor() {
   const [bodyMaxChars, setBodyMaxChars] = useState("");
   const [extraContext, setExtraContext] = useState("");
   const [pendingConfirm, setPendingConfirm] = useState<{ score: number; jobTitle: string } | null>(null);
+
+  useEffect(() => {
+    try {
+      const rawPrefs = window.localStorage.getItem(TAILOR_PREFS_KEY);
+      if (!rawPrefs) return;
+      const parsed = JSON.parse(rawPrefs) as { introMaxChars?: string; bodyMaxChars?: string };
+      if (typeof parsed.introMaxChars === "string") setIntroMaxChars(parsed.introMaxChars);
+      if (typeof parsed.bodyMaxChars === "string") setBodyMaxChars(parsed.bodyMaxChars);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        TAILOR_PREFS_KEY,
+        JSON.stringify({
+          introMaxChars,
+          bodyMaxChars,
+        }),
+      );
+    } catch {}
+  }, [introMaxChars, bodyMaxChars]);
 
   useEffect(() => {
     try {

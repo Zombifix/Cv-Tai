@@ -38,6 +38,12 @@ Produire un CV en lequel l'utilisateur a confiance sans avoir a relire, qui pass
 - Hierarchie de preuve a respecter :
   - bullets source > contexte de mission / description > skills / titres > optimisation finale
 - Justification : le titre de l'annonce peut etre bruite ou trompeur; le moteur doit faire davantage confiance au corps de l'annonce et aux preuves source qu'au titre ou au texte optimise final.
+- Restitution resultat a respecter :
+  - `Fit offre` = metrique principale visible
+  - `ATS` = axe secondaire visible
+  - `Credibilite recruteur` = etat discret
+  - `confidence` = champ legacy conserve pour compatibilite, pas comme score central UI
+  - le diagnostic doit afficher une cause principale explicite + action recommandee
 
 ## Guardrails absolus
 - Ne jamais inventer de metriques, noms de produits ou achievements absents.
