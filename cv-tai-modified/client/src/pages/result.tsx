@@ -9,7 +9,7 @@ import {
   ArrowLeft, Copy, Check, AlertCircle, CheckCircle,
   Lightbulb, Hash, ChevronDown, ChevronUp,
   Globe, ShieldCheck, Zap, RefreshCw, Pencil, X,
-  WandSparkles, Library, BookOpen, ExternalLink, Plus, Sparkles,
+  WandSparkles, Library, BookOpen, ExternalLink, Plus, Sparkles, FileDown,
   Send, Calendar
 } from "lucide-react";
 import { useState } from "react";
@@ -681,6 +681,100 @@ function UsedJobPosting({ meta, rawText, url }: { meta?: JobInputInfo; rawText?:
   );
 }
 
+function compactList(items: unknown, limit = 12): string[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map(item => String(item ?? "").trim())
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function buildAnalysisExport({
+  run,
+  report,
+  jobInput,
+  displayText,
+  pageTitle,
+}: {
+  run: any;
+  report: any;
+  jobInput: JobInputInfo;
+  displayText: string;
+  pageTitle: string;
+}) {
+  const selectedExperiences = Array.isArray(report?.selectedExperiences) ? report.selectedExperiences : [];
+  const selectedBullets = Array.isArray(report?.selectedBullets) ? report.selectedBullets : [];
+
+  const sourceBullets = selectedExperiences
+    .map((exp: any) => {
+      const bullets = selectedBullets.filter((bullet: any) => bullet.experienceTitle === exp.title);
+      const lines = bullets.map((bullet: any) => `- ${String(bullet?.text ?? "").trim()}`).filter(Boolean);
+      if (!lines.length) return "";
+      const title = [exp?.title, exp?.company].filter(Boolean).join(" | ");
+      return [`### ${title || "Experience"}`, ...lines].join("\n");
+    })
+    .filter(Boolean)
+    .join("\n\n");
+
+  const lines = [
+    "# CV TAI ANALYSIS EXPORT",
+    "",
+    "## Run",
+    `- Run ID: ${run?.id || "unknown"}`,
+    `- Title: ${pageTitle || "Tailored CV"}`,
+    `- Mode: ${run?.mode || "unknown"}`,
+    `- Language: ${report?.detectedLanguage || "unknown"}`,
+    `- Seniority: ${report?.jobSeniority || "unknown"}`,
+    "",
+    "## Match",
+    `- Confidence: ${report?.confidence ?? "n/a"}%`,
+    `- Primary diagnosis: ${report?.diagnosis?.primaryDiagnosis || "n/a"}`,
+    `- Verdict: ${report?.diagnosis?.verdict || report?.confidenceReasoning || "n/a"}`,
+    `- ATS score: ${report?.scoreBreakdown?.ats ?? "n/a"}`,
+    `- Semantic score: ${report?.scoreBreakdown?.semantic ?? "n/a"}`,
+    `- Domain mismatch: ${report?.scoreBreakdown?.domainMismatch || "none"}`,
+    `- Keywords capped: ${report?.scoreBreakdown?.cappedByKeywords ? "yes" : "no"}`,
+    `- Fallback used: ${report?.fallbackUsed ? "yes" : "no"}`,
+    "",
+    "## What Matches",
+    ...(compactList(report?.diagnosis?.whatMatches).map(item => `- ${item}`)),
+    "",
+    "## What Is Missing",
+    ...(compactList(report?.diagnosis?.whatMissing).map(item => `- ${item}`)),
+    "",
+    "## Next Actions",
+    ...(compactList(report?.diagnosis?.nextActions).map(item => `- ${item}`)),
+    "",
+    "## Skills",
+    `- Matched skills: ${compactList(report?.matchedSkills, 20).join(", ") || "none"}`,
+    `- Missing skills: ${compactList(report?.missingSkills, 20).join(", ") || "none"}`,
+    "",
+    "## Critical Keywords",
+    `- Covered: ${compactList(report?.postRules?.keywordsCovered, 25).join(", ") || "none"}`,
+    `- Missing: ${compactList(report?.postRules?.keywordsMissing, 25).join(", ") || "none"}`,
+    "",
+    "## Job Input",
+    `- Source type: ${jobInput?.sourceType || "unknown"}`,
+    `- Scrape status: ${jobInput?.scrapeStatus || "unknown"}`,
+    `- Scrape message: ${jobInput?.scrapeMessage || "n/a"}`,
+    `- Source URL: ${jobInput?.normalizedUrl || run?.jobPost?.url || "n/a"}`,
+    "",
+    "## Tips",
+    ...(compactList(report?.tips, 12).map(item => `- ${item}`)),
+    "",
+    "## Source Bullets",
+    sourceBullets || "No source bullets saved for this run.",
+    "",
+    "## Generated CV",
+    displayText?.trim() || "No generated CV text.",
+    "",
+    "## Used Job Posting",
+    run?.jobPost?.rawText?.trim() || "No job posting text saved for this run.",
+  ];
+
+  return lines.join("\n");
+}
+
 // â”€â”€â”€ Application Tracker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface AppTracking {
@@ -796,6 +890,7 @@ export default function Result() {
   const [, setLocation] = useLocation();
   const { data: run, isLoading, error } = useRun(id || "");
   const [copied, setCopied] = useState(false);
+  const [exported, setExported] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState<string | null>(null);
 
@@ -864,6 +959,19 @@ export default function Result() {
     ...(report?.detectedKeywords?.preferredSkills || []),
     ...(report?.detectedKeywords?.keywords || []),
   ].filter((k, i, arr) => k.length > 2 && arr.indexOf(k) === i);
+  const analysisExport = buildAnalysisExport({
+    run,
+    report,
+    jobInput,
+    displayText,
+    pageTitle,
+  });
+
+  const handleExportAnalysis = async () => {
+    await navigator.clipboard.writeText(analysisExport);
+    setExported(true);
+    setTimeout(() => setExported(false), 2000);
+  };
 
   return (
     <Layout>
@@ -917,6 +1025,16 @@ export default function Result() {
               </div>
             </div>
           </div>
+
+          <Button
+            onClick={handleExportAnalysis}
+            variant="outline"
+            className="rounded-xl shadow-sm flex-shrink-0 hidden sm:flex"
+            data-testid="button-export-analysis-header"
+          >
+            {exported ? <Check className="w-4 h-4 mr-2 text-green-500" /> : <FileDown className="w-4 h-4 mr-2" />}
+            {exported ? "Exporte !" : "Exporter analyse"}
+          </Button>
 
           <Button
             onClick={handleCopy}
@@ -1090,6 +1208,15 @@ export default function Result() {
               </Button>
             </Link>
           </div>
+          <Button
+            onClick={handleExportAnalysis}
+            variant="outline"
+            className="rounded-xl gap-2 shadow-sm"
+            data-testid="button-export-analysis-footer"
+          >
+            {exported ? <Check className="w-4 h-4" /> : <FileDown className="w-4 h-4" />}
+            {exported ? "Exporte !" : "Exporter analyse"}
+          </Button>
           <Button
             onClick={handleCopy}
             className="rounded-xl gap-2 shadow-sm shadow-primary/20"
