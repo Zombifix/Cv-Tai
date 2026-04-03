@@ -12,7 +12,7 @@ import {
   WandSparkles, Library, BookOpen, ExternalLink, Plus, Sparkles, FileDown,
   Send, Calendar
 } from "lucide-react";
-import { useRef, useState, useEffect } from "react";
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -1446,7 +1446,6 @@ function ApplicationTracker({ runId }: { runId: string }) {
 export default function Result() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
-  const rootRef = useRef<HTMLDivElement | null>(null);
   const { data: run, isLoading, error } = useRun(id || "");
   const [copied, setCopied] = useState(false);
   const [exported, setExported] = useState(false);
@@ -1477,27 +1476,6 @@ export default function Result() {
     window.history.pushState({ tailorPrefill: { text: jobText, url: jobUrl } }, "", "/tailor");
     setLocation("/tailor");
   };
-
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    const textNodes: Text[] = [];
-    let current = walker.nextNode();
-    while (current) {
-      textNodes.push(current as Text);
-      current = walker.nextNode();
-    }
-
-    for (const node of textNodes) {
-      const original = node.nodeValue || "";
-      const repaired = repairMojibake(original);
-      if (repaired !== original) {
-        node.nodeValue = repaired;
-      }
-    }
-  }, [displayText, copied, exported, isEditing, run?.id]);
 
   if (isLoading) {
     return (
@@ -1599,7 +1577,7 @@ export default function Result() {
 
   return (
     <Layout>
-      <div ref={rootRef} className="flex flex-col gap-6 animate-in fade-in duration-400">
+      <div className="flex flex-col gap-6 animate-in fade-in duration-400">
 
         {/* ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ HEADER ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ */}
         <div className="flex items-start gap-4 flex-wrap" data-testid="section-page-header">
