@@ -11,6 +11,11 @@ import { pool } from "./db";
 const app = express();
 const httpServer = createServer(app);
 
+if (process.env.NODE_ENV === "production") {
+  // Railway sits behind a proxy; trust it so secure session cookies are accepted.
+  app.set("trust proxy", 1);
+}
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -32,10 +37,12 @@ const PgStore = connectPgSimple(session);
 app.use(session({
   store: new PgStore({ pool, tableName: "session", createTableIfMissing: false }),
   secret: process.env.SESSION_SECRET || "cv-tailor-dev-secret-change-in-prod",
+  proxy: process.env.NODE_ENV === "production",
   resave: false,
   saveUninitialized: false,
   cookie: {
     secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
     httpOnly: true,
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   },

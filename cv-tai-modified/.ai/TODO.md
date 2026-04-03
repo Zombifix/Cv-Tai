@@ -18,6 +18,7 @@
   - afficher une cause principale explicite + une action recommandee
 
 ## Next
+- Verifier en prod que la connexion fonctionne a nouveau apres ajout de `trust proxy` / cookie session Railway, puis confirmer que les endpoints proteges (`/api/check-match`, `/api/tailor/*`) ne renvoient plus `401` a tort.
 - Verifier sur Railway que l'erreur de build `Unexpected smart quote` sur `runFastDryRun` a disparu et qu'aucune seconde erreur serveur ne suit.
 - Rejouer le cas EY / role adjacent pour verifier qu'un `polished` n'explose plus artificiellement le score quand l'ATS vient surtout d'injections de keywords.
 - Verifier que l'ecran Result affiche bien `Fit offre` en principal, `ATS` en secondaire, `Credibilite recruteur` en badge, et masque le legacy `confidence`.
@@ -34,6 +35,7 @@
 - Installer les deps de dev ou remettre `tsc` dispo pour relancer `npm run check`.
 
 ## Known risks / checks
+- L'auth ajoutee ne partitionne pas encore les donnees par utilisateur : les tables coeur (`profile`, `experiences`, `bullets`, `skills`, `runs`) n'ont pas de `userId`, donc le login agit actuellement comme une porte d'entree globale, pas comme une isolation multi-tenant.
 - Ne pas ecraser des changements utilisateur deja presents dans le worktree.
 - Verifier `npm run check` apres modification TypeScript significative.
 - Verifier les flows impactes quand `server/routes.ts` ou `server/tailoring-engine.ts` changent.
@@ -47,6 +49,7 @@
 
 ## Touched files
 - `CLAUDE.md`
+- `server/index.ts`
 - `client/src/pages/result.tsx`
 - `client/src/pages/tailor.tsx`
 - `server/routes.ts`

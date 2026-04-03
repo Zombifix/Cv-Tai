@@ -76,6 +76,12 @@
 
 ## 2026-04-04
 
+### Railway auth session hardening
+- Quoi : ajout de `trust proxy` et du mode `proxy`/`sameSite=lax` sur la session Express pour que les cookies securises fonctionnent derriere Railway
+- Fichiers : `server/index.ts`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
+- Impact : la connexion ne doit plus boucler ou echouer silencieusement en production a cause d'un cookie de session non pose; les donnees existantes ne sont pas supprimees par ce correctif
+- Verification : revue manuelle du code; verification runtime a faire en prod via login/register puis appel a une route protegee
+
 ### Railway build fix for runFastDryRun
 - Quoi : reparation du bloc `runFastDryRun` corrompu par des guillemets intelligents / mojibake dans `server/tailoring-engine.ts`
 - Fichiers : `server/tailoring-engine.ts`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
