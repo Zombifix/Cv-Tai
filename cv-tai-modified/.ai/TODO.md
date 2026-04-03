@@ -2,6 +2,7 @@
 
 ## Current focus
 - Fiabiliser le moteur de tailoring sur 5 axes : encodage de sortie, bruit du scraping d'annonce, non-regression entre mode fidele et optimise, separation entre ATS optimise et preuves reelles du profil, et restitution resultat par axes (`Fit offre` / `ATS` / `Credibilite`).
+- Stabiliser les `criticalKeywords` entre sources d'annonce equivalentes pour eviter les ecarts de score injustifies (cas Pix / Adobe).
 
 ## In progress
 - Des changements non commites existent deja dans le moteur, l'API et l'interface result.
@@ -18,6 +19,8 @@
   - afficher une cause principale explicite + une action recommandee
 
 ## Next
+- Rejouer les cas Pix (WTTJ vs LinkedIn) pour verifier que les `criticalKeywords` convergent maintenant vers un noyau stable et que la bande de `Fit offre` ne diverge plus artificiellement.
+- Rejouer les cas Adobe pour verifier que les faux keywords critiques type diplome/HR ont disparu et que le score remonte legerement sans faux positif.
 - Verifier en prod que login/register redirigent maintenant bien vers `/library` au lieu de rester silencieusement sur `/login`.
 - Verifier en prod que la connexion fonctionne a nouveau apres ajout de `trust proxy` / cookie session Railway, puis confirmer que les endpoints proteges (`/api/check-match`, `/api/tailor/*`) ne renvoient plus `401` a tort.
 - Verifier sur Railway que l'erreur de build `Unexpected smart quote` sur `runFastDryRun` a disparu et qu'aucune seconde erreur serveur ne suit.
@@ -53,6 +56,7 @@
 - `server/index.ts`
 - `client/src/App.tsx`
 - `client/src/pages/auth.tsx`
+- `server/tailoring-engine.ts`
 - `client/src/pages/result.tsx`
 - `client/src/pages/tailor.tsx`
 - `server/routes.ts`

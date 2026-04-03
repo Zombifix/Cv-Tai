@@ -48,6 +48,160 @@ function normalizeEvidenceText(value: string): string {
     .trim();
 }
 
+type KeywordAliasGroup = {
+  key: string;
+  labels: { FR: string; EN: string };
+  variants: string[];
+};
+
+const KEYWORD_ALIAS_GROUPS: KeywordAliasGroup[] = [
+  {
+    key: "user_research",
+    labels: { FR: "recherche utilisateur", EN: "user research" },
+    variants: ["user research", "recherche utilisateur", "tests utilisateurs", "test utilisateur", "usability testing", "user interviews", "interviews utilisateurs", "ux research"],
+  },
+  {
+    key: "design_system",
+    labels: { FR: "design system", EN: "design system" },
+    variants: ["design system", "systeme de design", "design systems"],
+  },
+  {
+    key: "ui_design",
+    labels: { FR: "design d'interface", EN: "UI design" },
+    variants: ["design d'interface", "ui design", "ux/ui design", "interface design", "interfaces utilisateurs", "user interface design"],
+  },
+  {
+    key: "interaction_design",
+    labels: { FR: "interaction design", EN: "interaction design" },
+    variants: ["interaction design", "user flows", "user flow", "parcours utilisateurs", "experience interactive", "experience d evaluation interactive"],
+  },
+  {
+    key: "prototyping",
+    labels: { FR: "prototypage", EN: "prototyping" },
+    variants: ["prototyping", "prototype", "prototypes", "wireframes", "wireframing", "maquettes haute fidelite", "high fidelity mockups", "mockups"],
+  },
+  {
+    key: "accessibility",
+    labels: { FR: "accessibilite", EN: "accessibility" },
+    variants: ["accessibilite", "accessibility", "inclusive design", "accessible design"],
+  },
+  {
+    key: "design_strategy",
+    labels: { FR: "strategie design", EN: "design strategy" },
+    variants: ["design strategy", "strategie design", "product experience strategy", "design maturity"],
+  },
+  {
+    key: "product_design",
+    labels: { FR: "product design", EN: "product design" },
+    variants: ["product design", "designer produit", "product designer"],
+  },
+  {
+    key: "cross_functional_collaboration",
+    labels: { FR: "collaboration transverse", EN: "cross-functional collaboration" },
+    variants: ["cross-functional collaboration", "collaboration transverse", "product managers engineers", "equipes produit tech"],
+  },
+  {
+    key: "adobe_substance",
+    labels: { FR: "Adobe Substance", EN: "Adobe Substance" },
+    variants: ["adobe substance", "substance 3d", "adobe substance 3d"],
+  },
+  {
+    key: "3d_ecosystem",
+    labels: { FR: "ecosysteme 3D", EN: "3D ecosystem" },
+    variants: ["3d creatives", "3d immersive", "3d ecosystem", "3d industry", "3d tools", "3d initiatives"],
+  },
+];
+
+function findKeywordAliasGroup(value: string): KeywordAliasGroup | undefined {
+  const normalized = normalizeEvidenceText(value);
+  if (!normalized) return undefined;
+  return KEYWORD_ALIAS_GROUPS.find(group =>
+    group.variants.some(variant => {
+      const candidate = normalizeEvidenceText(variant);
+      return normalized === candidate || normalized.includes(candidate) || candidate.includes(normalized);
+    }),
+  );
+}
+
+function keywordDisplayLabel(value: string, language: "FR" | "EN"): string {
+  const group = findKeywordAliasGroup(value);
+  return group ? group.labels[language] : value.trim();
+}
+
+function keywordVariants(value: string): string[] {
+  const group = findKeywordAliasGroup(value);
+  return uniqueItems(group ? [...group.variants, group.labels.FR, group.labels.EN] : [value]);
+}
+
+function textHasKeyword(text: string, keyword: string): boolean {
+  const normalizedText = normalizeEvidenceText(text);
+  if (!normalizedText) return false;
+  return keywordVariants(keyword).some(variant => {
+    const normalizedVariant = normalizeEvidenceText(variant);
+    return normalizedVariant.length >= 3 && normalizedText.includes(normalizedVariant);
+  });
+}
+
+function isNoisyCriticalKeyword(value: string): boolean {
+  const normalized = normalizeEvidenceText(value);
+  const words = normalized.split(" ").filter(Boolean);
+  if (!normalized || words.length === 0) return true;
+  if (words.length > 4) return true;
+  if (normalized.length < 3) return true;
+  return /\b(degree|diploma|bachelor|master|phd|school|equivalent practical experience|years? experience|written communication|verbal communication|interpersonal|continuous learning|curiosity|storytelling|portfolio|status quo)\b/.test(normalized);
+}
+
+function extractAliasConceptsFromText(parts: string[], language: "FR" | "EN"): string[] {
+  const found: string[] = [];
+  for (const part of parts) {
+    const normalized = normalizeEvidenceText(part);
+    for (const group of KEYWORD_ALIAS_GROUPS) {
+      if (group.variants.some(variant => normalized.includes(normalizeEvidenceText(variant)))) {
+        found.push(group.labels[language]);
+      }
+    }
+  }
+  return uniqueItems(found);
+}
+
+function buildStableCriticalKeywords(job: ParsedJob): string[] {
+  const candidates = new Map<string, { label: string; score: number; sources: Set<string> }>();
+
+  const addCandidate = (raw: string, weight: number, source: string) => {
+    const trimmed = raw?.trim();
+    if (!trimmed || isNoisyCriticalKeyword(trimmed)) return;
+    const key = findKeywordAliasGroup(trimmed)?.key || normalizeEvidenceText(trimmed);
+    if (!key) return;
+    const label = keywordDisplayLabel(trimmed, job.language);
+    const existing = candidates.get(key);
+    if (existing) {
+      existing.score += weight;
+      existing.sources.add(source);
+      if (existing.label.length > label.length) existing.label = label;
+      return;
+    }
+    candidates.set(key, { label, score: weight, sources: new Set([source]) });
+  };
+
+  const roleFrameCandidates = [
+    ...job.roleFrame.workObjects,
+    ...job.roleFrame.deliverables,
+    ...job.roleFrame.decisions,
+  ];
+
+  for (const item of job.requiredSkills) addCandidate(item, 4, "requiredSkills");
+  for (const item of roleFrameCandidates) addCandidate(item, 3, "roleFrame");
+  for (const item of extractAliasConceptsFromText(job.responsibilities, job.language)) addCandidate(item, 2.5, "responsibilities");
+  for (const item of job.preferredSkills) addCandidate(item, 1.5, "preferredSkills");
+  for (const item of job.criticalKeywords) addCandidate(item, 1.25, "criticalKeywords");
+
+  const ranked = [...candidates.values()]
+    .sort((a, b) => (b.score - a.score) || (b.sources.size - a.sources.size) || a.label.localeCompare(b.label))
+    .map(entry => entry.label);
+
+  return uniqueItems(ranked).slice(0, 8);
+}
+
 function uniqueItems(items: string[]): string[] {
   return [...new Set(items.map(item => item?.trim()).filter(Boolean))];
 }
@@ -126,6 +280,10 @@ Important: roleFrame must describe the REAL WORK in the body of the posting, not
       scopeSignals: uniqueItems(p.roleFrame?.scopeSignals || [p.positioning || ""]),
     },
   };
+  result.requiredSkills = uniqueItems(result.requiredSkills.filter(skill => !isNoisyCriticalKeyword(skill)));
+  result.preferredSkills = uniqueItems(result.preferredSkills.filter(skill => !isNoisyCriticalKeyword(skill)));
+  result.keywords = uniqueItems(result.keywords.filter(keyword => !isNoisyCriticalKeyword(keyword)));
+  result.criticalKeywords = buildStableCriticalKeywords(result);
   log("parseJobDescription DONE", { title: result.title, positioning: result.positioning, intentions: result.intentions.length, roleFrame: result.roleFrame });
   return result;
 }
@@ -145,16 +303,43 @@ function deterministicScore(bullet: Bullet, experience: Experience, allKw: strin
   const tags = (bullet.tags || []).filter(Boolean).map(t => t.toLowerCase());
   const text = bullet.text.toLowerCase();
   const desc = (experience.description || "").toLowerCase();
-  const kwLow = allKw.map(k => k.toLowerCase());
-  const critLow = critKw.map(k => k.toLowerCase());
+  const tagsText = tags.join(" ");
   let score = 5;
   const mTags: string[] = []; const mKw: string[] = [];
 
-  for (const tag of tags) { for (const kw of kwLow) { if (tag.includes(kw) || kw.includes(tag) || tag === kw) { score += 8; mTags.push(tag); mKw.push(kw); break; } } }
-  for (const ck of critLow) { if (text.includes(ck) || tags.some(t => t.includes(ck) || ck.includes(t))) { score += 6; if (!mKw.includes(ck)) mKw.push(ck); } }
-  for (const kw of kwLow) { if (kw.length >= 3 && text.includes(kw) && !mKw.includes(kw)) { score += 5; mKw.push(kw); } }
+  for (const tag of tags) {
+    for (const kw of allKw) {
+      if (textHasKeyword(tag, kw) || textHasKeyword(kw, tag) || tag === kw.toLowerCase()) {
+        score += 8;
+        mTags.push(tag);
+        mKw.push(kw.trim());
+        break;
+      }
+    }
+  }
+  for (const ck of critKw) {
+    if (textHasKeyword(text, ck) || textHasKeyword(tagsText, ck)) {
+      score += 6;
+      const label = ck.trim();
+      if (!mKw.includes(label)) mKw.push(label);
+    }
+  }
+  for (const kw of allKw) {
+    if (textHasKeyword(text, kw)) {
+      const label = kw.trim();
+      if (!mKw.includes(label)) {
+        score += 5;
+        mKw.push(label);
+      }
+    }
+  }
   // Description context boost
-  for (const kw of kwLow) { if (kw.length >= 3 && desc.includes(kw) && !mKw.includes(kw)) { score += 2; } }
+  for (const kw of allKw) {
+    const label = kw.trim();
+    if (textHasKeyword(desc, kw) && !mKw.includes(label)) {
+      score += 2;
+    }
+  }
   // Intention matching
   for (const intent of intentions) {
     const words = intent.toLowerCase().split(/\s+/).filter(w => w.length >= 4);
@@ -379,8 +564,8 @@ export interface PostRuleResult {
 export function applyPostRules(cv: StructuredCV, job: ParsedJob): PostRuleResult {
   const rules: string[] = [];
   const initialText = [cv.summary, ...cv.experiences.flatMap(e => e.bullets), cv.skills.join(" ")].join(" ").toLowerCase();
-  const missingBeforeInjection = job.criticalKeywords.filter(kw => !initialText.includes(kw.toLowerCase()));
-  const evidenceCovered = job.criticalKeywords.filter(kw => initialText.includes(kw.toLowerCase()));
+  const missingBeforeInjection = job.criticalKeywords.filter(kw => !textHasKeyword(initialText, kw));
+  const evidenceCovered = job.criticalKeywords.filter(kw => textHasKeyword(initialText, kw));
   const isSkillLike = (kw: string) =>
     kw.length <= 35 &&
     kw.split(/\s+/).length <= 3 &&
@@ -400,7 +585,7 @@ export function applyPostRules(cv: StructuredCV, job: ParsedJob): PostRuleResult
   const withNums = cv.experiences.reduce((s, e) => s + e.bullets.filter(b => /\d+/.test(b)).length, 0);
   const finalText = [cv.summary, ...cv.experiences.flatMap(e => e.bullets), cv.skills.join(" ")].join(" ").toLowerCase();
   const covered: string[] = []; const missing: string[] = [];
-  for (const kw of job.criticalKeywords) { (finalText.includes(kw.toLowerCase()) ? covered : missing).push(kw); }
+  for (const kw of job.criticalKeywords) { (textHasKeyword(finalText, kw) ? covered : missing).push(kw); }
   return {
     keywordsCovered: covered,
     keywordsMissing: missing,
@@ -475,9 +660,8 @@ function joinNatural(items: string[]): string {
 function collectMissionContextSupport(selExps: ScoredExperience[], criticalKeywords: string[], directKeywords: string[]): { contextKeywords: string[]; contextOnlyKeywords: string[] } {
   const descText = selExps.map(se => se.experience.description || "").join(" ").toLowerCase();
   if (!descText.trim() || criticalKeywords.length === 0) return { contextKeywords: [], contextOnlyKeywords: [] };
-  const directSet = new Set(directKeywords.map(k => k.toLowerCase()));
-  const contextKeywords = criticalKeywords.filter(kw => descText.includes(kw.toLowerCase()));
-  const contextOnlyKeywords = contextKeywords.filter(kw => !directSet.has(kw.toLowerCase()));
+  const contextKeywords = criticalKeywords.filter(kw => textHasKeyword(descText, kw));
+  const contextOnlyKeywords = contextKeywords.filter(kw => !directKeywords.some(direct => normalizeEvidenceText(direct) === normalizeEvidenceText(kw)));
   return { contextKeywords, contextOnlyKeywords };
 }
 
@@ -755,10 +939,10 @@ export async function runDryRunCheck(input: Pick<TailorInput, "jobText" | "mode"
   const allSelectedBullets = selExps.flatMap(se => se.selectedBullets);
   const total = allSelectedBullets.length;
   const avg = total > 0 ? Math.round(allSelectedBullets.reduce((s, b) => s + b.totalScore, 0) / total) : 0;
-  // Approximate keyword coverage from matched keywords in bullets (without full applyPostRules)
-  const matchedKwSet = new Set(allSelectedBullets.flatMap(sb => sb.matchedKeywords.map(k => k.toLowerCase())));
-  const critLow = parsedJob.criticalKeywords.map(k => k.toLowerCase());
-  const coveredCount = critLow.filter(k => matchedKwSet.has(k) || [...matchedKwSet].some(m => m.includes(k) || k.includes(m))).length;
+  const selectedEvidenceText = allSelectedBullets
+    .map(sb => `${sb.bullet.text} ${(sb.bullet.tags || []).join(" ")}`)
+    .join(" ");
+  const coveredCount = parsedJob.criticalKeywords.filter(keyword => textHasKeyword(selectedEvidenceText, keyword)).length;
   const kwCov = parsedJob.criticalKeywords.length > 0 ? Math.round(coveredCount / parsedJob.criticalKeywords.length * 100) : 50;
   const bulletBonus = total >= 6 ? Math.min(10, Math.round(kwCov * 0.1)) : Math.round(total * 1.5);
   const rawConfidence = Math.round(avg * 0.45 + kwCov * 0.45 + bulletBonus);
@@ -851,8 +1035,10 @@ export async function runFastDryRun(
 
   const total = allSelectedBullets.length;
   const avg = total > 0 ? Math.round(allSelectedBullets.reduce((s, b) => s + b.totalScore, 0) / total) : 0;
-  const matchedKwSet = new Set(allSelectedBullets.flatMap(sb => sb.matchedKeywords.map(k => k.toLowerCase())));
-  const coveredCount = critKw.filter(k => matchedKwSet.has(k) || [...matchedKwSet].some(m => m.includes(k) || k.includes(m))).length;
+  const selectedEvidenceText = allSelectedBullets
+    .map(sb => `${sb.bullet.text} ${(sb.bullet.tags || []).join(" ")}`)
+    .join(" ");
+  const coveredCount = minimalParsedJob.criticalKeywords.filter(keyword => textHasKeyword(selectedEvidenceText, keyword)).length;
   const kwCov = critKw.length > 0 ? Math.round((coveredCount / critKw.length) * 100) : 50;
   const bulletBonus = total >= 6 ? Math.min(10, Math.round(kwCov * 0.1)) : Math.round(total * 1.5);
   const rawConfidence = Math.round(avg * 0.45 + kwCov * 0.45 + bulletBonus);

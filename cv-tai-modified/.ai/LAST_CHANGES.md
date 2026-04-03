@@ -76,6 +76,12 @@
 
 ## 2026-04-04
 
+### Tailor coherence pass for duplicated offers
+- Quoi : stabilisation des `criticalKeywords` a partir du `roleFrame` / `requiredSkills`, filtrage des faux keywords critiques (diplomes / signaux RH), et matching canonique par synonymes dans le scoring / post-rules / dry-run
+- Fichiers : `server/tailoring-engine.ts`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
+- Impact : deux sources d'une meme offre doivent produire un noyau de keywords plus proche et donc un `Fit offre` plus coherent; les annonces comme Adobe ne doivent plus elevser des termes comme `Design School Degree` au rang de preuve coeur metier
+- Verification : revue manuelle du moteur; verification runtime encore a faire sur les cas Pix et Adobe
+
 ### Auth UX redirect fix
 - Quoi : redirection automatique vers `/library` apres login/register reussi et protection de la route `/login` quand une session existe deja
 - Fichiers : `client/src/pages/auth.tsx`, `client/src/App.tsx`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
