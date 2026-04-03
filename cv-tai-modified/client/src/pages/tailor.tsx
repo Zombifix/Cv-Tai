@@ -17,7 +17,7 @@ import { WandSparkles, Link as LinkIcon, FileText, Target, RefreshCw, Info, Slid
 import { useToast } from "@/hooks/use-toast";
 
 const SCRAPE_BLOCKED_DOMAINS = [
-  "indeed.com", "linkedin.com", "glassdoor.com", "monster.com",
+  "indeed.com", "glassdoor.com", "monster.com",
   "apec.fr", "francetravail.fr", "pole-emploi.fr", "hellowork.com", "cadremploi.fr",
 ];
 

@@ -819,7 +819,7 @@ JSON uniquement :
       let effectiveJobText = text || "";
 
       if (!effectiveJobText && normalizedUrl) {
-        const BLOCKED_DOMAINS = ["indeed.com", "linkedin.com", "glassdoor.com", "monster.com",
+        const BLOCKED_DOMAINS = ["indeed.com", "glassdoor.com", "monster.com",
           "apec.fr", "francetravail.fr", "pole-emploi.fr", "hellowork.com", "cadremploi.fr"];
         try {
           const hostname = new URL(normalizedUrl).hostname.toLowerCase();
@@ -883,7 +883,7 @@ JSON uniquement :
       // Block known non-scrapable domains before even trying
       if (!effectiveJobText && normalizedUrl) {
         const BLOCKED_DOMAINS = [
-          "indeed.com", "linkedin.com", "glassdoor.com", "monster.com",
+          "indeed.com", "glassdoor.com", "monster.com",
           "apec.fr", "francetravail.fr", "pole-emploi.fr", "hellowork.com", "cadremploi.fr",
         ];
         try {
