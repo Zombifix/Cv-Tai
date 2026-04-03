@@ -259,7 +259,7 @@ export async function buildStructuredCV(job: ParsedJob, selExps: ScoredExperienc
   if (topExps.length > 0) {
     try {
       const res = await openai.chat.completions.create({ model: MODEL, messages: [
-        { role: "system", content: `Write a 2-3 sentence CV summary. Max 45 words. No first person. ${posGuide[job.positioning]} ${job.language === "FR" ? "In French." : "In English."} IMPORTANT: Only reference companies listed in the experiences below. Do not invent metrics, achievements, or projects not explicitly mentioned in the provided context.` },
+        { role: "system", content: `Write a 2-3 sentence CV summary. Max 45 words. No first person. ${posGuide[job.positioning]} ${job.language === "FR" ? "In French." : "In English."} IMPORTANT: Only reference companies listed in the experiences below. Do not invent metrics, achievements, or projects not explicitly mentioned in the provided context. Write in flowing prose only — do NOT use labels like "Compétences:" or "Skills:" in the text.` },
         { role: "user", content: `Target: "${job.title}" at "${job.company}" (${job.domain})\nPositioning: ${job.positioning}\n${extras?.profileSummary ? `Bio: ${extras.profileSummary}\n` : ""}Exps: ${topExps.map(se => `${se.experience.title} at ${se.experience.company}`).join(", ")}\nSkills: ${dedupSkills.slice(0,6).join(", ")}\nRequired: ${job.requiredSkills.slice(0,5).join(", ")}\nIntentions: ${job.intentions.slice(0,3).join("; ")}` },
       ] });
       summary = (res.choices[0].message.content || summary).trim();
@@ -330,7 +330,7 @@ export function renderCVText(cv: StructuredCV, job: ParsedJob): string {
   if (cv.summary) { l.push(fr ? "RESUME PROFESSIONNEL" : "PROFESSIONAL SUMMARY"); l.push(cv.summary, ""); }
   l.push(fr ? "EXPERIENCE PROFESSIONNELLE" : "EXPERIENCE", "");
   for (const exp of cv.experiences) { const ct = exp.contractType ? ` (${exp.contractType})` : ""; l.push(`${exp.title} | ${exp.company}${ct}`); l.push(exp.dates); for (const b of exp.bullets) l.push(`• ${b}`); l.push(""); }
-  if (cv.skills.length) { l.push(fr ? "COMPETENCES" : "SKILLS"); l.push(cv.skills.join(" · "), ""); }
+  if (cv.skills.length) { l.push(`${fr ? "COMPETENCES" : "SKILLS"}: ${cv.skills.join(" · ")}`); l.push(""); }
   if (cv.formations.length) { l.push(fr ? "FORMATION" : "EDUCATION"); for (const f of cv.formations) l.push(`${f.degree} — ${f.school}${f.year ? ` (${f.year})` : ""}`); l.push(""); }
   if (cv.languages.length) { l.push(fr ? "LANGUES" : "LANGUAGES"); for (const la of cv.languages) l.push(`${la.name}${la.level ? ` — ${la.level}` : ""}`); }
   return l.join("\n").trim();
@@ -383,7 +383,45 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
   const semanticScore = Math.min(100, Math.round(avg * 100 / 120));
   const cappedByKeywords = critKwHardCap < 100 && rawConfidence > critKwHardCap;
 
-  return { jobTitle: job.title, jobCompany: job.company, jobSeniority: job.seniority, jobDomain: job.domain, detectedKeywords: { requiredSkills: job.requiredSkills, preferredSkills: job.preferredSkills, responsibilities: job.responsibilities, keywords: job.keywords, criticalKeywords: job.criticalKeywords }, matchedSkills: matched.map(s => s.name), missingSkills: missingSkills.slice(0, 10), selectedExperiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, score: Math.round(se.score), reason: se.reason, matchedAspects: se.matchedAspects, bulletCount: se.selectedBullets.length, charBudget: se.charBudget })), rejectedExperiences: [], selectedBullets: allBullets.map(sb => ({ text: sb.bullet.text, experienceTitle: sb.experience.title, score: sb.totalScore, deterministicScore: sb.deterministicScore, llmScore: sb.llmScore, matchedKeywords: sb.matchedKeywords, dimension: sb.dimension })), postRules, confidence, confidenceReasoning: `ATS keywords: ${kwCov}%. Semantic: ${semanticScore}%. ${total} bullets.${cappedByKeywords ? " Score plafonné : keywords critiques absents." : ""}`, fallbackUsed: total === 0, detectedLanguage: job.language, positioning: job.positioning, intentions: job.intentions, tips, scoreBreakdown: { ats: kwCov, semantic: semanticScore, domainMismatch, cappedByKeywords } };
+  return { jobTitle: job.title, jobCompany: job.company, jobSeniority: job.seniority, jobDomain: job.domain, detectedKeywords: { requiredSkills: job.requiredSkills, preferredSkills: job.preferredSkills, responsibilities: job.responsibilities, keywords: job.keywords, criticalKeywords: job.criticalKeywords }, matchedSkills: matched.map(s => s.name), missingSkills: missingSkills.slice(0, 10), selectedExperiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, score: Math.round(se.score), reason: se.reason, matchedAspects: se.matchedAspects, bulletCount: se.selectedBullets.length, charBudget: se.charBudget })), rejectedExperiences: [], selectedBullets: allBullets.map(sb => ({ text: sb.bullet.text, experienceTitle: sb.experience.title, score: sb.totalScore, deterministicScore: sb.deterministicScore, llmScore: sb.llmScore, matchedKeywords: sb.matchedKeywords, dimension: sb.dimension })), postRules, confidence, confidenceReasoning: (() => {
+    let l1: string;
+    if (cappedByKeywords) l1 = `Peu de keywords critiques du poste présents dans ton CV (${kwCov}% de couverture).`;
+    else if (kwCov >= 70) l1 = `Bonne couverture des keywords critiques de l'offre (${kwCov}%).`;
+    else if (kwCov >= 40) l1 = `Couverture partielle des keywords critiques (${kwCov}%).`;
+    else l1 = `Keywords critiques peu présents dans ton CV (${kwCov}%) — profil en décalage.`;
+    let l2: string;
+    if (domainMismatch) l2 = `Mismatch de domaine (${domainMismatch}) : les compétences adjacentes se transfèrent, mais le cœur du rôle diffère.`;
+    else if (semanticScore >= 70) l2 = `Tes expériences sont sémantiquement bien alignées avec le rôle (${total} bullets sélectionnés).`;
+    else if (total < 4) l2 = `Peu de bullets disponibles — enrichis ta bibliothèque pour de meilleurs résultats.`;
+    else if (confidence >= 70) l2 = `Fort match global : tes bullets couvrent bien les exigences du poste.`;
+    else l2 = `Alignement sémantique modéré avec ${total} bullets sélectionnés.`;
+    return `${l1} ${l2}`;
+  })(), fallbackUsed: total === 0, detectedLanguage: job.language, positioning: job.positioning, intentions: job.intentions, tips, scoreBreakdown: { ats: kwCov, semantic: semanticScore, domainMismatch, cappedByKeywords } };
+}
+
+// ─── Dry Run Check (steps 1-4 only, no CV generation, no DB save) ────────────
+export interface DryRunResult { preliminaryConfidence: number; criticalKeywords: string[]; positioning: string; jobTitle: string; }
+
+export async function runDryRunCheck(input: Pick<TailorInput, "jobText" | "mode" | "bodyMaxChars" | "allExperiences" | "allBullets" | "allSkills">, openai: OpenAI): Promise<DryRunResult> {
+  log("══════ Dry Run Check (steps 1-4) ══════");
+  const parsedJob = await parseJobDescription(input.jobText, openai);
+  const scored = await hybridScoreAllBullets(parsedJob, input.allExperiences, input.allBullets, openai);
+  const allocs = allocateCharBudget(input.allExperiences, scored, input.bodyMaxChars || 3500);
+  const selExps = selectBullets(scored, allocs);
+  const allSelectedBullets = selExps.flatMap(se => se.selectedBullets);
+  const total = allSelectedBullets.length;
+  const avg = total > 0 ? Math.round(allSelectedBullets.reduce((s, b) => s + b.totalScore, 0) / total) : 0;
+  // Approximate keyword coverage from matched keywords in bullets (without full applyPostRules)
+  const matchedKwSet = new Set(allSelectedBullets.flatMap(sb => sb.matchedKeywords.map(k => k.toLowerCase())));
+  const critLow = parsedJob.criticalKeywords.map(k => k.toLowerCase());
+  const coveredCount = critLow.filter(k => matchedKwSet.has(k) || [...matchedKwSet].some(m => m.includes(k) || k.includes(m))).length;
+  const kwCov = parsedJob.criticalKeywords.length > 0 ? Math.round(coveredCount / parsedJob.criticalKeywords.length * 100) : 50;
+  const bulletBonus = total >= 6 ? Math.min(10, Math.round(kwCov * 0.1)) : Math.round(total * 1.5);
+  const rawConfidence = Math.round(avg * 0.45 + kwCov * 0.45 + bulletBonus);
+  const critKwHardCap = parsedJob.criticalKeywords.length >= 4 && kwCov < 25 ? 40 : 100;
+  const preliminaryConfidence = Math.min(critKwHardCap, Math.min(100, rawConfidence));
+  log(`Dry Run Done — ${preliminaryConfidence}% | ${parsedJob.positioning}`);
+  return { preliminaryConfidence, criticalKeywords: parsedJob.criticalKeywords, positioning: parsedJob.positioning, jobTitle: parsedJob.title };
 }
 
 // ─── Master Pipeline ─────────────────────────────────────────────────────────

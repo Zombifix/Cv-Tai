@@ -1,13 +1,18 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Layout } from "@/components/layout";
-import { useGenerateTailor } from "@/hooks/use-tailor";
+import { useGenerateTailor, useCheckMatch } from "@/hooks/use-tailor";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { WandSparkles, Link as LinkIcon, FileText, Target, RefreshCw, Info, SlidersHorizontal, Sparkles, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -48,6 +53,7 @@ export default function Tailor() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const generate = useGenerateTailor();
+  const checkMatch = useCheckMatch();
 
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
@@ -56,6 +62,7 @@ export default function Tailor() {
   const [introMaxChars, setIntroMaxChars] = useState("");
   const [bodyMaxChars, setBodyMaxChars] = useState("");
   const [extraContext, setExtraContext] = useState("");
+  const [pendingConfirm, setPendingConfirm] = useState<{ score: number; jobTitle: string } | null>(null);
 
   useEffect(() => {
     try {
@@ -83,16 +90,10 @@ export default function Tailor() {
     setUrlConverted(converted);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!url && !text) {
-      toast({ title: "Champ requis", description: "Colle une URL ou le texte de l'annonce.", variant: "destructive" });
-      return;
-    }
+  const doGenerate = async () => {
     try {
       const introChars = introMaxChars ? parseInt(introMaxChars) : undefined;
       const bodyChars = bodyMaxChars ? parseInt(bodyMaxChars) : undefined;
-
       const run = await generate.mutateAsync({
         url: url || undefined,
         text: text || undefined,
@@ -101,11 +102,34 @@ export default function Tailor() {
         bodyMaxChars: bodyChars && bodyChars >= 500 ? bodyChars : undefined,
         extraContext: extraContext.trim() || undefined,
       });
-      toast({ title: "CV genere", description: "Ton CV a ete optimise !" });
+      toast({ title: "CV généré", description: "Ton CV a été optimisé !" });
       setLocation(`/results/${run.id}`);
     } catch (err) {
       toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!url && !text) {
+      toast({ title: "Champ requis", description: "Colle une URL ou le texte de l'annonce.", variant: "destructive" });
+      return;
+    }
+    // Pre-check match score — warn if < 40% to avoid wasting tokens on a weak match
+    try {
+      const check = await checkMatch.mutateAsync({
+        url: url || undefined,
+        text: text || undefined,
+        extraContext: extraContext.trim() || undefined,
+      });
+      if (check.preliminaryConfidence < 40) {
+        setPendingConfirm({ score: check.preliminaryConfidence, jobTitle: check.jobTitle });
+        return;
+      }
+    } catch {
+      // If check fails (scrape error, network, etc.), proceed with full generation anyway
+    }
+    await doGenerate();
   };
 
   return (
@@ -282,12 +306,14 @@ export default function Tailor() {
                 type="submit"
                 size="lg"
                 className="w-full text-lg py-6 rounded-xl shadow-lg shadow-primary/20 transition-all hover:scale-[1.01]"
-                disabled={generate.isPending}
+                disabled={checkMatch.isPending || generate.isPending}
               >
-                {generate.isPending ? (
-                  <><RefreshCw className="w-5 h-5 mr-2 animate-spin" /> Generation en cours...</>
+                {checkMatch.isPending ? (
+                  <><RefreshCw className="w-5 h-5 mr-2 animate-spin" /> Analyse du match...</>
+                ) : generate.isPending ? (
+                  <><RefreshCw className="w-5 h-5 mr-2 animate-spin" /> Génération en cours...</>
                 ) : (
-                  <><WandSparkles className="w-5 h-5 mr-2" /> Generer le CV</>
+                  <><WandSparkles className="w-5 h-5 mr-2" /> Générer le CV</>
                 )}
               </Button>
             </form>
@@ -295,5 +321,32 @@ export default function Tailor() {
         </Card>
       </div>
     </Layout>
+
+    {/* ── Low-match confirmation dialog ── */}
+    <AlertDialog open={!!pendingConfirm} onOpenChange={(open) => { if (!open) setPendingConfirm(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Match faible — générer quand même ?</AlertDialogTitle>
+          <AlertDialogDescription className="space-y-2">
+            <span className="block">
+              Match estimé : <strong className="text-red-600 dark:text-red-400">{pendingConfirm?.score}%</strong>
+              {pendingConfirm?.jobTitle && <> pour <em>{pendingConfirm.jobTitle}</em></>}.
+            </span>
+            <span className="block text-muted-foreground">
+              Ton profil correspond peu à ce poste. Le CV généré risque d'être peu pertinent et de consommer des crédits IA pour un résultat limité.
+            </span>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => setPendingConfirm(null)}>Annuler</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={async () => { setPendingConfirm(null); await doGenerate(); }}
+            className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+          >
+            Générer quand même
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

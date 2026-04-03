@@ -9,7 +9,7 @@ import {
   ArrowLeft, Copy, Check, AlertCircle, CheckCircle,
   Lightbulb, Hash, ChevronDown, ChevronUp,
   Globe, ShieldCheck, Zap, RefreshCw, Pencil, X,
-  WandSparkles, Library, BookOpen, Ban, Tag, ExternalLink, Plus, Sparkles,
+  WandSparkles, Library, BookOpen, ExternalLink, Plus, Sparkles,
   Send, Calendar
 } from "lucide-react";
 import { useState } from "react";
@@ -125,6 +125,13 @@ function FormattedCV({ text, keywords = [] }: { text: string; keywords?: string[
           )}
         </div>
       );
+    } else if (/^(PROFESSIONAL SUMMARY|RESUME PROFESSIONNEL|EXPERIENCE PROFESSIONNELLE?|EXPERIENCE|EDUCATION|FORMATION|LANGUAGES?|LANGUES?)\s*$/i.test(line)) {
+      elements.push(
+        <div key={i} className="mt-7 first:mt-0 flex items-center gap-3">
+          <h2 className="text-[10px] font-extrabold text-muted-foreground tracking-[0.15em] uppercase whitespace-nowrap">{line}</h2>
+          <div className="flex-1 h-px bg-border/70" />
+        </div>
+      );
     } else if (line.startsWith("•") || line.startsWith("–") || (line.startsWith("-") && !line.startsWith("---"))) {
       const bulletText = line.replace(/^[•\-–]\s*/, "").replace(/\*\*/g, "");
       elements.push(
@@ -170,9 +177,7 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
   const label = confidence >= 70 ? "Fort match" : confidence >= 40 ? "Match partiel" : "Match faible";
   const textColor = confidence >= 70 ? "text-green-600 dark:text-green-400" : confidence >= 40 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
 
-  const insightSentence = reasoning
-    ? reasoning.split(".").find(s => s.trim().length > 20)?.trim()
-    : null;
+  const insightSentence = reasoning || null;
 
   return (
     <Card className="border-border/60 shadow-none" data-testid="section-match-score">
@@ -357,16 +362,7 @@ function KeyTips({ tips, insight }: { tips: string[]; insight?: string }) {
 
 function DetailsDisclosure({ report }: { report: any }) {
   const [open, setOpen] = useState(false);
-  const [showRejExps, setShowRejExps] = useState(false);
-  const [showRejBullets, setShowRejBullets] = useState(false);
   const [showKeywords, setShowKeywords] = useState(false);
-
-  const bulletsByExp = new Map<string, any[]>();
-  for (const b of (report.selectedBullets || [])) {
-    const key = b.experienceTitle || "Other";
-    if (!bulletsByExp.has(key)) bulletsByExp.set(key, []);
-    bulletsByExp.get(key)!.push(b);
-  }
 
   return (
     <div className="rounded-xl border border-border/60" data-testid="section-details">
@@ -381,103 +377,6 @@ function DetailsDisclosure({ report }: { report: any }) {
 
       {open && (
         <div className="border-t border-border/60 px-4 py-4 space-y-4 bg-muted/10 rounded-b-xl">
-
-          {/* Selected Experiences */}
-          {report.selectedExperiences?.length > 0 && (
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Expériences sélectionnées</p>
-              <div className="space-y-2">
-                {report.selectedExperiences.map((exp: any, i: number) => {
-                  const bullets = bulletsByExp.get(exp.title) || [];
-                  return (
-                    <div key={i} className="p-2.5 rounded-lg border bg-background/80 space-y-1" data-testid={`item-selected-exp-${i}`}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-xs font-semibold text-foreground">{exp.title}</p>
-                          <p className="text-[10px] text-muted-foreground">{exp.company}</p>
-                        </div>
-                        <span className="text-[9px] text-muted-foreground flex-shrink-0">{exp.bulletCount}b</span>
-                      </div>
-                      {exp.reason && <p className="text-[10px] text-muted-foreground/80 italic leading-snug">{exp.reason}</p>}
-                      {exp.matchedAspects?.length > 0 && (
-                        <div className="flex flex-wrap gap-1 pt-0.5">
-                          {exp.matchedAspects.map((a: string, j: number) => (
-                            <span key={j} className="text-[9px] px-1.5 py-0.5 rounded bg-primary/5 text-primary/70 font-medium">{a}</span>
-                          ))}
-                        </div>
-                      )}
-                      {bullets.length > 0 && (
-                        <div className="pt-1 space-y-1">
-                          {bullets.map((b: any, j: number) => (
-                            <div key={j} className="border-l-2 border-primary/20 pl-2 py-0.5">
-                              <p className="text-[10px] text-foreground/80 leading-snug">{b.text}</p>
-                              {b.matchedKeywords?.length > 0 && (
-                                <div className="flex gap-1 flex-wrap mt-0.5">
-                                  {b.matchedKeywords.slice(0, 3).map((k: string, m: number) => (
-                                    <span key={m} className="text-[8px] px-1 py-px rounded bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400">{k}</span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Rejected Experiences */}
-          {report.rejectedExperiences?.length > 0 && (
-            <div>
-              <button
-                onClick={() => setShowRejExps(v => !v)}
-                className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground mb-1.5"
-                data-testid="button-toggle-rejected-exps"
-              >
-                <Ban className="w-3 h-3" />
-                Non sélectionnées ({report.rejectedExperiences.length})
-                {showRejExps ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
-              </button>
-              {showRejExps && (
-                <div className="space-y-1.5">
-                  {report.rejectedExperiences.map((exp: any, i: number) => (
-                    <div key={i} className="p-2 rounded-lg border bg-background/60 space-y-0.5" data-testid={`item-rejected-exp-${i}`}>
-                      <p className="text-[10px] font-medium text-foreground/70">{exp.title} — {exp.company}</p>
-                      {exp.reason && <p className="text-[9px] italic text-muted-foreground leading-snug">{exp.reason}</p>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Rejected Bullets */}
-          {report.rejectedBullets?.length > 0 && (
-            <div>
-              <button
-                onClick={() => setShowRejBullets(v => !v)}
-                className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground mb-1.5"
-                data-testid="button-toggle-rejected-bullets"
-              >
-                <Tag className="w-3 h-3" />
-                Bullets ignorés ({report.rejectedBullets.length})
-                {showRejBullets ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
-              </button>
-              {showRejBullets && (
-                <div className="space-y-1">
-                  {report.rejectedBullets.map((b: any, i: number) => (
-                    <div key={i} className="border-l-2 border-muted pl-2 py-0.5" data-testid={`item-rejected-bullet-${i}`}>
-                      <p className="text-[10px] text-muted-foreground leading-snug">{b.text}</p>
-                      {b.reason && <p className="text-[9px] italic text-muted-foreground/60 mt-0.5">{b.reason}</p>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Detected Keywords */}
           {report.detectedKeywords && (
@@ -783,10 +682,7 @@ export default function Result() {
   const modeMeta = MODE_META[run.mode] || MODE_META.polished;
 
   const pageTitle = [report?.jobTitle, report?.jobCompany].filter(Boolean).join(" — ") || "Tailored CV";
-  const keyInsight = (() => {
-    const r = report?.confidenceReasoning?.split(".").find((s: string) => s.trim().length > 20);
-    return r ? r.trim() + "." : null;
-  })();
+  const keyInsight = report?.confidenceReasoning || null;
   const jobUrl = run?.jobPost?.url;
   const allKeywords = [
     ...(report?.detectedKeywords?.requiredSkills || []),

@@ -40,6 +40,24 @@ export function useRun(id: string) {
   });
 }
 
+export function useCheckMatch() {
+  return useMutation({
+    mutationFn: async (data: { url?: string; text?: string; extraContext?: string }) => {
+      const res = await fetch("/api/check-match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error((errData as any).message || "Check failed");
+      }
+      return res.json() as Promise<{ preliminaryConfidence: number; criticalKeywords: string[]; positioning: string; jobTitle: string }>;
+    },
+  });
+}
+
 export function useRuns() {
   return useQuery({
     queryKey: ["/api/runs"],

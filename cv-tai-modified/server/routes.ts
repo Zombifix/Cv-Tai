@@ -11,6 +11,7 @@ import {
   normalizeLinkedInUrl,
   checkLLMHealth,
   runTailorPipeline,
+  runDryRunCheck,
 } from "./tailoring-engine";
 
 let openai: OpenAI | null = null;
@@ -805,6 +806,64 @@ JSON uniquement :
     } catch (err: any) {
       console.error("[TAG-EVAL] Error:", err.message);
       res.json({ tags: ["general"], evaluation: null, suggestion: null });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // CHECK MATCH — dry run (steps 1-4 only, no CV saved)
+  // ══════════════════════════════════════════════════════════════
+  app.post("/api/check-match", async (req, res) => {
+    try {
+      const { url, text, extraContext } = req.body;
+      const normalizedUrl = url ? normalizeLinkedInUrl(url) : undefined;
+      let effectiveJobText = text || "";
+
+      if (!effectiveJobText && normalizedUrl) {
+        const BLOCKED_DOMAINS = ["indeed.com", "linkedin.com", "glassdoor.com", "monster.com",
+          "apec.fr", "francetravail.fr", "pole-emploi.fr", "hellowork.com", "cadremploi.fr"];
+        try {
+          const hostname = new URL(normalizedUrl).hostname.toLowerCase();
+          if (BLOCKED_DOMAINS.some(d => hostname.includes(d))) {
+            return res.status(400).json({ message: "Site bloqué.", scrapeFailed: true });
+          }
+        } catch {}
+        try {
+          const jinaRes = await fetch(`https://r.jina.ai/${normalizedUrl}`, {
+            headers: { "Accept": "text/plain", "X-Return-Format": "text" },
+            signal: AbortSignal.timeout(15000),
+          });
+          if (jinaRes.ok) effectiveJobText = (await jinaRes.text()).slice(0, 6000).trim();
+        } catch {}
+      }
+
+      if (!effectiveJobText || effectiveJobText.length < 150) {
+        return res.status(400).json({ message: "Impossible de récupérer le contenu.", scrapeFailed: true });
+      }
+
+      const lowerText = effectiveJobText.toLowerCase();
+      if (lowerText.includes("cloudflare") || lowerText.includes("just a moment") || lowerText.includes("checking your browser")) {
+        return res.status(400).json({ message: "Site bloqué par anti-bot.", scrapeFailed: true });
+      }
+
+      if (extraContext?.trim()) {
+        effectiveJobText += `\n\n---\nAdditional context:\n${extraContext.trim()}`;
+      }
+
+      if (!openai) return res.status(500).json({ message: "AI service not configured." });
+
+      const allExps = await storage.getExperiences();
+      const allBullets = await storage.getAllBullets();
+      if (allExps.length === 0) return res.status(400).json({ message: "Bibliothèque vide." });
+
+      const result = await runDryRunCheck({
+        jobText: effectiveJobText, mode: "polished",
+        allExperiences: allExps, allBullets, allSkills: [],
+      }, openai);
+
+      res.json(result);
+    } catch (e: any) {
+      console.error("[CHECK-MATCH] Error:", e.message);
+      res.status(500).json({ message: "Erreur lors du check match." });
     }
   });
 
