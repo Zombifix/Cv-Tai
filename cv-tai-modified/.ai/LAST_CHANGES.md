@@ -37,3 +37,9 @@
 - Fichiers : `server/tailoring-engine.ts`, `client/src/pages/result.tsx`, `CLAUDE.md`, `.ai/TODO.md`
 - Impact : les descriptions de mission aident a desambiguiser ou renforcer un fit adjacent sans compter autant qu'un bullet et sans faire exploser artificiellement la credibilite
 - Verification : revue manuelle du diff; verification runtime a faire sur un cas adjacent ou les bullets sont courts mais la description mission est informative
+
+### Build fix parseJobDescription
+- Quoi : correction d'une erreur de syntaxe dans le prompt `parseJobDescription` apres l'ajout de `roleFrame`
+- Fichiers : `server/tailoring-engine.ts`
+- Impact : le build serveur ne doit plus casser sur `Expected "]" but found ":"`
+- Verification : revue manuelle du bloc corrige; rebuild Railway a relancer

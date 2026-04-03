@@ -93,7 +93,7 @@ export async function parseJobDescription(jobText: string, openai: OpenAI): Prom
   The goal: if someone with the wrong background reads these 5-8 keywords, they should immediately know they don't qualify.)
 - language ("EN"/"FR")
 - intentions[] (5-10 phrases: what the role REALLY needs beyond keywords. Ex: "structurer les pratiques design", "influencer les stakeholders", "mesurer l'impact business du design". VERBS + OUTCOMES.)
-- positioning: "consultant" (conseil, accompagnement, formation) | "lead" (management, vision, equipe) | "ic" (craft, delivery) | "manager" (people management)` },
+- positioning: "consultant" (conseil, accompagnement, formation) | "lead" (management, vision, equipe) | "ic" (craft, delivery) | "manager" (people management)
 - roleFrame: {
   workObjects[] (3-6 concrete nouns / short phrases for what this role works on daily. Ex: "user flows", "cloud sourcing", "editorial calendar")
   deliverables[] (2-5 outputs produced by the role. Ex: "wireframes", "roadmap", "plan de transformation")
