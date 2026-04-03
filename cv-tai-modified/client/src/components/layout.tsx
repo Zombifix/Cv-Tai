@@ -12,9 +12,11 @@ import {
   SidebarTrigger
 } from "@/components/ui/sidebar";
 import { Library, WandSparkles, FileText, Clock, Settings, LogOut } from "lucide-react";
+import { useLogout } from "@/hooks/use-auth";
 
 export function AppSidebar() {
   const [location] = useLocation();
+  const logout = useLogout();
 
   const items = [
     { title: "Super-CV Library", url: "/library", icon: Library },
@@ -84,7 +86,7 @@ export function AppSidebar() {
                 );
               })}
               <SidebarMenuItem>
-                <SidebarMenuButton tooltip="Deconnexion">
+                <SidebarMenuButton tooltip="Deconnexion" onClick={() => logout.mutate()}>
                   <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all duration-200 cursor-pointer w-full">
                     <LogOut className="w-5 h-5" />
                     <span>Deconnexion</span>

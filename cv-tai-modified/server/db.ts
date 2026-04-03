@@ -94,6 +94,19 @@ export async function ensureTables() {
         level TEXT,
         created_at TIMESTAMP DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS "session" (
+        "sid" varchar NOT NULL COLLATE "default",
+        "sess" json NOT NULL,
+        "expire" timestamp(6) NOT NULL,
+        CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
+      );
+      CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
     `).catch((e) => console.log("[DB] Some ALTER/CREATE already done:", e.message));
   } catch (err: any) {
     // If vector extension fails, create tables without the embedding column
@@ -156,6 +169,9 @@ export async function ensureTables() {
         CREATE TABLE IF NOT EXISTS profile (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', summary TEXT, target_role TEXT, updated_at TIMESTAMP DEFAULT NOW());
         CREATE TABLE IF NOT EXISTS formations (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), school TEXT NOT NULL, degree TEXT NOT NULL, year TEXT, created_at TIMESTAMP DEFAULT NOW());
         CREATE TABLE IF NOT EXISTS languages (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT NOT NULL, level TEXT, created_at TIMESTAMP DEFAULT NOW());
+        CREATE TABLE IF NOT EXISTS users (id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
+        CREATE TABLE IF NOT EXISTS "session" ("sid" varchar NOT NULL COLLATE "default", "sess" json NOT NULL, "expire" timestamp(6) NOT NULL, CONSTRAINT "session_pkey" PRIMARY KEY ("sid"));
+        CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
       `).catch(() => {});
     } else {
       console.error("[DB] Failed to create tables:", err.message);

@@ -68,6 +68,7 @@ export default function Tailor() {
   const [bodyMaxChars, setBodyMaxChars] = useState("");
   const [extraContext, setExtraContext] = useState("");
   const [pendingConfirm, setPendingConfirm] = useState<{ score: number; jobTitle: string } | null>(null);
+  const [scrapeFailReason, setScrapeFailReason] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -155,8 +156,8 @@ export default function Tailor() {
       }
     } catch (err) {
       const message = (err as Error).message;
-      if (url && !text && /colle le texte|je n'ai pas pu lire|bloque la recuperation|impossible de recuperer/i.test(message.toLowerCase())) {
-        toast({ title: "Annonce non lisible", description: message, variant: "destructive" });
+      if (url && !text && /colle le texte|je n'ai pas pu lire|bloque la recuperation|impossible de recuperer/i.test(message)) {
+        setScrapeFailReason(message);
         return;
       }
     }
@@ -222,13 +223,19 @@ export default function Tailor() {
 
                   <div className="space-y-3">
                     <Label>Texte de l'annonce</Label>
+                    {scrapeFailReason && (
+                      <div className="flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700/50 p-3 rounded-lg">
+                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                        <span>{scrapeFailReason} Colle le texte ici pour continuer.</span>
+                      </div>
+                    )}
                     <div className="relative">
                       <FileText className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
                       <Textarea
                         placeholder="Colle le texte brut de l'annonce ici..."
                         className="pl-10 pt-3 min-h-[140px] bg-background text-base rounded-xl resize-y"
                         value={text}
-                        onChange={e => setText(e.target.value)}
+                        onChange={e => { setText(e.target.value); if (e.target.value) setScrapeFailReason(null); }}
                       />
                     </div>
                   </div>

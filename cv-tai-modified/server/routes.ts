@@ -1,5 +1,6 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
+import passport from "passport";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -14,6 +15,12 @@ import {
   runDryRunCheck,
   runFastDryRun,
 } from "./tailoring-engine";
+import { createUser, getUserByEmail } from "./auth";
+
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (req.isAuthenticated()) return next();
+  res.status(401).json({ error: "Unauthorized" });
+}
 
 let openai: OpenAI | null = null;
 if (process.env.OPENAI_API_KEY) {
@@ -237,9 +244,56 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  
+
   // Seed initial data
   seedDatabase().catch(console.error);
+
+  // ── AUTH ROUTES (public) ──────────────────────────────────────────────────
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password || password.length < 8) {
+        return res.status(400).json({ error: "Email et mot de passe (min 8 caracteres) requis." });
+      }
+      const existing = await getUserByEmail(email);
+      if (existing) return res.status(409).json({ error: "Un compte existe deja avec cet email." });
+      const user = await createUser(email, password);
+      req.login(user, (err) => {
+        if (err) return res.status(500).json({ error: "Erreur lors de la connexion." });
+        res.json({ id: user.id, email: user.email });
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Erreur serveur." });
+    }
+  });
+
+  app.post("/api/auth/login", (req, res, next) => {
+    passport.authenticate("local", (err: unknown, user: Express.User | false, info: { message?: string } | undefined) => {
+      if (err) return next(err);
+      if (!user) return res.status(401).json({ error: info?.message || "Identifiants incorrects." });
+      req.login(user, (loginErr) => {
+        if (loginErr) return next(loginErr);
+        const u = user as { id: number; email: string };
+        res.json({ id: u.id, email: u.email });
+      });
+    })(req, res, next);
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.logout(() => res.json({ ok: true }));
+  });
+
+  app.get("/api/auth/me", (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ error: "Unauthorized" });
+    const u = req.user as { id: number; email: string };
+    res.json({ id: u.id, email: u.email });
+  });
+
+  // ── PROTECT ALL OTHER /api ROUTES ─────────────────────────────────────────
+  app.use("/api", (req, res, next) => {
+    if (req.path.startsWith("/auth")) return next(); // already handled above
+    requireAuth(req, res, next);
+  });
 
   app.get("/api/llm/health", async (_req, res) => {
     const result = await checkLLMHealth(openai);
@@ -513,10 +567,12 @@ ${text}`,
     res.json({ success: true, count });
   });
 
-  // All unique tags across all bullets (for autocomplete)
+  // All unique tags across all bullets (for autocomplete), sorted by frequency desc
   app.get("/api/bullets/tags", async (_req, res) => {
     const allBullets = await storage.getAllBullets();
-    const tags = [...new Set(allBullets.flatMap(b => b.tags || []).filter(Boolean))].sort();
+    const freq = new Map<string, number>();
+    allBullets.flatMap(b => b.tags || []).filter(Boolean).forEach(t => freq.set(t, (freq.get(t) || 0) + 1));
+    const tags = [...freq.entries()].sort((a, b) => b[1] - a[1]).map(([tag]) => tag);
     res.json(tags);
   });
 

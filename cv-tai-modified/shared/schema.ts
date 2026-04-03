@@ -20,6 +20,17 @@ const vector = customType<{ data: number[]; driverData: string }>({
   },
 });
 
+export const users = pgTable("users", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+
 export const profile = pgTable("profile", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull().default(""),
