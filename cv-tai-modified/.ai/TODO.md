@@ -26,6 +26,7 @@
 - Verifier que les exports d'analyse montrent bien `ATS score`, `ATS final score`, `ATS boost` et `Injected keywords`.
 - Verifier dans l'UI Tailor que `Intro / Resume pro` et `Corps (experiences)` restent memorises apres refresh/navigation.
 - Verifier en vrai sur une offre scrapee que le texte nettoye commence bien au contenu metier et non aux cookies/navigation.
+- Verifier en prod que la page Result n'affiche plus de libelles mojibake visibles dans `Fit offre`, `Points d'attention`, `Mots-cles detectes`, `Ameliorer la bibliotheque` et les badges de langue/seniorite.
 - Verifier qu'un run `polished` ne sort plus avec une confiance inferieure au baseline `original` a contenu equivalent.
 - Result: purger les libelles mojibake visibles directement dans `client/src/pages/result.tsx` et eviter toute reparation DOM globale.
 - Installer les deps de dev ou remettre `tsc` dispo pour relancer `npm run check`.

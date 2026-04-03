@@ -61,3 +61,9 @@
 - Fichiers : `client/src/pages/result.tsx`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
 - Impact : les onglets/actions comme `CV genere`, `Copier`, `Ameliorer la bibliotheque` et les etats vides ne doivent plus afficher de texte casse
 - Verification : `git diff --check -- client/src/pages/result.tsx`
+
+### Result UI mojibake hardening
+- Quoi : correction des derniers textes visibles casses dans les cartes de diagnostic, mots-cles et suggestions, puis application de `repairMojibake` sur plusieurs champs dynamiques (`tips`, `insight`, badges langue/seniorite, skills affiches)
+- Fichiers : `client/src/pages/result.tsx`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
+- Impact : la page Result doit afficher un texte lisible meme quand le backend ou le scrape remonte encore du texte partiellement mal encode
+- Verification : `git diff --check -- client/src/pages/result.tsx`

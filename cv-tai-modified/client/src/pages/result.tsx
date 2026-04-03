@@ -134,7 +134,7 @@ function FormattedCV({ text, keywords = [] }: { text: string; keywords?: string[
       continue;
     }
 
-    if (/^(skills?|competences?)[:\s]*/i.test(line) && !/^(?:[-*â€¢])\s+/.test(line)) {
+    if (/^(skills?|competences?)[:\s]*/i.test(line) && !/^(?:[-*\u2022])\s+/.test(line)) {
       const rest = line.replace(/^(skills?|competences?)[:\s]*/i, "").trim();
       const sectionLabel = /^competences?/i.test(line) ? "Competences" : "Skills";
       elements.push(
@@ -146,7 +146,7 @@ function FormattedCV({ text, keywords = [] }: { text: string; keywords?: string[
           {rest && (
             <div className="flex flex-wrap gap-2">
               {rest.split(/[\u2022,|]/).map(s => s.trim()).filter(Boolean).map((skill, j) => (
-                <span key={j} className="px-2.5 py-1 text-[11px] rounded-md bg-primary/8 border border-primary/20 text-primary font-medium">{skill}</span>
+                <span key={j} className="px-2.5 py-1 text-[11px] rounded-md bg-primary/8 border border-primary/20 text-primary font-medium">{repairMojibake(skill)}</span>
               ))}
             </div>
           )}
@@ -165,8 +165,8 @@ function FormattedCV({ text, keywords = [] }: { text: string; keywords?: string[
       continue;
     }
 
-    if (/^(?:[-*â€¢])\s+/.test(line)) {
-      const bulletText = line.replace(/^(?:[-*â€¢])\s+/, "").replace(/\*\*/g, "");
+    if (/^(?:[-*\u2022])\s+/.test(line)) {
+      const bulletText = line.replace(/^(?:[-*\u2022])\s+/, "").replace(/\*\*/g, "");
       elements.push(
         <div key={i} className="flex items-start gap-2.5 pl-0.5">
           <span className="mt-[7px] flex-shrink-0 w-1 h-1 rounded-full bg-foreground/40" />
@@ -289,7 +289,7 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
           <div className="flex items-start gap-2 mb-3 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40">
             <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
             <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug font-medium">
-              Mismatch dÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©tectÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© ({scoreBreakdown.domainMismatch}) ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â les compÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©tences se croisent partiellement mais le cÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œur du rÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â´le diffÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨re.
+              Mismatch detecte ({scoreBreakdown.domainMismatch}) : les competences se croisent partiellement mais le coeur du role differe.
             </p>
           </div>
         )}
@@ -313,10 +313,10 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
               <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Plafonne : optimisation ATS superieure aux preuves reelles du CV</p>
             )}
             {scoreBreakdown?.cappedByKeywords && (
-              <p className="text-[10px] text-red-500 dark:text-red-400 font-medium mt-0.5">PlafonnÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â keywords critiques absents du CV</p>
+              <p className="text-[10px] text-red-500 dark:text-red-400 font-medium mt-0.5">Plafonne : keywords critiques absents du CV</p>
             )}
             {fallbackUsed && !scoreBreakdown?.cappedByKeywords && (
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Match faible ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â bullets de substitution utilisÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©s</p>
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Match faible : bullets de substitution utilises</p>
             )}
           </div>
         </div>
@@ -335,7 +335,7 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
               </div>
             </div>
             <div className="space-y-1">
-              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Bullets sÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mantique</p>
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Bullets semantiques</p>
               <div className="flex items-center gap-1.5">
                 <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
                   <div className={`h-full rounded-full ${scoreBreakdown.semantic >= 70 ? "bg-green-500" : scoreBreakdown.semantic >= 40 ? "bg-amber-500" : "bg-red-500"}`}
@@ -398,7 +398,7 @@ function SkillsCoverage({ matched, missing }: { matched: string[]; missing: stri
           <div className="flex flex-wrap gap-1.5">
             {matched.map((s, i) => (
               <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium" data-testid={`badge-matched-${i}`}>
-                <CheckCircle className="w-3 h-3 flex-shrink-0" /> {s}
+                <CheckCircle className="w-3 h-3 flex-shrink-0" /> {repairMojibake(s)}
               </span>
             ))}
           </div>
@@ -406,7 +406,7 @@ function SkillsCoverage({ matched, missing }: { matched: string[]; missing: stri
         {missing.length > 0 && (
           <div>
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 font-semibold">
-              {matched.length === 0 ? "Absentes de ta bibliothÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨que ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â cliquer pour ajouter" : "Manquantes ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â cliquer pour ajouter"}
+              {matched.length === 0 ? "Absentes de ta bibliotheque, cliquer pour ajouter" : "Manquantes, cliquer pour ajouter"}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {missing.map((s, i) => {
@@ -417,7 +417,7 @@ function SkillsCoverage({ matched, missing }: { matched: string[]; missing: stri
                     data-testid={`badge-missing-${i}`}
                     onClick={() => handleAdd(s)}
                     disabled={isAdded || mutation.isPending}
-                    title={isAdded ? "AjoutÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â  la bibliothÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨que" : "Ajouter ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â  la bibliothÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨que"}
+                    title={isAdded ? "Ajoute a la bibliotheque" : "Ajouter a la bibliotheque"}
                     className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full font-medium border transition-all ${
                       isAdded
                         ? "bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 cursor-default"
@@ -425,19 +425,19 @@ function SkillsCoverage({ matched, missing }: { matched: string[]; missing: stri
                     }`}
                   >
                     {isAdded ? <Check className="w-3 h-3 flex-shrink-0" /> : <Plus className="w-3 h-3 flex-shrink-0" />}
-                    {s}
+                    {repairMojibake(s)}
                   </button>
                 );
               })}
             </div>
             {matched.length === 0 && (
               <p className="text-[10px] text-muted-foreground mt-2 italic">
-                Ces compÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©tences ne sont pas encore dans votre Super-CV. Cliquez sur "+" pour les ajouter.
+                Ces competences ne sont pas encore dans votre Super-CV. Cliquez sur "+" pour les ajouter.
               </p>
             )}
           </div>
         )}
-        {total === 0 && <p className="text-xs text-muted-foreground italic">Aucune donnÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©e de compÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©tence disponible.</p>}
+        {total === 0 && <p className="text-xs text-muted-foreground italic">Aucune donnee de competence disponible.</p>}
       </CardContent>
     </Card>
   );
@@ -454,14 +454,16 @@ function KeyTips({ tips, insight }: { tips: string[]; insight?: string }) {
           <Lightbulb className="w-4 h-4 text-yellow-500 flex-shrink-0" /> Points d'attention
         </h4>
         {insight && (
-          <p className="text-xs text-foreground/70 leading-relaxed italic border-l-2 border-yellow-400/50 pl-2" data-testid="text-insight">{insight}</p>
+          <p className="text-xs text-foreground/70 leading-relaxed italic border-l-2 border-yellow-400/50 pl-2" data-testid="text-insight">
+            {repairMojibake(insight)}
+          </p>
         )}
         {tips && tips.length > 0 && (
           <ul className="space-y-1.5">
             {tips.map((tip, i) => (
               <li key={i} className="flex items-start gap-2 text-[12px] text-foreground/80 leading-relaxed" data-testid={`text-tip-${i}`}>
                 <span className="mt-1.5 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-yellow-500" />
-                {tip}
+                {repairMojibake(tip)}
               </li>
             ))}
           </ul>
@@ -484,7 +486,7 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
         className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
         data-testid="button-toggle-details"
       >
-        <span className="flex items-center gap-2"><BookOpen className="w-3.5 h-3.5" /> Analyse dÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©taillÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©e</span>
+        <span className="flex items-center gap-2"><BookOpen className="w-3.5 h-3.5" /> Analyse detaillee</span>
         {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
 
@@ -557,22 +559,24 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
                 data-testid="button-toggle-keywords"
               >
                 <Hash className="w-3 h-3" />
-                Mots-clÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©s dÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©tectÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©s
+                Mots-cles detectes
                 {showKeywords ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
               </button>
               {showKeywords && (
                 <div className="space-y-2">
                   {[
-                    { label: "CompÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©tences requises", items: report.detectedKeywords.requiredSkills, cls: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400" },
-                    { label: "CompÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©tences souhaitÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©es", items: report.detectedKeywords.preferredSkills, cls: "bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400" },
-                    { label: "ResponsabilitÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©s", items: report.detectedKeywords.responsibilities, cls: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400" },
+                    { label: "Competences requises", items: report.detectedKeywords.requiredSkills, cls: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400" },
+                    { label: "Competences souhaitees", items: report.detectedKeywords.preferredSkills, cls: "bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400" },
+                    { label: "Responsabilites", items: report.detectedKeywords.responsibilities, cls: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400" },
                     { label: "Domaine", items: report.detectedKeywords.keywords, cls: "bg-muted text-muted-foreground" },
                   ].filter(g => g.items?.length).map(g => (
                     <div key={g.label}>
                       <p className="text-[9px] uppercase tracking-wide text-muted-foreground/70 mb-1">{g.label}</p>
                       <div className="flex flex-wrap gap-1">
                         {g.items.map((k: string, i: number) => (
-                          <span key={i} className={`px-1.5 py-px text-[10px] rounded font-medium ${g.cls}`}>{k}</span>
+                          <span key={i} className={`px-1.5 py-px text-[10px] rounded font-medium ${g.cls}`}>
+                            {repairMojibake(k)}
+                          </span>
                         ))}
                       </div>
                     </div>
@@ -609,10 +613,10 @@ function LibrarySuggestions({ missingSkills }: { missingSkills: string[] }) {
       <CardContent className="p-4">
         <div className="flex items-center gap-2 mb-3">
           <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-          <h3 className="text-xs font-bold text-amber-700 dark:text-amber-300 tracking-wide uppercase">AmÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©liorer la bibliothÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨que</h3>
+          <h3 className="text-xs font-bold text-amber-700 dark:text-amber-300 tracking-wide uppercase">Ameliorer la bibliotheque</h3>
         </div>
         <p className="text-[11px] text-muted-foreground mb-3 leading-relaxed">
-          Ces compÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©tences manquent dans votre Super-CV. Ajoutez-les en 1 clic pour amÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©liorer vos prochains tailorings.
+          Ces competences manquent dans votre Super-CV. Ajoutez-les en 1 clic pour ameliorer vos prochains tailorings.
         </p>
         <div className="flex flex-wrap gap-1.5">
           {missingSkills.slice(0, 12).map(skill => {
@@ -633,7 +637,7 @@ function LibrarySuggestions({ missingSkills }: { missingSkills: string[] }) {
                   ? <Check className="w-3 h-3" />
                   : <Plus className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                 }
-                {skill}
+                {repairMojibake(skill)}
               </button>
             );
           })}
@@ -1435,7 +1439,7 @@ export default function Result() {
   const modeMeta = MODE_META[run.mode] || MODE_META.polished;
 
   const pageTitle = repairMojibake([report?.jobTitle, report?.jobCompany].filter(Boolean).join(" - ") || "Tailored CV");
-  const keyInsight = report?.confidenceReasoning || null;
+  const keyInsight = repairMojibake(report?.confidenceReasoning || "") || null;
   const fitOffer = report?.scoreBreakdown?.fitOffer ?? report?.confidence;
   const jobUrl = run?.jobPost?.url;
   const allKeywords = [
@@ -1497,11 +1501,11 @@ export default function Result() {
                 </span>
                 {report?.detectedLanguage && (
                   <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-semibold" data-testid="badge-language">
-                    <Globe className="w-3 h-3" /> {report.detectedLanguage}
+                    <Globe className="w-3 h-3" /> {repairMojibake(report.detectedLanguage)}
                   </span>
                 )}
                 {report?.jobSeniority && (
-                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">{report.jobSeniority}</span>
+                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">{repairMojibake(report.jobSeniority)}</span>
                 )}
                 {jobUrl && (
                   <span className="inline-flex flex-col items-start">
