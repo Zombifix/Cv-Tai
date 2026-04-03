@@ -28,6 +28,16 @@ Produire un CV en lequel l'utilisateur a confiance sans avoir a relire, qui pass
 - Reformulation adaptative, jamais inventee, toujours ancree dans le reel.
 - Coherence narrative globale du profil.
 - Resume pro adaptatif au positioning de l'offre.
+- Evaluation de la distance au role via un `role frame` generique, pas via le titre seul :
+  - objets de travail
+  - livrables
+  - decisions attendues
+  - collaborateurs
+  - environnement
+  - amplitude / scope
+- Hierarchie de preuve a respecter :
+  - bullets source > contexte de mission / description > skills / titres > optimisation finale
+- Justification : le titre de l'annonce peut etre bruite ou trompeur; le moteur doit faire davantage confiance au corps de l'annonce et aux preuves source qu'au titre ou au texte optimise final.
 
 ## Guardrails absolus
 - Ne jamais inventer de metriques, noms de produits ou achievements absents.
@@ -35,6 +45,13 @@ Produire un CV en lequel l'utilisateur a confiance sans avoir a relire, qui pass
 - Ne jamais mixer les langues dans un meme CV.
 - Ne jamais selectionner des bullets qui se repetent entre experiences.
 - Ne jamais ignorer le positioning.
+- Ne jamais confondre compatibilite ATS optimisee et preuve reelle du profil : le score global doit rester borne par ce que la bibliotheque prouve vraiment.
+
+## Hierarchie de preuve
+- Les bullets ecrits par l'utilisateur sont la preuve principale.
+- Le contexte de mission / `experience.description` est une preuve secondaire : il peut renforcer ou desambiguiser, mais ne doit pas compter autant qu'un bullet.
+- Le titre du poste, les tags et autres metadata sont des indices faibles.
+- Les optimisations finales de texte ne doivent jamais faire monter a elles seules la credibilite du match.
 
 ## Stack
 - Backend : Node.js, Express, TypeScript

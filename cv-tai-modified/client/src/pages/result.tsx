@@ -193,7 +193,18 @@ const MODE_META: Record<string, { label: string; icon: React.ReactNode; color: s
   adaptive: { label: "Adaptatif", icon: <RefreshCw className="w-3 h-3" />, color: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" },
 };
 
-function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { confidence: number; reasoning?: string; fallbackUsed?: boolean; scoreBreakdown?: { ats: number; semantic: number; domainMismatch?: string; cappedByKeywords?: boolean } }) {
+type ReportScoreBreakdown = {
+  ats: number;
+  atsOptimized?: number;
+  atsBoost?: number;
+  contextSupport?: number;
+  semantic: number;
+  domainMismatch?: string;
+  cappedByKeywords?: boolean;
+  cappedByEvidence?: boolean;
+};
+
+function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { confidence: number; reasoning?: string; fallbackUsed?: boolean; scoreBreakdown?: ReportScoreBreakdown }) {
   const size = 56;
   const strokeWidth = 5;
   const radius = (size - strokeWidth * 2) / 2;
@@ -204,6 +215,8 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
   const textColor = confidence >= 70 ? "text-green-600 dark:text-green-400" : confidence >= 40 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
 
   const insightSentence = reasoning || null;
+  const optimizedAts = scoreBreakdown?.atsOptimized;
+  const atsBoost = scoreBreakdown?.atsBoost || 0;
 
   return (
     <Card className="border-border/60 shadow-none" data-testid="section-match-score">
@@ -233,6 +246,9 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
           </div>
           <div className="flex-1 min-w-0">
             <p className={`text-sm font-bold ${textColor}`} data-testid="text-match-score-label">{label}</p>
+            {scoreBreakdown?.cappedByEvidence && (
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Plafonne : optimisation ATS superieure aux preuves reelles du CV</p>
+            )}
             {scoreBreakdown?.cappedByKeywords && (
               <p className="text-[10px] text-red-500 dark:text-red-400 font-medium mt-0.5">PlafonnÃ© â€” keywords critiques absents du CV</p>
             )}
@@ -246,7 +262,7 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
         {scoreBreakdown && (
           <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-border/50">
             <div className="space-y-1">
-              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">ATS Keywords</p>
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Keywords prouves</p>
               <div className="flex items-center gap-1.5">
                 <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
                   <div className={`h-full rounded-full ${scoreBreakdown.ats >= 70 ? "bg-green-500" : scoreBreakdown.ats >= 40 ? "bg-amber-500" : "bg-red-500"}`}
@@ -266,6 +282,12 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
               </div>
             </div>
           </div>
+        )}
+        {scoreBreakdown && optimizedAts !== undefined && optimizedAts > scoreBreakdown.ats && (
+          <p className="text-[10px] text-muted-foreground leading-relaxed mt-2">
+            ATS final du CV : <span className="font-semibold text-foreground">{optimizedAts}%</span>
+            {atsBoost ? ` (+${atsBoost}% via optimisation)` : ""}
+          </p>
         )}
 
         {insightSentence && !scoreBreakdown && (
@@ -386,7 +408,7 @@ function KeyTips({ tips, insight }: { tips: string[]; insight?: string }) {
   );
 }
 
-function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreakdown?: { ats: number; semantic: number; domainMismatch?: string; cappedByKeywords?: boolean } }) {
+function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreakdown?: ReportScoreBreakdown }) {
   const [open, setOpen] = useState(false);
   const [showKeywords, setShowKeywords] = useState(false);
 
@@ -408,7 +430,7 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Detail du score</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <p className="text-[10px] text-muted-foreground font-medium">Keywords ATS</p>
+                  <p className="text-[10px] text-muted-foreground font-medium">Keywords prouves par le CV source</p>
                   <div className="flex items-center gap-2">
                     <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                       <div className={`h-full rounded-full ${scoreBreakdown.ats >= 70 ? "bg-green-500" : scoreBreakdown.ats >= 40 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${scoreBreakdown.ats}%` }} />
@@ -427,6 +449,17 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
                   <p className="text-[10px] text-muted-foreground leading-relaxed">Mesure a quel point les bullets retenus racontent quelque chose de proche du role, meme sans reprendre mot pour mot l'annonce.</p>
                 </div>
               </div>
+              {scoreBreakdown.atsOptimized !== undefined && (
+                <p className="text-[10px] text-muted-foreground leading-relaxed mt-2">
+                  ATS final du document : <span className="font-semibold text-foreground">{scoreBreakdown.atsOptimized}%</span>
+                  {scoreBreakdown.atsBoost ? `, dont ${scoreBreakdown.atsBoost}% vient d'optimisations de texte.` : "."}
+                </p>
+              )}
+              {scoreBreakdown.contextSupport !== undefined && scoreBreakdown.contextSupport > 0 && (
+                <p className="text-[10px] text-muted-foreground leading-relaxed mt-1">
+                  Contexte mission : <span className="font-semibold text-foreground">{scoreBreakdown.contextSupport}%</span> de support secondaire detecte.
+                </p>
+              )}
             </div>
           )}
 
@@ -527,7 +560,7 @@ function LibrarySuggestions({ missingSkills }: { missingSkills: string[] }) {
 
 // â”€â”€â”€ Critical Keywords Coverage â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function CriticalKeywordsCoverage({ covered, missing }: { covered: string[]; missing: string[] }) {
+function CriticalKeywordsCoverage({ covered, missing, injected }: { covered: string[]; missing: string[]; injected?: string[] }) {
   const total = covered.length + missing.length;
   if (total === 0) return null;
   const pct = Math.round((covered.length / total) * 100);
@@ -558,6 +591,11 @@ function CriticalKeywordsCoverage({ covered, missing }: { covered: string[]; mis
             </span>
           ))}
         </div>
+        {injected && injected.length > 0 && (
+          <p className="text-[10px] text-muted-foreground leading-relaxed">
+            Optimisation ATS ajoutee dans le CV final : {injected.join(", ")}.
+          </p>
+        )}
       </CardContent>
     </Card>
   );
@@ -585,7 +623,7 @@ function sourceBadge(meta?: JobInputInfo) {
   return "Texte colle";
 }
 
-function MatchDiagnosisCard({ confidence, diagnosis, fallbackUsed, scoreBreakdown }: { confidence: number; diagnosis?: ReportDiagnosis; fallbackUsed?: boolean; scoreBreakdown?: { ats: number; semantic: number; domainMismatch?: string; cappedByKeywords?: boolean } }) {
+function MatchDiagnosisCard({ confidence, diagnosis, fallbackUsed, scoreBreakdown }: { confidence: number; diagnosis?: ReportDiagnosis; fallbackUsed?: boolean; scoreBreakdown?: ReportScoreBreakdown }) {
   const label = confidence >= 70 ? "Fort match" : confidence >= 40 ? "Match partiel" : "Match faible";
   const textColor = confidence >= 70 ? "text-green-600 dark:text-green-400" : confidence >= 40 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
   const primaryDiagnosis = repairMojibake(diagnosis?.primaryDiagnosis || "");
@@ -615,6 +653,9 @@ function MatchDiagnosisCard({ confidence, diagnosis, fallbackUsed, scoreBreakdow
             )}
             {scoreBreakdown?.cappedByKeywords && (
               <p className="text-[10px] text-red-500 dark:text-red-400 font-medium mt-0.5">Plafonne : keywords critiques absents du CV</p>
+            )}
+            {scoreBreakdown?.cappedByEvidence && (
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Plafonne : le gain ATS depasse les preuves reelles du profil</p>
             )}
             {fallbackUsed && !scoreBreakdown?.cappedByKeywords && (
               <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Le moteur a trouve peu de bullets forts pour cette annonce.</p>
@@ -671,6 +712,11 @@ function MatchDiagnosisCard({ confidence, diagnosis, fallbackUsed, scoreBreakdow
 }
 
 function UsedJobPosting({ meta, rawText, url }: { meta?: JobInputInfo; rawText?: string; url?: string }) {
+  const [showRaw, setShowRaw] = useState(false);
+  const cleanedText = cleanJobPostingForAnalysis(rawText);
+  const displayText = showRaw ? (trimBlock(rawText) || "Aucun texte d'annonce sauvegarde pour ce run.") : (cleanedText || trimBlock(rawText) || "Aucun texte d'annonce sauvegarde pour ce run.");
+  const wasCleaned = Boolean(cleanedText) && cleanedText !== trimBlock(rawText);
+
   return (
     <div className="bg-white dark:bg-zinc-950 px-8 py-10 md:px-14 md:py-12 min-h-[300px]" data-testid="section-used-job-posting">
       <div className="flex items-center gap-2 flex-wrap mb-4">
@@ -697,10 +743,33 @@ function UsedJobPosting({ meta, rawText, url }: { meta?: JobInputInfo; rawText?:
       )}
 
       <div>
-        <p className="text-[10px] font-extrabold text-muted-foreground tracking-[0.12em] uppercase mb-2">Annonce utilisee</p>
+        <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+          <p className="text-[10px] font-extrabold text-muted-foreground tracking-[0.12em] uppercase">Annonce utilisee</p>
+          {wasCleaned && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowRaw(value => !value)}
+              className="h-7 px-2.5 text-[11px]"
+              data-testid="button-toggle-job-posting-raw"
+            >
+              {showRaw ? "Voir nettoyee" : "Voir brut"}
+            </Button>
+          )}
+        </div>
+        {wasCleaned && !showRaw && (
+          <p className="text-[11px] text-muted-foreground mb-3">
+            Texte nettoye pour la lecture. Le contenu brut reste accessible si tu veux verifier le scraping.
+          </p>
+        )}
+        {showRaw && wasCleaned && (
+          <p className="text-[11px] text-muted-foreground mb-3">
+            Affichage brut du scrape. Pratique pour debugger, mais plus bruite.
+          </p>
+        )}
         <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
           <pre className="whitespace-pre-wrap text-[12px] leading-relaxed text-foreground/85 font-sans">
-            {rawText || "Aucun texte d'annonce sauvegarde pour ce run."}
+            {displayText}
           </pre>
         </div>
       </div>
@@ -749,7 +818,9 @@ function cleanJobPostingForAnalysis(rawText: unknown): string {
 
   return cleaned
     .replace(/\n{3,}/g, "\n\n")
+    .replace(/^(?:Blah blah blah Cookie ![\s\S]*?)?(?=(?:Le poste|Descriptif du poste|About the job|Job description))/i, "")
     .replace(/Axeptio consent[\s\S]*?(?=\n(?:Le poste|Descriptif du poste|About the job|Job description)\b)/i, "")
+    .replace(/\n(?:Questions et reponses sur l'offre|Cette offre vous tente \?|Postuler|Sauvegarder)\b[\s\S]*?(?=\n(?:Le poste|Descriptif du poste))/i, "\n")
     .trim();
 }
 
@@ -789,9 +860,13 @@ function buildAnalysisPayload({
       primaryDiagnosis: trimBlock(report?.diagnosis?.primaryDiagnosis) || "n/a",
       verdict: trimBlock(report?.diagnosis?.verdict || report?.confidenceReasoning) || "n/a",
       atsScore: report?.scoreBreakdown?.ats ?? null,
+      atsOptimizedScore: report?.scoreBreakdown?.atsOptimized ?? null,
+      atsBoost: report?.scoreBreakdown?.atsBoost ?? null,
+      contextSupport: report?.scoreBreakdown?.contextSupport ?? null,
       semanticScore: report?.scoreBreakdown?.semantic ?? null,
       domainMismatch: trimBlock(report?.scoreBreakdown?.domainMismatch) || null,
       cappedByKeywords: Boolean(report?.scoreBreakdown?.cappedByKeywords),
+      cappedByEvidence: Boolean(report?.scoreBreakdown?.cappedByEvidence),
       fallbackUsed: Boolean(report?.fallbackUsed),
     },
     diagnosis: {
@@ -805,6 +880,9 @@ function buildAnalysisPayload({
       missingSkills: compactList(report?.missingSkills, 20),
       keywordsCovered: compactList(report?.postRules?.keywordsCovered, 25),
       keywordsMissing: compactList(report?.postRules?.keywordsMissing, 25),
+      evidenceKeywordsCovered: compactList(report?.postRules?.evidenceKeywordsCovered, 25),
+      evidenceKeywordsMissing: compactList(report?.postRules?.evidenceKeywordsMissing, 25),
+      injectedKeywords: compactList(report?.postRules?.injectedKeywords, 25),
     },
     jobInput: {
       sourceType: jobInput?.sourceType || "unknown",
@@ -924,9 +1002,13 @@ function buildAnalysisExport({
     `- Primary diagnosis: ${payload.match.primaryDiagnosis}`,
     `- Verdict: ${payload.match.verdict}`,
     `- ATS score: ${payload.match.atsScore ?? "n/a"}`,
+    `- ATS final score: ${payload.match.atsOptimizedScore ?? "n/a"}`,
+    `- ATS boost from optimization: ${payload.match.atsBoost ?? "n/a"}`,
+    `- Mission context support: ${payload.match.contextSupport ?? "n/a"}`,
     `- Semantic score: ${payload.match.semanticScore ?? "n/a"}`,
     `- Domain mismatch: ${payload.match.domainMismatch || "none"}`,
     `- Keywords capped: ${payload.match.cappedByKeywords ? "yes" : "no"}`,
+    `- Evidence capped: ${payload.match.cappedByEvidence ? "yes" : "no"}`,
     `- Fallback used: ${payload.match.fallbackUsed ? "yes" : "no"}`,
     "",
     "## What Matches",
@@ -943,6 +1025,9 @@ function buildAnalysisExport({
     `- Missing skills: ${payload.coverage.missingSkills.join(", ") || "none"}`,
     `- Covered keywords: ${payload.coverage.keywordsCovered.join(", ") || "none"}`,
     `- Missing keywords: ${payload.coverage.keywordsMissing.join(", ") || "none"}`,
+    `- Evidence keywords covered: ${payload.coverage.evidenceKeywordsCovered.join(", ") || "none"}`,
+    `- Evidence keywords missing: ${payload.coverage.evidenceKeywordsMissing.join(", ") || "none"}`,
+    `- Injected keywords: ${payload.coverage.injectedKeywords.join(", ") || "none"}`,
     "",
     "## Job Input",
     `- Source type: ${payload.jobInput.sourceType}`,
@@ -1537,6 +1622,7 @@ export default function Result() {
               <CriticalKeywordsCoverage
                 covered={report.postRules.keywordsCovered || []}
                 missing={report.postRules.keywordsMissing || []}
+                injected={report.postRules.injectedKeywords || []}
               />
             )}
 

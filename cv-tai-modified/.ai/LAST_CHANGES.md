@@ -25,3 +25,15 @@
 - Fichiers : `client/src/pages/result.tsx`
 - Impact : les libelles encore casses comme `Tu as postule avec ce CV ?`, `CV genere` et les diagnostics reportes doivent s'afficher correctement meme si la source contient encore du mojibake
 - Verification : revue manuelle du diff; pas de verification navigateur dans cet environnement
+
+### ATS vs preuves source
+- Quoi : separation entre keywords critiques prouvees par la bibliotheque et keywords ajoutees par optimisation, avec cap de confiance quand l'ATS final depasse trop les preuves reelles
+- Fichiers : `server/tailoring-engine.ts`, `client/src/pages/result.tsx`, `CLAUDE.md`, `.ai/TODO.md`
+- Impact : le score global doit mieux refleter la credibilite recruteur, tout en continuant d'afficher l'ATS final du CV et son boost d'optimisation
+- Verification : revue manuelle du diff; verification runtime encore a faire sur un cas adjacent type EY et `npm run check` toujours bloque par `tsc` absent
+
+### Mission context as secondary evidence
+- Quoi : prise en compte explicite du contexte de mission (`experience.description`) comme preuve secondaire dans la confiance, avec affichage du `Mission context support`
+- Fichiers : `server/tailoring-engine.ts`, `client/src/pages/result.tsx`, `CLAUDE.md`, `.ai/TODO.md`
+- Impact : les descriptions de mission aident a desambiguiser ou renforcer un fit adjacent sans compter autant qu'un bullet et sans faire exploser artificiellement la credibilite
+- Verification : revue manuelle du diff; verification runtime a faire sur un cas adjacent ou les bullets sont courts mais la description mission est informative

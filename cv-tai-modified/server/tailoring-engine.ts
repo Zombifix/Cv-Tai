@@ -38,6 +38,29 @@ function cloneStructuredCV(cv: StructuredCV): StructuredCV {
   };
 }
 
+function normalizeEvidenceText(value: string): string {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function uniqueItems(items: string[]): string[] {
+  return [...new Set(items.map(item => item?.trim()).filter(Boolean))];
+}
+
+export interface RoleFrame {
+  workObjects: string[];
+  deliverables: string[];
+  decisions: string[];
+  collaborators: string[];
+  environments: string[];
+  scopeSignals: string[];
+}
+
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export interface ParsedJob {
   title: string; company: string; seniority: string; domain: string;
@@ -45,6 +68,7 @@ export interface ParsedJob {
   keywords: string[]; criticalKeywords: string[]; language: "EN" | "FR";
   intentions: string[];
   positioning: "consultant" | "lead" | "ic" | "manager";
+  roleFrame: RoleFrame;
 }
 export interface ScoredBullet { bullet: Bullet; experience: Experience; deterministicScore: number; llmScore: number; totalScore: number; matchedTags: string[]; matchedKeywords: string[]; dimension: string; }
 export interface ScoredExperience { experience: Experience; score: number; reason: string; matchedAspects: string[]; selectedBullets: ScoredBullet[]; charBudget: number; }
@@ -70,6 +94,15 @@ export async function parseJobDescription(jobText: string, openai: OpenAI): Prom
 - language ("EN"/"FR")
 - intentions[] (5-10 phrases: what the role REALLY needs beyond keywords. Ex: "structurer les pratiques design", "influencer les stakeholders", "mesurer l'impact business du design". VERBS + OUTCOMES.)
 - positioning: "consultant" (conseil, accompagnement, formation) | "lead" (management, vision, equipe) | "ic" (craft, delivery) | "manager" (people management)` },
+- roleFrame: {
+  workObjects[] (3-6 concrete nouns / short phrases for what this role works on daily. Ex: "user flows", "cloud sourcing", "editorial calendar")
+  deliverables[] (2-5 outputs produced by the role. Ex: "wireframes", "roadmap", "plan de transformation")
+  decisions[] (2-5 decisions / arbitrages expected from the role. Ex: "priorisation produit", "arbitrage UX", "choix de sourcing")
+  collaborators[] (2-5 stakeholders or teams. Ex: "PM", "DSI", "marketing", "clients")
+  environments[] (2-5 business / technical contexts. Ex: "e-commerce", "banque", "DSI", "retail")
+  scopeSignals[] (2-5 scope markers. Ex: "execution", "structuration", "conseil", "management")
+}
+Important: roleFrame must describe the REAL WORK in the body of the posting, not only the title. If the title is noisy but the body clearly points elsewhere, trust the body.` },
       { role: "user", content: jobText.slice(0, 6000) },
     ],
     response_format: { type: "json_object" },
@@ -84,8 +117,16 @@ export async function parseJobDescription(jobText: string, openai: OpenAI): Prom
     language: p.language === "FR" ? "FR" : "EN",
     intentions: p.intentions || [],
     positioning: (["consultant", "lead", "ic", "manager"].includes(p.positioning) ? p.positioning : "ic") as any,
+    roleFrame: {
+      workObjects: uniqueItems(p.roleFrame?.workObjects || []),
+      deliverables: uniqueItems(p.roleFrame?.deliverables || []),
+      decisions: uniqueItems(p.roleFrame?.decisions || []),
+      collaborators: uniqueItems(p.roleFrame?.collaborators || []),
+      environments: uniqueItems(p.roleFrame?.environments || [p.domain || ""]),
+      scopeSignals: uniqueItems(p.roleFrame?.scopeSignals || [p.positioning || ""]),
+    },
   };
-  log("parseJobDescription DONE", { title: result.title, positioning: result.positioning, intentions: result.intentions.length });
+  log("parseJobDescription DONE", { title: result.title, positioning: result.positioning, intentions: result.intentions.length, roleFrame: result.roleFrame });
   return result;
 }
 
@@ -324,17 +365,35 @@ export async function reformulateBullets(cv: StructuredCV, job: ParsedJob, opena
 }
 
 // â”€â”€â”€ Step 7: Post Rules â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-export interface PostRuleResult { keywordsCovered: string[]; keywordsMissing: string[]; longBullets: number; bulletsWithNumbers: number; totalBullets: number; rulesApplied: string[]; }
+export interface PostRuleResult {
+  keywordsCovered: string[];
+  keywordsMissing: string[];
+  evidenceKeywordsCovered: string[];
+  evidenceKeywordsMissing: string[];
+  injectedKeywords: string[];
+  longBullets: number;
+  bulletsWithNumbers: number;
+  totalBullets: number;
+  rulesApplied: string[];
+}
 export function applyPostRules(cv: StructuredCV, job: ParsedJob): PostRuleResult {
   const rules: string[] = [];
   const initialText = [cv.summary, ...cv.experiences.flatMap(e => e.bullets), cv.skills.join(" ")].join(" ").toLowerCase();
   const missingBeforeInjection = job.criticalKeywords.filter(kw => !initialText.includes(kw.toLowerCase()));
+  const evidenceCovered = job.criticalKeywords.filter(kw => initialText.includes(kw.toLowerCase()));
   const isSkillLike = (kw: string) =>
     kw.length <= 35 &&
     kw.split(/\s+/).length <= 3 &&
     !/\d+\+?\s*years?/i.test(kw) &&
     !/\b(experience|communication|portfolio|environments?|solution|quality|skills?|management|ability|knowledge|insights?|fidelity|deliverables?|approaches?|practices?|iterative|exceptional|strong|proven|thinking|mindset|oriented)\b/i.test(kw);
-  for (const kw of missingBeforeInjection) { if (isSkillLike(kw) && !cv.skills.some(s => normalizeSkillKey(s) === normalizeSkillKey(kw))) { cv.skills.push(kw); rules.push(`Injected "${kw}" into skills`); } }
+  const injectedKeywords: string[] = [];
+  for (const kw of missingBeforeInjection) {
+    if (isSkillLike(kw) && !cv.skills.some(s => normalizeSkillKey(s) === normalizeSkillKey(kw))) {
+      cv.skills.push(kw);
+      injectedKeywords.push(kw);
+      rules.push(`Injected "${kw}" into skills`);
+    }
+  }
   let longCount = 0;
   for (const exp of cv.experiences) { for (let i = 0; i < exp.bullets.length; i++) { if (exp.bullets[i].length > 200) { exp.bullets[i] = exp.bullets[i].slice(0, 200).replace(/[,;]?\s*\S*$/, ""); longCount++; rules.push(`Truncated bullet in ${exp.company}`); } } }
   const total = cv.experiences.reduce((s, e) => s + e.bullets.length, 0);
@@ -342,7 +401,17 @@ export function applyPostRules(cv: StructuredCV, job: ParsedJob): PostRuleResult
   const finalText = [cv.summary, ...cv.experiences.flatMap(e => e.bullets), cv.skills.join(" ")].join(" ").toLowerCase();
   const covered: string[] = []; const missing: string[] = [];
   for (const kw of job.criticalKeywords) { (finalText.includes(kw.toLowerCase()) ? covered : missing).push(kw); }
-  return { keywordsCovered: covered, keywordsMissing: missing, longBullets: longCount, bulletsWithNumbers: withNums, totalBullets: total, rulesApplied: rules };
+  return {
+    keywordsCovered: covered,
+    keywordsMissing: missing,
+    evidenceKeywordsCovered: evidenceCovered,
+    evidenceKeywordsMissing: missingBeforeInjection,
+    injectedKeywords,
+    longBullets: longCount,
+    bulletsWithNumbers: withNums,
+    totalBullets: total,
+    rulesApplied: rules,
+  };
 }
 
 // â”€â”€â”€ Step 8: Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -375,7 +444,7 @@ export interface DiagnosticSummary {
   nextActions: string[];
 }
 
-export interface OptimizationReport { jobTitle: string; jobCompany: string; jobSeniority: string; jobDomain: string; detectedKeywords: { requiredSkills: string[]; preferredSkills: string[]; responsibilities: string[]; keywords: string[]; criticalKeywords: string[]; }; matchedSkills: string[]; missingSkills: string[]; selectedExperiences: { title: string; company: string; score: number; reason: string; matchedAspects: string[]; bulletCount: number; charBudget: number; }[]; rejectedExperiences: { title: string; company: string; score: number; reason: string }[]; selectedBullets: { text: string; experienceTitle: string; score: number; deterministicScore: number; llmScore: number; matchedKeywords: string[]; dimension: string; }[]; postRules: PostRuleResult; confidence: number; confidenceReasoning: string; fallbackUsed: boolean; detectedLanguage: "EN" | "FR"; positioning: string; intentions: string[]; tips: string[]; diagnosis: DiagnosticSummary; scoreBreakdown: { ats: number; semantic: number; domainMismatch?: string; cappedByKeywords: boolean; }; }
+export interface OptimizationReport { jobTitle: string; jobCompany: string; jobSeniority: string; jobDomain: string; detectedKeywords: { requiredSkills: string[]; preferredSkills: string[]; responsibilities: string[]; keywords: string[]; criticalKeywords: string[]; }; matchedSkills: string[]; missingSkills: string[]; selectedExperiences: { title: string; company: string; score: number; reason: string; matchedAspects: string[]; bulletCount: number; charBudget: number; }[]; rejectedExperiences: { title: string; company: string; score: number; reason: string }[]; selectedBullets: { text: string; experienceTitle: string; score: number; deterministicScore: number; llmScore: number; matchedKeywords: string[]; dimension: string; }[]; postRules: PostRuleResult; confidence: number; confidenceReasoning: string; fallbackUsed: boolean; detectedLanguage: "EN" | "FR"; positioning: string; intentions: string[]; tips: string[]; diagnosis: DiagnosticSummary; scoreBreakdown: { ats: number; atsOptimized: number; atsBoost: number; contextSupport: number; semantic: number; domainMismatch?: string; cappedByKeywords: boolean; cappedByEvidence: boolean; }; }
 
 function topItems(items: string[], count: number): string[] {
   const tally = new Map<string, number>();
@@ -390,6 +459,15 @@ function joinNatural(items: string[]): string {
   return `${items.slice(0, -1).join(", ")} et ${items[items.length - 1]}`;
 }
 
+function collectMissionContextSupport(selExps: ScoredExperience[], criticalKeywords: string[], directKeywords: string[]): { contextKeywords: string[]; contextOnlyKeywords: string[] } {
+  const descText = selExps.map(se => se.experience.description || "").join(" ").toLowerCase();
+  if (!descText.trim() || criticalKeywords.length === 0) return { contextKeywords: [], contextOnlyKeywords: [] };
+  const directSet = new Set(directKeywords.map(k => k.toLowerCase()));
+  const contextKeywords = criticalKeywords.filter(kw => descText.includes(kw.toLowerCase()));
+  const contextOnlyKeywords = contextKeywords.filter(kw => !directSet.has(kw.toLowerCase()));
+  return { contextKeywords, contextOnlyKeywords };
+}
+
 export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperience[], skills: Skill[], postRules: PostRuleResult, cv: StructuredCV): OptimizationReport {
   const allBullets = selExps.flatMap(se => se.selectedBullets);
   const total = allBullets.length;
@@ -397,17 +475,26 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
   const matched = skills.filter(s => allJobSkills.some(js => js.includes(s.name.toLowerCase()) || s.name.toLowerCase().includes(js)));
   const missingSkills = allJobSkills.filter(js => !skills.some(s => s.name.toLowerCase().includes(js) || js.includes(s.name.toLowerCase())));
   const avg = total > 0 ? Math.round(allBullets.reduce((s, b) => s + b.totalScore, 0) / total) : 0;
-  const kwCov = job.criticalKeywords.length > 0 ? Math.round(postRules.keywordsCovered.length / job.criticalKeywords.length * 100) : 50;
-  // Removed flat +20 bullets bonus â€” it was inflating scores regardless of match quality.
-  // New formula: avg score (0-120 scale) Ã— 0.45 + keyword coverage Ã— 0.45 + small bullets bonus (max 10).
-  const bulletBonus = total >= 6 ? Math.min(10, Math.round(kwCov * 0.1)) : Math.round(total * 1.5);
-  const rawConfidence = Math.round(avg * 0.45 + kwCov * 0.45 + bulletBonus);
+  const atsOptimized = job.criticalKeywords.length > 0 ? Math.round(postRules.keywordsCovered.length / job.criticalKeywords.length * 100) : 50;
+  const atsEvidence = job.criticalKeywords.length > 0 ? Math.round(postRules.evidenceKeywordsCovered.length / job.criticalKeywords.length * 100) : 50;
+  const atsBoost = Math.max(0, atsOptimized - atsEvidence);
+  const missionContextSupport = collectMissionContextSupport(selExps, job.criticalKeywords, postRules.evidenceKeywordsCovered);
+  const contextSupport = job.criticalKeywords.length > 0 ? Math.round(missionContextSupport.contextOnlyKeywords.length / job.criticalKeywords.length * 100) : 0;
+  const weightedEvidenceCount = postRules.evidenceKeywordsCovered.length + missionContextSupport.contextOnlyKeywords.length * 0.5;
+  const evidenceScore = job.criticalKeywords.length > 0 ? Math.round(weightedEvidenceCount / job.criticalKeywords.length * 100) : atsEvidence;
+  // Confidence should reflect what the source library really proves, with mission context as a secondary signal only.
+  const bulletBonus = total >= 6 ? Math.min(10, Math.round(evidenceScore * 0.1)) : Math.round(total * 1.5);
+  const rawConfidence = Math.round(avg * 0.45 + evidenceScore * 0.45 + bulletBonus);
   // Hard cap: if less than 25% of critical keywords are present in the CV, it's a weak match regardless of bullet quality.
   // This catches cases where the profile domain is fundamentally different from the job (e.g. Designer â†’ PO).
-  const critKwHardCap = job.criticalKeywords.length >= 4 && kwCov < 25 ? 40 : 100;
-  const confidence = Math.min(critKwHardCap, Math.min(100, rawConfidence));
+  const critKwHardCap = job.criticalKeywords.length >= 4 && evidenceScore < 25 ? 40 : 100;
+  const evidenceGapIsHigh = atsBoost >= 25 && evidenceScore <= 50;
+  const evidenceGapHardCap = evidenceGapIsHigh ? 55 : 100;
+  const confidence = Math.min(critKwHardCap, evidenceGapHardCap, Math.min(100, rawConfidence));
   const tips: string[] = [];
-  if (postRules.keywordsMissing.length) tips.push(`Keywords manquants: ${postRules.keywordsMissing.join(", ")}.`);
+  if (postRules.evidenceKeywordsMissing.length) tips.push(`Keywords critiques non prouvees dans la bibliotheque: ${postRules.evidenceKeywordsMissing.join(", ")}.`);
+  if (missionContextSupport.contextOnlyKeywords.length > 0) tips.push(`Le contexte mission renforce ${joinNatural(missionContextSupport.contextOnlyKeywords.slice(0, 3))}, mais ces elements restent secondaires tant qu'ils ne sont pas explicites dans les bullets ou skills source.`);
+  if (atsBoost > 0) tips.push(`Le CV final gagne ${atsBoost}% de couverture ATS via optimisation de texte, mais cela ne remplace pas une preuve metier dans les bullets ou skills source.`);
   if (postRules.bulletsWithNumbers < total * 0.3) tips.push("Moins de 30% de tes bullets contiennent des chiffres.");
   if (missingSkills.length > 3) tips.push(`${missingSkills.length} competences demandees absentes.`);
   if (job.positioning === "consultant" && !allBullets.some(b => /accompagn|structur|pratiqu|form|maturit|conseil/i.test(b.bullet.text))) {
@@ -433,8 +520,10 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
     : undefined;
   const semanticScore = Math.min(100, Math.round(avg * 100 / 120));
   const cappedByKeywords = critKwHardCap < 100 && rawConfidence > critKwHardCap;
+  const cappedByEvidence = evidenceGapHardCap < 100 && rawConfidence > evidenceGapHardCap;
   const topMatchedAspects = topItems(selExps.flatMap(se => se.matchedAspects), 3);
-  const topMissingKeywords = postRules.keywordsMissing.slice(0, 3);
+  const supportedKeywordSet = new Set([...postRules.evidenceKeywordsCovered, ...missionContextSupport.contextKeywords].map(kw => kw.toLowerCase()));
+  const topMissingKeywords = job.criticalKeywords.filter(kw => !supportedKeywordSet.has(kw.toLowerCase())).slice(0, 3);
   const evidenceIsWeak = total > 0 && postRules.bulletsWithNumbers < Math.max(1, Math.ceil(total * 0.3));
   const libraryLooksThin = total < 4 || selExps.filter(se => se.selectedBullets.length > 0).length <= 1;
 
@@ -461,6 +550,9 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
   if (topMissingKeywords.length > 0) {
     whatMissing.push(`Les competences metier critiques ${joinNatural(topMissingKeywords)} ne ressortent pas assez dans le CV genere.`);
   }
+  if (evidenceGapIsHigh) {
+    whatMissing.push("Le CV final reprend mieux le vocabulaire de l'annonce que ce que ta bibliotheque prouve reellement aujourd'hui.");
+  }
   if (evidenceIsWeak) {
     whatMissing.push("Le fond est proche, mais les bullets retenus manquent encore de preuves concretes : scope, chiffres ou avant/apres.");
   }
@@ -473,9 +565,11 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
   if (domainMismatch) {
     primaryDiagnosis = "Mismatch de metier";
     verdict = "Profil adjacent : une partie de ton experience se transfere, mais le coeur du role demande est different.";
-  } else if (cappedByKeywords || kwCov < 40 || topMissingKeywords.length >= 2) {
+  } else if (cappedByKeywords || cappedByEvidence || evidenceScore < 40 || topMissingKeywords.length >= 2) {
     primaryDiagnosis = "Competences metier critiques absentes";
-    verdict = "Match partiel : le fond peut coller, mais les competences metier cles de l'annonce ne ressortent pas assez dans ton CV.";
+    verdict = evidenceGapIsHigh
+      ? "Match fragile : le CV final couvre mieux les mots-cles de l'annonce que ce que ta bibliotheque prouve reellement."
+      : "Match partiel : le fond peut coller, mais les competences metier cles de l'annonce ne ressortent pas assez dans ton CV.";
   } else if (libraryLooksThin) {
     primaryDiagnosis = "Bibliotheque insuffisamment detaillee";
     verdict = "Match difficile a juger : ta bibliotheque actuelle ne donne pas encore assez de matiere solide pour cette annonce.";
@@ -505,7 +599,7 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
     nextActions.push("Garde cette base et renforce seulement les bullets les plus faibles pour augmenter le taux de match.");
   }
 
-  return { jobTitle: job.title, jobCompany: job.company, jobSeniority: job.seniority, jobDomain: job.domain, detectedKeywords: { requiredSkills: job.requiredSkills, preferredSkills: job.preferredSkills, responsibilities: job.responsibilities, keywords: job.keywords, criticalKeywords: job.criticalKeywords }, matchedSkills: matched.map(s => s.name), missingSkills: missingSkills.slice(0, 10), selectedExperiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, score: Math.round(se.score), reason: se.reason, matchedAspects: se.matchedAspects, bulletCount: se.selectedBullets.length, charBudget: se.charBudget })), rejectedExperiences: [], selectedBullets: allBullets.map(sb => ({ text: sb.bullet.text, experienceTitle: sb.experience.title, score: sb.totalScore, deterministicScore: sb.deterministicScore, llmScore: sb.llmScore, matchedKeywords: sb.matchedKeywords, dimension: sb.dimension })), postRules, confidence, confidenceReasoning: verdict, fallbackUsed: total === 0, detectedLanguage: job.language, positioning: job.positioning, intentions: job.intentions, tips, diagnosis: { primaryDiagnosis, verdict, whatMatches: whatMatches.slice(0, 3), whatMissing: whatMissing.slice(0, 3), nextActions: nextActions.slice(0, 3) }, scoreBreakdown: { ats: kwCov, semantic: semanticScore, domainMismatch, cappedByKeywords } };
+  return { jobTitle: job.title, jobCompany: job.company, jobSeniority: job.seniority, jobDomain: job.domain, detectedKeywords: { requiredSkills: job.requiredSkills, preferredSkills: job.preferredSkills, responsibilities: job.responsibilities, keywords: job.keywords, criticalKeywords: job.criticalKeywords }, matchedSkills: matched.map(s => s.name), missingSkills: missingSkills.slice(0, 10), selectedExperiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, score: Math.round(se.score), reason: se.reason, matchedAspects: se.matchedAspects, bulletCount: se.selectedBullets.length, charBudget: se.charBudget })), rejectedExperiences: [], selectedBullets: allBullets.map(sb => ({ text: sb.bullet.text, experienceTitle: sb.experience.title, score: sb.totalScore, deterministicScore: sb.deterministicScore, llmScore: sb.llmScore, matchedKeywords: sb.matchedKeywords, dimension: sb.dimension })), postRules, confidence, confidenceReasoning: verdict, fallbackUsed: total === 0, detectedLanguage: job.language, positioning: job.positioning, intentions: job.intentions, tips, diagnosis: { primaryDiagnosis, verdict, whatMatches: whatMatches.slice(0, 3), whatMissing: whatMissing.slice(0, 3), nextActions: nextActions.slice(0, 3) }, scoreBreakdown: { ats: atsEvidence, atsOptimized, atsBoost, contextSupport, semantic: semanticScore, domainMismatch, cappedByKeywords, cappedByEvidence } };
 }
 
 // â”€â”€â”€ Dry Run Check (steps 1-4 only, no CV generation, no DB save) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
