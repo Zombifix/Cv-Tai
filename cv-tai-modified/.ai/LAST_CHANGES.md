@@ -13,3 +13,9 @@
 - Fichiers : `client/src/pages/result.tsx`, `client/src/pages/tailor.tsx`, `server/routes.ts`, `server/tailoring-engine.ts`
 - Impact : le prochain agent doit inspecter uniquement ces fichiers en priorite
 - Verification : `git status --short` et `git diff --name-only` consultes
+
+### Tailoring reliability pass
+- Quoi : correction du calcul ATS apres injection de keywords, fallback anti-regression pour le mode optimise, nettoyage du texte d'annonce scrape, et reparation d'encodage cote resultat/export
+- Fichiers : `server/tailoring-engine.ts`, `server/routes.ts`, `client/src/pages/result.tsx`
+- Impact : le report doit mieux correspondre au CV final, le mode optimise ne doit plus sortir moins bon que son baseline interne, et les exports/resultats affichent moins de mojibake
+- Verification : revue manuelle du diff; `npm run check` non executable car `tsc` absent dans l'environnement

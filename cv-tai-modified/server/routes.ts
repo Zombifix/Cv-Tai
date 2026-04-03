@@ -100,9 +100,66 @@ function isBlockedScrapeText(text: string): boolean {
     (lowerText.includes("indeed") && lowerText.includes("robot") && text.length < 2000);
 }
 
+const JOB_TEXT_NOISE_PATTERNS = [
+  /^blah blah blah cookie/i,
+  /gestion des cookies/i,
+  /declaration de cookies/i,
+  /politique de confidentialite/i,
+  /cookies? de fonctionnalites?/i,
+  /annonces personnalisees/i,
+  /mesures d'audience/i,
+  /axeptio/i,
+  /^non merci$/i,
+  /^je choisis$/i,
+  /^ok pour moi$/i,
+  /^trouver un job$/i,
+  /^trouver une entreprise$/i,
+  /^media$/i,
+  /^employeurs$/i,
+  /^candidatures$/i,
+  /^opportunites$/i,
+  /^se connecter$/i,
+  /^retour$/i,
+  /^postuler$/i,
+  /^sauvegarder$/i,
+  /^partager$/i,
+  /^voir plus$/i,
+  /^envie d'en savoir plus \?$/i,
+  /^questions et reponses sur l'offre$/i,
+];
+
+function sanitizeJobText(rawText: string): string {
+  const normalized = rawText.replace(/\r/g, "").trim();
+  if (!normalized) return normalized;
+
+  let lines = normalized
+    .split("\n")
+    .map(line => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const startMarkers = [
+    "descriptif du poste",
+    "description du poste",
+    "le poste",
+    "job description",
+    "about the job",
+    "the position",
+  ];
+
+  const startIndex = lines.findIndex(line =>
+    startMarkers.some(marker => line.toLowerCase().includes(marker)),
+  );
+  if (startIndex > 0) {
+    lines = lines.slice(startIndex);
+  }
+
+  const filtered = lines.filter(line => !JOB_TEXT_NOISE_PATTERNS.some(pattern => pattern.test(line)));
+  return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, 8000);
+}
+
 async function resolveJobInput(params: { url?: string; text?: string; extraContext?: string }): Promise<ResolvedJobInput> {
   const normalizedUrl = params.url ? normalizeLinkedInUrl(params.url) : undefined;
-  let effectiveJobText = (params.text || "").trim();
+  let effectiveJobText = sanitizeJobText((params.text || "").trim());
   const metadata: JobInputMetadata = {
     sourceType: effectiveJobText ? "text" : "url",
     normalizedUrl,
@@ -134,7 +191,7 @@ async function resolveJobInput(params: { url?: string; text?: string; extraConte
         signal: AbortSignal.timeout(15000),
       });
       if (jinaRes.ok) {
-        effectiveJobText = (await jinaRes.text()).slice(0, 6000).trim();
+        effectiveJobText = sanitizeJobText(await jinaRes.text());
         metadata.scrapeStatus = "success";
         metadata.scrapeMessage = normalizedUrl.includes("linkedin.com")
           ? "Annonce recuperee automatiquement depuis LinkedIn."

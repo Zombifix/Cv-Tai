@@ -28,6 +28,16 @@ function normalizeSkillKey(s: string): string {
   return s.toLowerCase().replace(/[/\-]/g, " ").replace(/\s+/g, " ").replace(/s$/, "").trim();
 }
 
+function cloneStructuredCV(cv: StructuredCV): StructuredCV {
+  return {
+    ...cv,
+    experiences: cv.experiences.map(exp => ({ ...exp, bullets: [...exp.bullets] })),
+    skills: [...cv.skills],
+    formations: cv.formations.map(f => ({ ...f })),
+    languages: cv.languages.map(l => ({ ...l })),
+  };
+}
+
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export interface ParsedJob {
   title: string; company: string; seniority: string; domain: string;
@@ -63,6 +73,7 @@ export async function parseJobDescription(jobText: string, openai: OpenAI): Prom
       { role: "user", content: jobText.slice(0, 6000) },
     ],
     response_format: { type: "json_object" },
+    temperature: 0,
   });
   const p = JSON.parse(response.choices[0].message.content || "{}");
   const result: ParsedJob = {
@@ -140,7 +151,7 @@ export async function hybridScoreAllBullets(parsedJob: ParsedJob, allExps: Exper
 Score generously for bullets matching the SPIRIT of the role.` },
           { role: "user", content: `Target: "${parsedJob.title}" at "${parsedJob.company}" (${parsedJob.domain})\nRequired: ${parsedJob.requiredSkills.join(", ")}\nResponsibilities: ${parsedJob.responsibilities.slice(0,5).join(", ")}\n\nBullets:\n${list}\n\nReturn JSON: {"scores": [{"index": 0, "score": 0-50}]}` },
         ],
-        response_format: { type: "json_object" }, temperature: 0.3,
+        response_format: { type: "json_object" }, temperature: 0,
       });
       const r = JSON.parse(res.choices[0].message.content || "{}");
       for (const s of (r.scores || [])) { if (s.index >= 0 && s.index < toScore.length) { toScore[s.index].llmScore = Math.min(50, s.score || 0); toScore[s.index].totalScore = toScore[s.index].deterministicScore + toScore[s.index].llmScore; } }
@@ -209,6 +220,16 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
   return union === 0 ? 0 : inter / union;
 }
 
+function tokenizeNormalized(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .split(/\s+/)
+      .filter(w => w.length >= 4),
+  );
+}
+
 // â”€â”€â”€ Step 4: Select & Deduplicate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export function selectBullets(scored: ScoredBullet[], allocs: BudgetAlloc[]): ScoredExperience[] {
   const dimCounts = new Map<string, number>();
@@ -232,7 +253,7 @@ export function selectBullets(scored: ScoredBullet[], allocs: BudgetAlloc[]): Sc
   const seenTokens: Set<string>[] = [];
   for (const se of result) {
     se.selectedBullets = se.selectedBullets.filter(sb => {
-      const tokens = tokenize(sb.bullet.text);
+      const tokens = tokenizeNormalized(sb.bullet.text);
       const tooSimilar = seenTokens.some(prev => jaccardSimilarity(prev, tokens) > 0.45);
       if (!tooSimilar) seenTokens.push(tokens);
       return !tooSimilar;
@@ -259,12 +280,12 @@ export async function buildStructuredCV(job: ParsedJob, selExps: ScoredExperienc
   if (topExps.length > 0) {
     try {
       const res = await openai.chat.completions.create({ model: MODEL, messages: [
-        { role: "system", content: `Write a 2-3 sentence CV summary. Max 45 words. No first person. ${posGuide[job.positioning]} ${job.language === "FR" ? "In French." : "In English."} IMPORTANT: Only reference companies listed in the experiences below. Do not invent metrics, achievements, or projects not explicitly mentioned in the provided context. Write in flowing prose only â€” do NOT use labels like "CompÃ©tences:" or "Skills:" in the text.` },
+        { role: "system", content: `Write a 2-3 sentence CV summary. Max 45 words. No first person. ${posGuide[job.positioning]} ${job.language === "FR" ? "In French." : "In English."} IMPORTANT: Only reference companies listed in the experiences below. Do not invent metrics, achievements, or projects not explicitly mentioned in the provided context. Write in flowing prose only; do NOT use labels like "Competences:" or "Skills:" in the text.` },
         { role: "user", content: `Target: "${job.title}" at "${job.company}" (${job.domain})\nPositioning: ${job.positioning}\n${extras?.profileSummary ? `Bio: ${extras.profileSummary}\n` : ""}Exps: ${topExps.map(se => `${se.experience.title} at ${se.experience.company}`).join(", ")}\nSkills: ${dedupSkills.slice(0,6).join(", ")}\nRequired: ${job.requiredSkills.slice(0,5).join(", ")}\nIntentions: ${job.intentions.slice(0,3).join("; ")}` },
-      ] });
+      ], temperature: 0 });
       summary = (res.choices[0].message.content || summary).trim();
     } catch (e: any) {
-      log("summary LLM failed â€” deterministic fallback", e.message);
+      log("summary LLM failed - deterministic fallback", e.message);
       if (!summary) {
         const expStr = topExps.slice(0, 2).map(se => `${se.experience.title} chez ${se.experience.company}`).join(", ");
         const skillStr = dedupSkills.slice(0, 3).join(", ");
@@ -278,7 +299,7 @@ export async function buildStructuredCV(job: ParsedJob, selExps: ScoredExperienc
   const fmtDate = (d: string | null | undefined, lang: string) => { if (!d) return "Present"; try { return new Date(d).toLocaleDateString(lang === "FR" ? "fr-FR" : "en-US", { month: "short", year: "numeric" }); } catch { return d; } };
   return {
     name: extras?.profileName || undefined, targetTitle: job.title, summary,
-    experiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, contractType: (se.experience as any).contractType || undefined, dates: `${fmtDate(se.experience.startDate, job.language)} â€“ ${fmtDate(se.experience.endDate, job.language)}`, bullets: se.selectedBullets.map(sb => sb.bullet.text), description: se.experience.description || undefined })),
+    experiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, contractType: (se.experience as any).contractType || undefined, dates: `${fmtDate(se.experience.startDate, job.language)} - ${fmtDate(se.experience.endDate, job.language)}`, bullets: se.selectedBullets.map(sb => sb.bullet.text), description: se.experience.description || undefined })),
     skills: dedupSkills,
     formations: (extras?.formations || []).map((f: any) => ({ degree: f.degree, school: f.school, year: f.year })),
     languages: (extras?.languages || []).map((l: any) => ({ name: l.name, level: l.level })),
@@ -293,9 +314,9 @@ export async function reformulateBullets(cv: StructuredCV, job: ParsedJob, opena
   const lang = job.language === "FR" ? "Reformule en francais." : "Reformulate in English.";
   try {
     const res = await openai.chat.completions.create({ model: MODEL, messages: [
-      { role: "system", content: `CV optimization. Reformulate bullets:\n1. Embed keywords naturally: ${job.criticalKeywords.join(", ")}\n2. Start with an action verb\n3. NO invention â€” only use information present in the bullet or its context\n4. Preserve proper nouns, brand names, and specific numbers exactly\n5. Do NOT change the nature of activities: "tests utilisateurs" â‰  "A/B testing", "interviews" â‰  "surveys"\n6. If a bullet already starts with an action verb and is â‰¤160 chars, return it unchanged\n7. Max 200 chars\n8. ${lang}\n9. ${job.positioning} role: ${job.positioning === "consultant" ? "emphasize accompagnement, structuration, impact on teams" : job.positioning === "lead" ? "emphasize vision, leadership" : "emphasize delivery, results"}` },
+      { role: "system", content: `CV optimization. Reformulate bullets:\n1. Embed keywords naturally: ${job.criticalKeywords.join(", ")}\n2. Start with an action verb\n3. NO invention; only use information present in the bullet or its context\n4. Preserve proper nouns, brand names, and specific numbers exactly\n5. Do NOT change the nature of activities: "tests utilisateurs" is not "A/B testing", and "interviews" is not "surveys"\n6. If a bullet already starts with an action verb and is <=160 chars, return it unchanged\n7. Max 200 chars\n8. ${lang}\n9. ${job.positioning} role: ${job.positioning === "consultant" ? "emphasize accompagnement, structuration, impact on teams" : job.positioning === "lead" ? "emphasize vision, leadership" : "emphasize delivery, results"}` },
       { role: "user", content: `Target: "${job.title}" at "${job.company}"\nKeywords: ${job.keywords.slice(0,10).join(", ")}\nIntentions: ${job.intentions.slice(0,3).join("; ")}\n\nBullets (with experience context when available):\n${list}\n\nReturn JSON: {"bullets": [{"index": 0, "text": "..."}]}` },
-    ], response_format: { type: "json_object" }, temperature: 0.4 });
+    ], response_format: { type: "json_object" }, temperature: 0.2 });
     const r = JSON.parse(res.choices[0].message.content || "{}");
     for (const rb of (r.bullets || [])) { if (rb.index >= 0 && rb.index < all.length && rb.text?.length > 10) { cv.experiences[all[rb.index].ei].bullets[all[rb.index].bi] = rb.text; } }
   } catch (e: any) { log("reformulate FAILED", e.message); }
@@ -306,19 +327,21 @@ export async function reformulateBullets(cv: StructuredCV, job: ParsedJob, opena
 export interface PostRuleResult { keywordsCovered: string[]; keywordsMissing: string[]; longBullets: number; bulletsWithNumbers: number; totalBullets: number; rulesApplied: string[]; }
 export function applyPostRules(cv: StructuredCV, job: ParsedJob): PostRuleResult {
   const rules: string[] = [];
-  const text = [cv.summary, ...cv.experiences.flatMap(e => e.bullets), cv.skills.join(" ")].join(" ").toLowerCase();
-  const covered: string[] = []; const missing: string[] = [];
-  for (const kw of job.criticalKeywords) { (text.includes(kw.toLowerCase()) ? covered : missing).push(kw); }
+  const initialText = [cv.summary, ...cv.experiences.flatMap(e => e.bullets), cv.skills.join(" ")].join(" ").toLowerCase();
+  const missingBeforeInjection = job.criticalKeywords.filter(kw => !initialText.includes(kw.toLowerCase()));
   const isSkillLike = (kw: string) =>
     kw.length <= 35 &&
     kw.split(/\s+/).length <= 3 &&
     !/\d+\+?\s*years?/i.test(kw) &&
     !/\b(experience|communication|portfolio|environments?|solution|quality|skills?|management|ability|knowledge|insights?|fidelity|deliverables?|approaches?|practices?|iterative|exceptional|strong|proven|thinking|mindset|oriented)\b/i.test(kw);
-  for (const kw of missing) { if (isSkillLike(kw) && !cv.skills.some(s => normalizeSkillKey(s) === normalizeSkillKey(kw))) { cv.skills.push(kw); rules.push(`Injected "${kw}" into skills`); } }
+  for (const kw of missingBeforeInjection) { if (isSkillLike(kw) && !cv.skills.some(s => normalizeSkillKey(s) === normalizeSkillKey(kw))) { cv.skills.push(kw); rules.push(`Injected "${kw}" into skills`); } }
   let longCount = 0;
   for (const exp of cv.experiences) { for (let i = 0; i < exp.bullets.length; i++) { if (exp.bullets[i].length > 200) { exp.bullets[i] = exp.bullets[i].slice(0, 200).replace(/[,;]?\s*\S*$/, ""); longCount++; rules.push(`Truncated bullet in ${exp.company}`); } } }
   const total = cv.experiences.reduce((s, e) => s + e.bullets.length, 0);
   const withNums = cv.experiences.reduce((s, e) => s + e.bullets.filter(b => /\d+/.test(b)).length, 0);
+  const finalText = [cv.summary, ...cv.experiences.flatMap(e => e.bullets), cv.skills.join(" ")].join(" ").toLowerCase();
+  const covered: string[] = []; const missing: string[] = [];
+  for (const kw of job.criticalKeywords) { (finalText.includes(kw.toLowerCase()) ? covered : missing).push(kw); }
   return { keywordsCovered: covered, keywordsMissing: missing, longBullets: longCount, bulletsWithNumbers: withNums, totalBullets: total, rulesApplied: rules };
 }
 
@@ -329,20 +352,20 @@ export function renderCVText(cv: StructuredCV, job: ParsedJob): string {
   l.push(cv.targetTitle, "");
   if (cv.summary) { l.push(fr ? "RESUME PROFESSIONNEL" : "PROFESSIONAL SUMMARY"); l.push(cv.summary, ""); }
   l.push(fr ? "EXPERIENCE PROFESSIONNELLE" : "EXPERIENCE", "");
-  for (const exp of cv.experiences) { const ct = exp.contractType ? ` (${exp.contractType})` : ""; l.push(`${exp.title} | ${exp.company}${ct}`); l.push(exp.dates); for (const b of exp.bullets) l.push(`â€¢ ${b}`); l.push(""); }
-  if (cv.skills.length) { l.push(`${fr ? "COMPETENCES" : "SKILLS"}: ${cv.skills.join(" Â· ")}`); l.push(""); }
-  if (cv.formations.length) { l.push(fr ? "FORMATION" : "EDUCATION"); for (const f of cv.formations) l.push(`${f.degree} â€” ${f.school}${f.year ? ` (${f.year})` : ""}`); l.push(""); }
-  if (cv.languages.length) { l.push(fr ? "LANGUES" : "LANGUAGES"); for (const la of cv.languages) l.push(`${la.name}${la.level ? ` â€” ${la.level}` : ""}`); }
+  for (const exp of cv.experiences) { const ct = exp.contractType ? ` (${exp.contractType})` : ""; l.push(`${exp.title} | ${exp.company}${ct}`); l.push(exp.dates); for (const b of exp.bullets) l.push(`- ${b}`); l.push(""); }
+  if (cv.skills.length) { l.push(`${fr ? "COMPETENCES" : "SKILLS"}: ${cv.skills.join(" | ")}`); l.push(""); }
+  if (cv.formations.length) { l.push(fr ? "FORMATION" : "EDUCATION"); for (const f of cv.formations) l.push(`${f.degree} - ${f.school}${f.year ? ` (${f.year})` : ""}`); l.push(""); }
+  if (cv.languages.length) { l.push(fr ? "LANGUES" : "LANGUAGES"); for (const la of cv.languages) l.push(`${la.name}${la.level ? ` - ${la.level}` : ""}`); }
   return l.join("\n").trim();
 }
 
 // â”€â”€â”€ Report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export type PrimaryDiagnosis =
   | "Bon alignement global"
-  | "Mismatch de mÃ©tier"
-  | "CompÃ©tences mÃ©tier critiques absentes"
-  | "ExpÃ©rience proche mais preuves trop faibles"
-  | "BibliothÃ¨que insuffisamment dÃ©taillÃ©e";
+  | "Mismatch de metier"
+  | "Competences metier critiques absentes"
+  | "Experience proche mais preuves trop faibles"
+  | "Bibliotheque insuffisamment detaillee";
 
 export interface DiagnosticSummary {
   primaryDiagnosis: PrimaryDiagnosis;
@@ -399,7 +422,7 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
   const userIsPO = allBullets.some(b => /backlog|sprint|user stor|roadmap|priorisation|epic|okr/i.test(b.bullet.text));
 
   if (isPOJob && userIsDesigner && !userIsPO) {
-    tips.push("Attention : ce poste est Product Owner/PM. Tes bullets sont orientÃ©s Design. Le match est partiel â€” les compÃ©tences de discovery se transfÃ¨rent, mais la gestion de backlog est absente.");
+    tips.push("Attention : ce poste est Product Owner/PM. Tes bullets sont orientes design. Le match est partiel, mais la gestion de backlog est absente.");
   }
   if (isDesignJob && userIsPO && !userIsDesigner) {
     tips.push("Attention : ce poste est Design mais tes bullets sont orientÃ©s Product/PO. Le match UX craft est limitÃ©.");
@@ -448,16 +471,16 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
   let primaryDiagnosis: PrimaryDiagnosis;
   let verdict: string;
   if (domainMismatch) {
-    primaryDiagnosis = "Mismatch de mÃ©tier";
+    primaryDiagnosis = "Mismatch de metier";
     verdict = "Profil adjacent : une partie de ton experience se transfere, mais le coeur du role demande est different.";
   } else if (cappedByKeywords || kwCov < 40 || topMissingKeywords.length >= 2) {
-    primaryDiagnosis = "CompÃ©tences mÃ©tier critiques absentes";
+    primaryDiagnosis = "Competences metier critiques absentes";
     verdict = "Match partiel : le fond peut coller, mais les competences metier cles de l'annonce ne ressortent pas assez dans ton CV.";
   } else if (libraryLooksThin) {
-    primaryDiagnosis = "BibliothÃ¨que insuffisamment dÃ©taillÃ©e";
+    primaryDiagnosis = "Bibliotheque insuffisamment detaillee";
     verdict = "Match difficile a juger : ta bibliotheque actuelle ne donne pas encore assez de matiere solide pour cette annonce.";
   } else if (evidenceIsWeak || semanticScore < 65) {
-    primaryDiagnosis = "ExpÃ©rience proche mais preuves trop faibles";
+    primaryDiagnosis = "Experience proche mais preuves trop faibles";
     verdict = "Experience proche, mais pas encore assez prouvee dans les bullets retenus.";
   } else {
     primaryDiagnosis = "Bon alignement global";
@@ -465,17 +488,17 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
   }
 
   const nextActions: string[] = [];
-  if (primaryDiagnosis === "Mismatch de mÃ©tier") {
+  if (primaryDiagnosis === "Mismatch de metier") {
     if (jobTitleLow.includes("product")) nextActions.push("Ajoute des bullets ancres dans backlog, roadmap, priorisation ou delivery produit.");
     else nextActions.push(`Ajoute des bullets ancres dans ${joinNatural(job.criticalKeywords.slice(0, 3)) || "les attendus coeur metier du poste"}.`);
     nextActions.push("Garde les experiences transferables, mais prouve davantage le coeur du metier vise.");
-  } else if (primaryDiagnosis === "CompÃ©tences mÃ©tier critiques absentes") {
+  } else if (primaryDiagnosis === "Competences metier critiques absentes") {
     nextActions.push(`Fais remonter explicitement ${joinNatural(topMissingKeywords.length ? topMissingKeywords : job.criticalKeywords.slice(0, 3))} dans tes bullets ou dans ta bibliotheque.`);
     nextActions.push("Ajoute 2 ou 3 bullets qui montrent ces competences dans un contexte reel, pas seulement en liste de skills.");
-  } else if (primaryDiagnosis === "BibliothÃ¨que insuffisamment dÃ©taillÃ©e") {
+  } else if (primaryDiagnosis === "Bibliotheque insuffisamment detaillee") {
     nextActions.push("Enrichis 1 ou 2 experiences proches de l'offre avec 3 a 5 bullets detailles.");
     nextActions.push("Ajoute du contexte, du scope, des resultats et des tags sur les experiences les plus proches.");
-  } else if (primaryDiagnosis === "ExpÃ©rience proche mais preuves trop faibles") {
+  } else if (primaryDiagnosis === "Experience proche mais preuves trop faibles") {
     nextActions.push("Reecris 2 ou 3 bullets avec du scope, des chiffres, ou un avant/apres concret.");
     nextActions.push("Precise ce que tu pilotais, pour qui, a quelle echelle, et avec quel impact.");
   } else {
@@ -516,7 +539,7 @@ export interface TailorResult { cvText: string; structuredCV: StructuredCV; repo
 const CHAR_LIMITS: Record<string, number> = { compact: 2000, balanced: 3500, detailed: 5500 };
 
 export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Promise<TailorResult> {
-  log("â•â•â•â•â•â• Pipeline V2 Start â•â•â•â•â•â•");
+  log("Pipeline V2 Start");
   const isFidele = input.mode === "original";
   const bodyChars = input.bodyMaxChars || input.customMaxChars || CHAR_LIMITS[input.outputLength || "balanced"] || 3500;
   const introChars = input.introMaxChars || 400;
@@ -524,12 +547,31 @@ export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Pro
   const scored = await hybridScoreAllBullets(parsedJob, input.allExperiences, input.allBullets, openai);
   const allocs = allocateCharBudget(input.allExperiences, scored, bodyChars);
   const selExps = selectBullets(scored, allocs);
-  let cv = await buildStructuredCV(parsedJob, selExps, input.allSkills, input.mode, openai, { profileName: input.profile?.name, profileTitle: input.profile?.title, profileSummary: input.profile?.summary || undefined, formations: input.formations, languages: input.languages });
-  if (cv.summary && cv.summary.length > introChars) { cv.summary = cv.summary.slice(0, introChars).replace(/[,;]?\s*\S*$/, "").trim(); }
-  if (!isFidele) cv = await reformulateBullets(cv, parsedJob, openai);
-  const postRules = applyPostRules(cv, parsedJob);
-  const cvText = renderCVText(cv, parsedJob);
-  const report = generateOptimizationReport(parsedJob, selExps, input.allSkills, postRules, cv);
-  log(`Pipeline Done â€” ${report.confidence}% | ${parsedJob.positioning} | ${cvText.length} chars`);
-  return { cvText, structuredCV: cv, report, selectedExperienceIds: selExps.filter(se => se.selectedBullets.length > 0).map(se => se.experience.id), selectedBulletIds: selExps.flatMap(se => se.selectedBullets.map(sb => sb.bullet.id)) };
+  const baseCv = await buildStructuredCV(parsedJob, selExps, input.allSkills, input.mode, openai, { profileName: input.profile?.name, profileTitle: input.profile?.title, profileSummary: input.profile?.summary || undefined, formations: input.formations, languages: input.languages });
+  if (baseCv.summary && baseCv.summary.length > introChars) { baseCv.summary = baseCv.summary.slice(0, introChars).replace(/[,;]?\s*\S*$/, "").trim(); }
+
+  const baselineCv = cloneStructuredCV(baseCv);
+  const baselinePostRules = applyPostRules(baselineCv, parsedJob);
+  const baselineReport = generateOptimizationReport(parsedJob, selExps, input.allSkills, baselinePostRules, baselineCv);
+
+  let finalCv = baselineCv;
+  let finalReport = baselineReport;
+
+  if (!isFidele) {
+    const candidateCv = await reformulateBullets(cloneStructuredCV(baseCv), parsedJob, openai);
+    const candidateReportCv = cloneStructuredCV(candidateCv);
+    const candidatePostRules = applyPostRules(candidateReportCv, parsedJob);
+    const candidateReport = generateOptimizationReport(parsedJob, selExps, input.allSkills, candidatePostRules, candidateReportCv);
+
+    if (candidateReport.confidence >= baselineReport.confidence) {
+      finalCv = candidateReportCv;
+      finalReport = candidateReport;
+    } else {
+      log("reformulate rejected", { baseline: baselineReport.confidence, candidate: candidateReport.confidence });
+    }
+  }
+
+  const cvText = renderCVText(finalCv, parsedJob);
+  log(`Pipeline Done - ${finalReport.confidence}% | ${parsedJob.positioning} | ${cvText.length} chars`);
+  return { cvText, structuredCV: finalCv, report: finalReport, selectedExperienceIds: selExps.filter(se => se.selectedBullets.length > 0).map(se => se.experience.id), selectedBulletIds: selExps.flatMap(se => se.selectedBullets.map(sb => sb.bullet.id)) };
 }

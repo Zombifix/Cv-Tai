@@ -16,6 +16,32 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
+function repairMojibake(text: string): string {
+  return [
+    ["â€”", "-"],
+    ["â€“", "-"],
+    ["â€¢", "-"],
+    ["â€¦", "..."],
+    ["â€™", "'"],
+    ["â€œ", '"'],
+    ["â€", '"'],
+    ["Â·", "·"],
+    ["Â", ""],
+    ["Ã©", "é"],
+    ["Ã¨", "è"],
+    ["Ãª", "ê"],
+    ["Ã«", "ë"],
+    ["Ã ", "à"],
+    ["Ã¢", "â"],
+    ["Ã§", "ç"],
+    ["Ã®", "î"],
+    ["Ã¯", "ï"],
+    ["Ã´", "ô"],
+    ["Ã¹", "ù"],
+    ["Ã»", "û"],
+  ].reduce((acc, [from, to]) => acc.split(from).join(to), text);
+}
+
 // â”€â”€â”€ Confidence Ring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ConfidenceRing({ value, size = 72 }: { value: number; size?: number }) {
@@ -162,8 +188,8 @@ function FormattedCV({ text, keywords = [] }: { text: string; keywords?: string[
 // â”€â”€â”€ Report Sections â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const MODE_META: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  original: { label: "FidÃ¨le", icon: <ShieldCheck className="w-3 h-3" />, color: "bg-primary/10 text-primary" },
-  polished: { label: "OptimisÃ©", icon: <Zap className="w-3 h-3" />, color: "bg-accent/10 text-accent" },
+  original: { label: "Fidele", icon: <ShieldCheck className="w-3 h-3" />, color: "bg-primary/10 text-primary" },
+  polished: { label: "Optimise", icon: <Zap className="w-3 h-3" />, color: "bg-accent/10 text-accent" },
   adaptive: { label: "Adaptatif", icon: <RefreshCw className="w-3 h-3" />, color: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" },
 };
 
@@ -689,6 +715,78 @@ function compactList(items: unknown, limit = 12): string[] {
     .slice(0, limit);
 }
 
+function trimBlock(value: unknown): string {
+  return repairMojibake(String(value ?? "")).trim();
+}
+
+function toCodeFence(label: string, value: unknown): string[] {
+  const content = trimBlock(value) || "n/a";
+  return [`## ${label}`, "```text", content.replace(/```/g, "'''"), "```"];
+}
+
+function buildAnalysisPayload({
+  run,
+  report,
+  jobInput,
+  pageTitle,
+}: {
+  run: any;
+  report: any;
+  jobInput: JobInputInfo;
+  pageTitle: string;
+}) {
+  const selectedExperiences = Array.isArray(report?.selectedExperiences) ? report.selectedExperiences : [];
+  const selectedBullets = Array.isArray(report?.selectedBullets) ? report.selectedBullets : [];
+
+  const sourceExperiences = selectedExperiences.map((exp: any) => ({
+    title: trimBlock(exp?.title) || "Experience",
+    company: trimBlock(exp?.company) || "",
+    bullets: selectedBullets
+      .filter((bullet: any) => bullet.experienceTitle === exp.title)
+      .map((bullet: any) => trimBlock(bullet?.text))
+      .filter(Boolean),
+  })).filter((exp: { bullets: string[] }) => exp.bullets.length > 0);
+
+  return {
+    meta: {
+      runId: trimBlock(run?.id),
+      title: trimBlock(pageTitle) || "Tailored CV",
+      mode: trimBlock(run?.mode) || "unknown",
+      language: trimBlock(report?.detectedLanguage) || "unknown",
+      seniority: trimBlock(report?.jobSeniority) || "unknown",
+    },
+    match: {
+      confidence: report?.confidence ?? null,
+      primaryDiagnosis: trimBlock(report?.diagnosis?.primaryDiagnosis) || "n/a",
+      verdict: trimBlock(report?.diagnosis?.verdict || report?.confidenceReasoning) || "n/a",
+      atsScore: report?.scoreBreakdown?.ats ?? null,
+      semanticScore: report?.scoreBreakdown?.semantic ?? null,
+      domainMismatch: trimBlock(report?.scoreBreakdown?.domainMismatch) || null,
+      cappedByKeywords: Boolean(report?.scoreBreakdown?.cappedByKeywords),
+      fallbackUsed: Boolean(report?.fallbackUsed),
+    },
+    diagnosis: {
+      whatMatches: compactList(report?.diagnosis?.whatMatches, 8),
+      whatMissing: compactList(report?.diagnosis?.whatMissing, 8),
+      nextActions: compactList(report?.diagnosis?.nextActions, 8),
+      tips: compactList(report?.tips, 8),
+    },
+    coverage: {
+      matchedSkills: compactList(report?.matchedSkills, 20),
+      missingSkills: compactList(report?.missingSkills, 20),
+      keywordsCovered: compactList(report?.postRules?.keywordsCovered, 25),
+      keywordsMissing: compactList(report?.postRules?.keywordsMissing, 25),
+    },
+    jobInput: {
+      sourceType: jobInput?.sourceType || "unknown",
+      scrapeStatus: jobInput?.scrapeStatus || "unknown",
+      scrapeMessage: trimBlock(jobInput?.scrapeMessage) || "n/a",
+      normalizedUrl: trimBlock(jobInput?.normalizedUrl || run?.jobPost?.url) || "n/a",
+    },
+    sourceExperiences,
+  };
+}
+
 function buildAnalysisExport({
   run,
   report,
@@ -702,77 +800,87 @@ function buildAnalysisExport({
   displayText: string;
   pageTitle: string;
 }) {
-  const selectedExperiences = Array.isArray(report?.selectedExperiences) ? report.selectedExperiences : [];
-  const selectedBullets = Array.isArray(report?.selectedBullets) ? report.selectedBullets : [];
+  const payload = buildAnalysisPayload({ run, report, jobInput, pageTitle });
 
-  const sourceBullets = selectedExperiences
-    .map((exp: any) => {
-      const bullets = selectedBullets.filter((bullet: any) => bullet.experienceTitle === exp.title);
-      const lines = bullets.map((bullet: any) => `- ${String(bullet?.text ?? "").trim()}`).filter(Boolean);
-      if (!lines.length) return "";
-      const title = [exp?.title, exp?.company].filter(Boolean).join(" | ");
-      return [`### ${title || "Experience"}`, ...lines].join("\n");
-    })
-    .filter(Boolean)
-    .join("\n\n");
+  const sourceSections = payload.sourceExperiences.length
+    ? payload.sourceExperiences.flatMap((exp: { title: string; company: string; bullets: string[] }) => [
+        `### ${[exp.title, exp.company].filter(Boolean).join(" | ")}`,
+        ...exp.bullets.map((bullet: string) => `- ${bullet}`),
+        "",
+      ])
+    : ["No source bullets saved for this run."];
 
   const lines = [
-    "# CV TAI ANALYSIS EXPORT",
+    "# CV-TAI REVIEW PACK",
     "",
-    "## Run",
-    `- Run ID: ${run?.id || "unknown"}`,
-    `- Title: ${pageTitle || "Tailored CV"}`,
-    `- Mode: ${run?.mode || "unknown"}`,
-    `- Language: ${report?.detectedLanguage || "unknown"}`,
-    `- Seniority: ${report?.jobSeniority || "unknown"}`,
+    "> Share this block directly with ChatGPT or Claude for result analysis.",
+    "",
+    "## Snapshot",
+    `- Run ID: ${payload.meta.runId || "unknown"}`,
+    `- Title: ${payload.meta.title}`,
+    `- Mode: ${payload.meta.mode}`,
+    `- Language: ${payload.meta.language}`,
+    `- Seniority: ${payload.meta.seniority}`,
     "",
     "## Match",
-    `- Confidence: ${report?.confidence ?? "n/a"}%`,
-    `- Primary diagnosis: ${report?.diagnosis?.primaryDiagnosis || "n/a"}`,
-    `- Verdict: ${report?.diagnosis?.verdict || report?.confidenceReasoning || "n/a"}`,
-    `- ATS score: ${report?.scoreBreakdown?.ats ?? "n/a"}`,
-    `- Semantic score: ${report?.scoreBreakdown?.semantic ?? "n/a"}`,
-    `- Domain mismatch: ${report?.scoreBreakdown?.domainMismatch || "none"}`,
-    `- Keywords capped: ${report?.scoreBreakdown?.cappedByKeywords ? "yes" : "no"}`,
-    `- Fallback used: ${report?.fallbackUsed ? "yes" : "no"}`,
+    `- Confidence: ${payload.match.confidence ?? "n/a"}%`,
+    `- Primary diagnosis: ${payload.match.primaryDiagnosis}`,
+    `- Verdict: ${payload.match.verdict}`,
+    `- ATS score: ${payload.match.atsScore ?? "n/a"}`,
+    `- Semantic score: ${payload.match.semanticScore ?? "n/a"}`,
+    `- Domain mismatch: ${payload.match.domainMismatch || "none"}`,
+    `- Keywords capped: ${payload.match.cappedByKeywords ? "yes" : "no"}`,
+    `- Fallback used: ${payload.match.fallbackUsed ? "yes" : "no"}`,
     "",
     "## What Matches",
-    ...(compactList(report?.diagnosis?.whatMatches).map(item => `- ${item}`)),
+    ...(payload.diagnosis.whatMatches.length ? payload.diagnosis.whatMatches.map(item => `- ${item}`) : ["- n/a"]),
     "",
     "## What Is Missing",
-    ...(compactList(report?.diagnosis?.whatMissing).map(item => `- ${item}`)),
+    ...(payload.diagnosis.whatMissing.length ? payload.diagnosis.whatMissing.map(item => `- ${item}`) : ["- n/a"]),
     "",
     "## Next Actions",
-    ...(compactList(report?.diagnosis?.nextActions).map(item => `- ${item}`)),
+    ...(payload.diagnosis.nextActions.length ? payload.diagnosis.nextActions.map(item => `- ${item}`) : ["- n/a"]),
     "",
-    "## Skills",
-    `- Matched skills: ${compactList(report?.matchedSkills, 20).join(", ") || "none"}`,
-    `- Missing skills: ${compactList(report?.missingSkills, 20).join(", ") || "none"}`,
-    "",
-    "## Critical Keywords",
-    `- Covered: ${compactList(report?.postRules?.keywordsCovered, 25).join(", ") || "none"}`,
-    `- Missing: ${compactList(report?.postRules?.keywordsMissing, 25).join(", ") || "none"}`,
+    "## Coverage",
+    `- Matched skills: ${payload.coverage.matchedSkills.join(", ") || "none"}`,
+    `- Missing skills: ${payload.coverage.missingSkills.join(", ") || "none"}`,
+    `- Covered keywords: ${payload.coverage.keywordsCovered.join(", ") || "none"}`,
+    `- Missing keywords: ${payload.coverage.keywordsMissing.join(", ") || "none"}`,
     "",
     "## Job Input",
-    `- Source type: ${jobInput?.sourceType || "unknown"}`,
-    `- Scrape status: ${jobInput?.scrapeStatus || "unknown"}`,
-    `- Scrape message: ${jobInput?.scrapeMessage || "n/a"}`,
-    `- Source URL: ${jobInput?.normalizedUrl || run?.jobPost?.url || "n/a"}`,
+    `- Source type: ${payload.jobInput.sourceType}`,
+    `- Scrape status: ${payload.jobInput.scrapeStatus}`,
+    `- Scrape message: ${payload.jobInput.scrapeMessage}`,
+    `- Source URL: ${payload.jobInput.normalizedUrl}`,
     "",
     "## Tips",
-    ...(compactList(report?.tips, 12).map(item => `- ${item}`)),
+    ...(payload.diagnosis.tips.length ? payload.diagnosis.tips.map(item => `- ${item}`) : ["- n/a"]),
     "",
     "## Source Bullets",
-    sourceBullets || "No source bullets saved for this run.",
+    ...sourceSections,
+    ...toCodeFence("Generated CV", displayText),
     "",
-    "## Generated CV",
-    displayText?.trim() || "No generated CV text.",
+    ...toCodeFence("Used Job Posting", run?.jobPost?.rawText),
     "",
-    "## Used Job Posting",
-    run?.jobPost?.rawText?.trim() || "No job posting text saved for this run.",
+    "## Compact JSON",
+    "```json",
+    JSON.stringify(payload, null, 2),
+    "```",
   ];
 
-  return lines.join("\n");
+  return repairMojibake(lines.join("\n"));
+}
+
+function downloadTextFile(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
 }
 
 // â”€â”€â”€ Application Tracker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -894,7 +1002,7 @@ export default function Result() {
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState<string | null>(null);
 
-  const displayText = editedText ?? run?.outputCvText ?? "";
+  const displayText = repairMojibake(editedText ?? run?.outputCvText ?? "");
 
   const handleCopy = () => {
     navigator.clipboard.writeText(displayText);
@@ -951,7 +1059,7 @@ export default function Result() {
   }) as JobInputInfo;
   const modeMeta = MODE_META[run.mode] || MODE_META.polished;
 
-  const pageTitle = [report?.jobTitle, report?.jobCompany].filter(Boolean).join(" â€” ") || "Tailored CV";
+  const pageTitle = repairMojibake([report?.jobTitle, report?.jobCompany].filter(Boolean).join(" - ") || "Tailored CV");
   const keyInsight = report?.confidenceReasoning || null;
   const jobUrl = run?.jobPost?.url;
   const allKeywords = [
@@ -968,7 +1076,17 @@ export default function Result() {
   });
 
   const handleExportAnalysis = async () => {
-    await navigator.clipboard.writeText(analysisExport);
+    const safeTitle = (pageTitle || "tailoring-review")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "tailoring-review";
+
+    try {
+      await navigator.clipboard.writeText(analysisExport);
+    } catch {}
+
+    downloadTextFile(`${safeTitle}-${run.id}.md`, analysisExport);
     setExported(true);
     setTimeout(() => setExported(false), 2000);
   };
@@ -1033,7 +1151,7 @@ export default function Result() {
             data-testid="button-export-analysis-header"
           >
             {exported ? <Check className="w-4 h-4 mr-2 text-green-500" /> : <FileDown className="w-4 h-4 mr-2" />}
-            {exported ? "Exporte !" : "Exporter analyse"}
+            {exported ? "Pack IA pret" : "Exporter IA"}
           </Button>
 
           <Button
@@ -1215,7 +1333,7 @@ export default function Result() {
             data-testid="button-export-analysis-footer"
           >
             {exported ? <Check className="w-4 h-4" /> : <FileDown className="w-4 h-4" />}
-            {exported ? "Exporte !" : "Exporter analyse"}
+            {exported ? "Pack IA pret" : "Exporter IA"}
           </Button>
           <Button
             onClick={handleCopy}
