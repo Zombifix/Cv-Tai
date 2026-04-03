@@ -55,3 +55,9 @@
 - Fichiers : `server/tailoring-engine.ts`, `client/src/pages/result.tsx`, `CLAUDE.md`, `.ai/TODO.md`
 - Impact : le moteur separe mieux les preuves reelles du vernis ATS, l'UI masque le legacy `confidence`, et l'export IA embarque `Fit offer score`, `Recruiter credibility`, `Primary cause`, `Secondary causes`, `Recommended action`
 - Verification : revue manuelle du diff; `npm run build` bloque localement car `tsx` absent dans l'environnement, verification runtime a faire sur Railway / environnement avec deps de dev
+
+### Result UI label cleanup
+- Quoi : suppression des libelles visibles encore mojibake sur la page Result, suppression d''un doublon corrompu de loading/error, et simplification de `repairMojibake` + `FormattedCV`
+- Fichiers : `client/src/pages/result.tsx`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
+- Impact : les onglets/actions comme `CV genere`, `Copier`, `Ameliorer la bibliotheque` et les etats vides ne doivent plus afficher de texte casse
+- Verification : `git diff --check -- client/src/pages/result.tsx`

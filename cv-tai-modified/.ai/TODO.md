@@ -21,13 +21,13 @@
 - Rejouer le cas EY / role adjacent pour verifier qu'un `polished` n'explose plus artificiellement le score quand l'ATS vient surtout d'injections de keywords.
 - Verifier que l'ecran Result affiche bien `Fit offre` en principal, `ATS` en secondaire, `Credibilite recruteur` en badge, et masque le legacy `confidence`.
 - Verifier que l'export d'analyse inclut `Fit offer score`, `Recruiter credibility`, `Primary cause`, `Secondary causes` et `Recommended action`.
-- Verifier qu'un contexte mission riche peut faire remonter un `adjacent` de maniere mesurée, sans transformer un mismatch en bon match.
+- Verifier qu'un contexte mission riche peut faire remonter un `adjacent` de maniere mesurÃ©e, sans transformer un mismatch en bon match.
 - Verifier que l'analyse/export affichent bien le `Mission context support`.
 - Verifier que les exports d'analyse montrent bien `ATS score`, `ATS final score`, `ATS boost` et `Injected keywords`.
 - Verifier dans l'UI Tailor que `Intro / Resume pro` et `Corps (experiences)` restent memorises apres refresh/navigation.
 - Verifier en vrai sur une offre scrapee que le texte nettoye commence bien au contenu metier et non aux cookies/navigation.
 - Verifier qu'un run `polished` ne sort plus avec une confiance inferieure au baseline `original` a contenu equivalent.
-- Verifier dans l'UI Result que les libelles encore mojibake sont bien repares par le passage DOM (`CV genere`, suivi candidature, diagnostics).
+- Result: purger les libelles mojibake visibles directement dans `client/src/pages/result.tsx` et eviter toute reparation DOM globale.
 - Installer les deps de dev ou remettre `tsc` dispo pour relancer `npm run check`.
 
 ## Known risks / checks
