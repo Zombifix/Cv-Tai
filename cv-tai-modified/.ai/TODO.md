@@ -18,6 +18,7 @@
   - afficher une cause principale explicite + une action recommandee
 
 ## Next
+- Verifier sur Railway que l'erreur de build `Unexpected smart quote` sur `runFastDryRun` a disparu et qu'aucune seconde erreur serveur ne suit.
 - Rejouer le cas EY / role adjacent pour verifier qu'un `polished` n'explose plus artificiellement le score quand l'ATS vient surtout d'injections de keywords.
 - Verifier que l'ecran Result affiche bien `Fit offre` en principal, `ATS` en secondaire, `Credibilite recruteur` en badge, et masque le legacy `confidence`.
 - Verifier que l'export d'analyse inclut `Fit offer score`, `Recruiter credibility`, `Primary cause`, `Secondary causes` et `Recommended action`.
@@ -42,6 +43,7 @@
 - La nouvelle logique distingue `keywords prouves` et `ATS final`; surveiller les regressions UI/export qui supposeraient encore un seul score ATS.
 - Le contexte mission compte maintenant comme preuve secondaire dans la confiance; surveiller qu'il aide a desambiguiser sans surponderer des descriptions trop marketing.
 - Le build local reste non verifiable tant que `tsx` est absent; la prochaine verification utile passe par Railway ou par reinstall des bins de dev.
+- Railway peut continuer a builder en `22.11.0` malgre `package.json`; un pin explicite `.nvmrc` a ete ajoute pour forcer `22.12.0`.
 
 ## Touched files
 - `CLAUDE.md`
@@ -49,6 +51,7 @@
 - `client/src/pages/tailor.tsx`
 - `server/routes.ts`
 - `server/tailoring-engine.ts`
+- `.nvmrc`
 - `AGENTS.md`
 - `.ai/TODO.md`
 - `.ai/LAST_CHANGES.md`

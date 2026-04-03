@@ -73,3 +73,17 @@
 - Fichiers : `client/src/pages/result.tsx`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
 - Impact : l'onglet `Annonce utilisee` doit afficher une version beaucoup plus compacte et lisible des scrapes LinkedIn au lieu d'un pavé parasite
 - Verification : revue manuelle du nettoyeur + `git diff --check -- client/src/pages/result.tsx`
+
+## 2026-04-04
+
+### Railway build fix for runFastDryRun
+- Quoi : reparation du bloc `runFastDryRun` corrompu par des guillemets intelligents / mojibake dans `server/tailoring-engine.ts`
+- Fichiers : `server/tailoring-engine.ts`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
+- Impact : le build serveur ne doit plus casser sur `Unexpected "“"` autour de `Pick<TailorInput, "jobText" | "allExperiences" | "allBullets">`
+- Verification : revue manuelle du bloc corrige; verification finale a faire sur Railway car `tsx` reste indisponible localement
+
+### Railway Node version pin
+- Quoi : ajout d'un fichier `.nvmrc` pour pousser Railway/Nixpacks a utiliser Node `22.12.0`
+- Fichiers : `.nvmrc`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
+- Impact : evite de rester sur `22.11.0` alors que `vite@7.3.x` demande `>=22.12.0`
+- Verification : a confirmer dans les prochains logs de build Railway
