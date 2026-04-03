@@ -12,6 +12,7 @@ import {
   checkLLMHealth,
   runTailorPipeline,
   runDryRunCheck,
+  runFastDryRun,
 } from "./tailoring-engine";
 
 let openai: OpenAI | null = null;
@@ -314,7 +315,7 @@ CV Ã  analyser :
 ${truncated}`;
 
       const response = await openai.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+        model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
         temperature: 0.3,
@@ -392,7 +393,7 @@ ${truncated}`;
       }
 
       const response = await openai.chat.completions.create({
-        model: "llama-3.2-90b-vision-preview",
+        model: "gpt-4o-mini",
         messages: [{
           role: "user",
           content: `Parse this raw experience text into structured JSON. Be strict about what is explicitly mentioned. If a field is not mentioned, omit it. Return ONLY valid JSON with these fields: title, company, employmentType, startDate (YYYY-MM-DD format), endDate (YYYY-MM-DD format), location, summary (brief 1-2 sentences), responsibilities (array of 3-5 bullet points), achievements (array of 3-5 bullet points with metrics), skills (array of technical skills), tools (array of software/tools), industry (array of industry tags).
@@ -601,7 +602,7 @@ Reponds UNIQUEMENT en JSON valide :
 }`;
 
       const response = await openai.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+        model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
         temperature: 0.3,
@@ -685,7 +686,7 @@ Reponds UNIQUEMENT en JSON :
 }`;
 
       const response = await openai.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+        model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
         temperature: 0.4,
@@ -811,7 +812,7 @@ REGLES :
 Reponds en JSON : {"axes": [{"text": "description courte de l'axe", "source": "description|bullet|inferred"}]}`;
 
       const response = await openai.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+        model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
         temperature: 0.3,
@@ -889,7 +890,7 @@ Reponds UNIQUEMENT en JSON valide :
 {"gaps": [{"id": "g1", "dimension": "scope|impact|contexte|methode|collaboration|difficultes", "question": "...", "priority": 1}]}`;
 
       const response = await openai.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+        model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
         temperature: 0.5,
@@ -961,7 +962,7 @@ JSON uniquement :
 }`;
 
       const response = await openai.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+        model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
         temperature: 0.2,
@@ -993,14 +994,13 @@ JSON uniquement :
       if (!resolvedInput.ok) {
         return res.status(400).json({ message: resolvedInput.errorMessage, scrapeFailed: resolvedInput.metadata.scrapeStatus !== "not_attempted", jobInput: resolvedInput.metadata });
       }
-      if (!openai) return res.status(500).json({ message: "AI service not configured." });
       const allExps = await storage.getExperiences();
       const allBullets = await storage.getAllBullets();
       if (allExps.length === 0) return res.status(400).json({ message: "Bibliotheque vide." });
-      const result = await runDryRunCheck({
-        jobText: resolvedInput.effectiveJobText, mode: "polished",
-        allExperiences: allExps, allBullets, allSkills: [],
-      }, openai);
+      const result = await runFastDryRun({
+        jobText: resolvedInput.effectiveJobText,
+        allExperiences: allExps, allBullets,
+      });
       res.json({ ...result, jobInput: resolvedInput.metadata });
     } catch (e: any) {
       console.error("[CHECK-MATCH] Error:", e.message);

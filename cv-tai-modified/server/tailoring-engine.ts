@@ -768,6 +768,116 @@ export async function runDryRunCheck(input: Pick<TailorInput, "jobText" | "mode"
   return { preliminaryConfidence, criticalKeywords: parsedJob.criticalKeywords, positioning: parsedJob.positioning, jobTitle: parsedJob.title };
 }
 
+// â”€â”€â”€ Fast Dry Run (100% deterministic, 0 LLM calls) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+export async function runFastDryRun(input: Pick<TailorInput, “jobText” | “allExperiences” | “allBullets”>): Promise<DryRunResult> {
+  log(“â•â•â•â•â•â• Fast Dry Run (deterministic) â•â•â•â•â•â•”);
+
+  // Step 1: Extract keywords deterministically from raw job text
+  const rawText = input.jobText;
+  const tokenCandidates: string[] = [];
+
+  // Split by commas, newlines, bullet chars, semicolons
+  const segments = rawText.split(/[,\n\r;•\-–—]+/);
+  for (const seg of segments) {
+    const trimmed = seg.trim();
+    if (trimmed.length >= 3 && trimmed.length <= 60) {
+      tokenCandidates.push(trimmed);
+    }
+  }
+
+  // Also extract capitalized or technical words (camelCase, ALL_CAPS, word with digit, or Title Case)
+  const wordMatches = rawText.match(/\b([A-Z][a-zA-Z]{2,}|[a-zA-Z]+\d+[a-zA-Z0-9]*|\b[A-Z]{2,}\b)\b/g) || [];
+
+  const allTokens: string[] = [
+    ...tokenCandidates,
+    ...wordMatches,
+  ];
+
+  // Deduplicate and filter: keep words/phrases of 3+ chars, take first 20
+  const seen = new Set<string>();
+  const keywords: string[] = [];
+  for (const tok of allTokens) {
+    const normalized = tok.trim().toLowerCase();
+    if (normalized.length >= 3 && !seen.has(normalized)) {
+      seen.add(normalized);
+      keywords.push(tok.trim());
+      if (keywords.length >= 20) break;
+    }
+  }
+
+  // Step 2: Build a minimal ParsedJob (no LLM)
+  const minimalParsedJob: ParsedJob = {
+    title: “”,
+    company: “”,
+    seniority: “mid”,
+    domain: “”,
+    requiredSkills: keywords,
+    preferredSkills: [],
+    responsibilities: [],
+    keywords,
+    criticalKeywords: keywords.slice(0, 8),
+    language: “FR”,
+    intentions: [],
+    positioning: “ic”,
+    roleFrame: {
+      workObjects: [],
+      deliverables: [],
+      decisions: [],
+      collaborators: [],
+      environments: [],
+      scopeSignals: [],
+    },
+  };
+
+  // Step 3: Score all bullets deterministically
+  const expMap = new Map(input.allExperiences.map(e => [e.id, e]));
+  const allKw = keywords.map(k => k.toLowerCase());
+  const critKw = keywords.slice(0, 8).map(k => k.toLowerCase());
+
+  const scored: ScoredBullet[] = input.allBullets
+    .map(b => {
+      const exp = expMap.get(b.experienceId);
+      if (!exp) return null;
+      const det = deterministicScore(b, exp, allKw, critKw, []);
+      return {
+        bullet: b,
+        experience: exp,
+        deterministicScore: det.score,
+        llmScore: 0,
+        totalScore: det.score,
+        matchedTags: det.matchedTags,
+        matchedKeywords: det.matchedKeywords,
+        dimension: inferDimension((b.tags || []).filter(Boolean)),
+      } as ScoredBullet;
+    })
+    .filter(Boolean) as ScoredBullet[];
+
+  // Step 4: Allocate budget and select bullets (reuse existing deterministic functions)
+  const allocs = allocateCharBudget(input.allExperiences, scored, 3500);
+  const selExps = selectBullets(scored, allocs);
+  const allSelectedBullets = selExps.flatMap(se => se.selectedBullets);
+
+  // Step 5: Compute preliminary confidence (same formula as runDryRunCheck)
+  const total = allSelectedBullets.length;
+  const avg = total > 0 ? Math.round(allSelectedBullets.reduce((s, b) => s + b.totalScore, 0) / total) : 0;
+  const matchedKwSet = new Set(allSelectedBullets.flatMap(sb => sb.matchedKeywords.map(k => k.toLowerCase())));
+  const critLow = critKw;
+  const coveredCount = critLow.filter(k => matchedKwSet.has(k) || [...matchedKwSet].some(m => m.includes(k) || k.includes(m))).length;
+  const kwCov = critLow.length > 0 ? Math.round(coveredCount / critLow.length * 100) : 50;
+  const bulletBonus = total >= 6 ? Math.min(10, Math.round(kwCov * 0.1)) : Math.round(total * 1.5);
+  const rawConfidence = Math.round(avg * 0.45 + kwCov * 0.45 + bulletBonus);
+  const critKwHardCap = critLow.length >= 4 && kwCov < 25 ? 40 : 100;
+  const preliminaryConfidence = Math.min(critKwHardCap, Math.min(100, rawConfidence));
+
+  log(`Fast Dry Run Done â€” ${preliminaryConfidence}% | ic (deterministic)`);
+  return {
+    preliminaryConfidence,
+    criticalKeywords: minimalParsedJob.criticalKeywords,
+    positioning: minimalParsedJob.positioning,
+    jobTitle: minimalParsedJob.title,
+  };
+}
+
 // â”€â”€â”€ Master Pipeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export interface TailorInput { jobText: string; mode: string; outputLength?: string; customMaxChars?: number; introMaxChars?: number; bodyMaxChars?: number; allExperiences: Experience[]; allBullets: Bullet[]; allSkills: Skill[]; profile?: { name?: string; title?: string; summary?: string | null }; formations?: any[]; languages?: any[]; }
 export interface TailorResult { cvText: string; structuredCV: StructuredCV; report: OptimizationReport; selectedExperienceIds: string[]; selectedBulletIds: string[]; }

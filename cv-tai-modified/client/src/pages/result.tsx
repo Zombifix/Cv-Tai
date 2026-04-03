@@ -473,6 +473,57 @@ function KeyTips({ tips, insight }: { tips: string[]; insight?: string }) {
   );
 }
 
+function LibraryHealth({
+  selectedBullets,
+  selectedExperiences,
+  totalBullets,
+  bulletsWithNumbers,
+}: {
+  selectedBullets: any[];
+  selectedExperiences: any[];
+  totalBullets: number;
+  bulletsWithNumbers: number;
+}) {
+  const pctWithNumbers = Math.round(bulletsWithNumbers / Math.max(1, totalBullets) * 100);
+  const pctWithTags = Math.round(
+    selectedBullets.filter(b => b.matchedKeywords?.length > 0).length / Math.max(1, selectedBullets.length) * 100
+  );
+  const expWithDescription = selectedExperiences.filter(
+    e => e.reason && e.reason !== "Timeline continuity"
+  ).length;
+  const score = Math.round(
+    (pctWithNumbers + pctWithTags + (expWithDescription / Math.max(1, selectedExperiences.length) * 100)) / 3
+  );
+
+  const barColor = score >= 70 ? "bg-green-500" : score >= 40 ? "bg-amber-400" : "bg-red-500";
+  const message =
+    score >= 70
+      ? "Bibliothèque solide pour ce tailoring."
+      : score >= 40
+      ? "Enrichis les bullets avec des chiffres et du contexte."
+      : "Bibliothèque trop fine — ajoute des bullets avant de retailor.";
+
+  return (
+    <Card className="border-border/60 shadow-none" data-testid="section-library-health">
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[13px] font-semibold text-foreground">Qualité bibliothèque</span>
+          <span className="text-[13px] font-bold text-foreground">{score}%</span>
+        </div>
+        <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
+          <div className={`h-full rounded-full ${barColor}`} style={{ width: `${score}%` }} />
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <span className="text-[11px] text-muted-foreground">Bullets chiffrées : <span className="font-medium text-foreground">{pctWithNumbers}%</span></span>
+          <span className="text-[11px] text-muted-foreground">Keywords matchés : <span className="font-medium text-foreground">{pctWithTags}%</span></span>
+          <span className="text-[11px] text-muted-foreground">Expériences avec contexte : <span className="font-medium text-foreground">{expWithDescription}/{selectedExperiences.length}</span></span>
+        </div>
+        <p className="text-[11px] text-muted-foreground">{message}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
 function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreakdown?: ReportScoreBreakdown }) {
   const [open, setOpen] = useState(false);
   const [showKeywords, setShowKeywords] = useState(false);
@@ -1599,6 +1650,11 @@ export default function Result() {
               <h1 className="text-xl font-extrabold tracking-tight text-foreground leading-tight truncate" data-testid="text-page-title">
                 {pageTitle}
               </h1>
+              {safeDiagnosis?.primaryDiagnosis && (
+                <p className="text-[12px] text-muted-foreground leading-snug mt-0.5 mb-1">
+                  {repairMojibake(safeDiagnosis.primaryDiagnosis)}
+                </p>
+              )}
               <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 <span className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full font-semibold ${modeMeta.color}`} data-testid="badge-mode">
                   {modeMeta.icon} {modeMeta.label}
@@ -1788,6 +1844,14 @@ export default function Result() {
 
             {/* Details Disclosure */}
             <DetailsDisclosure report={report || {}} scoreBreakdown={report?.scoreBreakdown} />
+
+            {/* Library Health */}
+            <LibraryHealth
+              selectedBullets={report?.selectedBullets || []}
+              selectedExperiences={report?.selectedExperiences || []}
+              totalBullets={report?.postRules?.totalBullets ?? 0}
+              bulletsWithNumbers={report?.postRules?.bulletsWithNumbers ?? 0}
+            />
 
             {/* Application Tracker */}
             <ApplicationTrackerSafe runId={run.id} />
