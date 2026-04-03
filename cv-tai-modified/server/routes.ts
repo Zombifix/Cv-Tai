@@ -58,6 +58,123 @@ async function seedDatabase() {
   }
 }
 
+const BLOCKED_DOMAINS = [
+  "indeed.com", "glassdoor.com", "monster.com",
+  "apec.fr", "francetravail.fr", "pole-emploi.fr", "hellowork.com", "cadremploi.fr",
+];
+
+type JobInputMetadata = {
+  sourceType: "url" | "text";
+  normalizedUrl?: string;
+  scrapeStatus: "success" | "blocked" | "failed" | "not_attempted";
+  scrapeMessage: string;
+};
+
+type ResolvedJobInput = {
+  ok: boolean;
+  effectiveJobText: string;
+  metadata: JobInputMetadata;
+  errorMessage?: string;
+};
+
+function getScrapeFailureMessage(url?: string, blocked?: boolean): string {
+  const isLinkedIn = !!url && url.includes("linkedin.com");
+  if (blocked) {
+    return isLinkedIn
+      ? "Je n'ai pas pu lire l'annonce LinkedIn. LinkedIn a bloque la recuperation automatique. Colle le texte de l'annonce pour continuer."
+      : "Le site a bloque la recuperation automatique. Colle le texte de l'annonce pour continuer.";
+  }
+  return isLinkedIn
+    ? "Je n'ai pas pu lire l'annonce LinkedIn. Colle le texte de l'annonce pour continuer."
+    : "Impossible de recuperer le contenu de cette URL. Colle le texte de l'annonce pour continuer.";
+}
+
+function isBlockedScrapeText(text: string): boolean {
+  const lowerText = text.toLowerCase();
+  return lowerText.includes("cloudflare") ||
+    lowerText.includes("just a moment") ||
+    lowerText.includes("checking your browser") ||
+    lowerText.includes("enable javascript") ||
+    lowerText.includes("access denied") ||
+    lowerText.includes("403 forbidden") ||
+    (lowerText.includes("indeed") && lowerText.includes("robot") && text.length < 2000);
+}
+
+async function resolveJobInput(params: { url?: string; text?: string; extraContext?: string }): Promise<ResolvedJobInput> {
+  const normalizedUrl = params.url ? normalizeLinkedInUrl(params.url) : undefined;
+  let effectiveJobText = (params.text || "").trim();
+  const metadata: JobInputMetadata = {
+    sourceType: effectiveJobText ? "text" : "url",
+    normalizedUrl,
+    scrapeStatus: effectiveJobText ? "not_attempted" : "failed",
+    scrapeMessage: effectiveJobText
+      ? "Description collee manuellement."
+      : normalizedUrl
+        ? "Recuperation de l'annonce en attente."
+        : "Aucune annonce fournie.",
+  };
+
+  if (!effectiveJobText && !normalizedUrl) {
+    return { ok: false, effectiveJobText: "", metadata, errorMessage: "Please provide a job description or URL." };
+  }
+
+  if (!effectiveJobText && normalizedUrl) {
+    try {
+      const hostname = new URL(normalizedUrl).hostname.toLowerCase();
+      if (BLOCKED_DOMAINS.some(d => hostname.includes(d))) {
+        metadata.scrapeStatus = "blocked";
+        metadata.scrapeMessage = getScrapeFailureMessage(normalizedUrl, true);
+        return { ok: false, effectiveJobText: "", metadata, errorMessage: metadata.scrapeMessage };
+      }
+    } catch {}
+
+    try {
+      const jinaRes = await fetch(`https://r.jina.ai/${normalizedUrl}`, {
+        headers: { "Accept": "text/plain", "X-Return-Format": "text" },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (jinaRes.ok) {
+        effectiveJobText = (await jinaRes.text()).slice(0, 6000).trim();
+        metadata.scrapeStatus = "success";
+        metadata.scrapeMessage = normalizedUrl.includes("linkedin.com")
+          ? "Annonce recuperee automatiquement depuis LinkedIn."
+          : "Annonce recuperee automatiquement depuis l'URL.";
+      } else {
+        metadata.scrapeStatus = "failed";
+        metadata.scrapeMessage = getScrapeFailureMessage(normalizedUrl, false);
+      }
+    } catch {
+      metadata.scrapeStatus = "failed";
+      metadata.scrapeMessage = getScrapeFailureMessage(normalizedUrl, false);
+    }
+  }
+
+  if (!effectiveJobText || effectiveJobText.length < 150) {
+    if (!params.text?.trim()) {
+      metadata.scrapeStatus = metadata.scrapeStatus === "success" ? "failed" : metadata.scrapeStatus;
+      metadata.scrapeMessage = getScrapeFailureMessage(normalizedUrl, metadata.scrapeStatus === "blocked");
+    }
+    return { ok: false, effectiveJobText: "", metadata, errorMessage: metadata.scrapeMessage };
+  }
+
+  if (isBlockedScrapeText(effectiveJobText)) {
+    metadata.scrapeStatus = "blocked";
+    metadata.scrapeMessage = getScrapeFailureMessage(normalizedUrl, true);
+    return { ok: false, effectiveJobText: "", metadata, errorMessage: metadata.scrapeMessage };
+  }
+
+  if (params.extraContext?.trim()) {
+    effectiveJobText += `\n\n---\nAdditional context provided by the candidate:\n${params.extraContext.trim()}`;
+  }
+
+  if (metadata.sourceType === "url" && metadata.scrapeStatus !== "success") {
+    metadata.scrapeStatus = "success";
+    metadata.scrapeMessage = "Annonce recuperee et prete a etre tailoree.";
+  }
+
+  return { ok: true, effectiveJobText, metadata };
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -71,9 +188,9 @@ export async function registerRoutes(
     res.status(result.success ? 200 : 503).json(result);
   });
 
-  // ══════════════════════════════════════════════════════════════
-  // CV IMPORT — PDF (base64) or text paste → parse ALL experiences
-  // ══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // CV IMPORT â€” PDF (base64) or text paste â†’ parse ALL experiences
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   app.post("/api/import/cv", async (req, res) => {
     try {
       let rawText = "";
@@ -109,20 +226,20 @@ export async function registerRoutes(
       const truncated = rawText.slice(0, 8000);
 
       if (!openai) {
-        return res.status(500).json({ message: "Service IA non configuré (OPENAI_API_KEY manquant)." });
+        return res.status(500).json({ message: "Service IA non configurÃ© (OPENAI_API_KEY manquant)." });
       }
 
-      const prompt = `Analyse ce CV et extrais TOUTES les expériences professionnelles.
+      const prompt = `Analyse ce CV et extrais TOUTES les expÃ©riences professionnelles.
 
-Pour chaque expérience, extrais :
-- title : intitulé du poste
+Pour chaque expÃ©rience, extrais :
+- title : intitulÃ© du poste
 - company : nom de l'entreprise
-- startDate : date de début au format YYYY-MM-DD (estime si besoin, ex: "2020" → "2020-01-01")
+- startDate : date de dÃ©but au format YYYY-MM-DD (estime si besoin, ex: "2020" â†’ "2020-01-01")
 - endDate : date de fin au format YYYY-MM-DD (null si poste actuel)
-- description : résumé court du rôle en 1-2 phrases
-- bullets : liste des réalisations/responsabilités (chaque bullet = une ligne du CV)
+- description : rÃ©sumÃ© court du rÃ´le en 1-2 phrases
+- bullets : liste des rÃ©alisations/responsabilitÃ©s (chaque bullet = une ligne du CV)
 
-Réponds UNIQUEMENT en JSON valide, sans markdown ni backticks :
+RÃ©ponds UNIQUEMENT en JSON valide, sans markdown ni backticks :
 {
   "experiences": [
     {
@@ -136,7 +253,7 @@ Réponds UNIQUEMENT en JSON valide, sans markdown ni backticks :
   ]
 }
 
-CV à analyser :
+CV Ã  analyser :
 ${truncated}`;
 
       const response = await openai.chat.completions.create({
@@ -175,7 +292,7 @@ ${truncated}`;
       for (const exp of exps) {
         const newExp = await storage.createExperience({
           title: exp.title || "Sans titre",
-          company: exp.company || "Non renseigné",
+          company: exp.company || "Non renseignÃ©",
           startDate: exp.startDate || undefined,
           endDate: exp.endDate || undefined,
           description: exp.description || "",
@@ -454,9 +571,9 @@ Reponds UNIQUEMENT en JSON valide :
     }
   });
 
-  // ══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // PROFILE
-  // ══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   app.get("/api/profile", async (_req, res) => {
     const p = await storage.getProfile();
     res.json(p || { name: "", title: "", summary: null, targetRole: null });
@@ -470,7 +587,7 @@ Reponds UNIQUEMENT en JSON valide :
     }
   });
 
-  // Role target check — analyze library against a target role
+  // Role target check â€” analyze library against a target role
   app.post("/api/profile/check-role", async (req, res) => {
     try {
       const { role } = req.body;
@@ -528,9 +645,9 @@ Reponds UNIQUEMENT en JSON :
     }
   });
 
-  // ══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // FORMATIONS
-  // ══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   app.get("/api/formations", async (_req, res) => {
     const f = await storage.getFormations();
     res.json(f);
@@ -550,9 +667,9 @@ Reponds UNIQUEMENT en JSON :
     res.status(204).end();
   });
 
-  // ══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // LANGUAGES
-  // ══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   app.get("/api/languages", async (_req, res) => {
     const l = await storage.getLanguages();
     res.json(l);
@@ -572,9 +689,9 @@ Reponds UNIQUEMENT en JSON :
     res.status(204).end();
   });
 
-  // ══════════════════════════════════════════════════════════════
-  // SETTINGS — reset all data
-  // ══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // SETTINGS â€” reset all data
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   app.post("/api/settings/reset", async (_req, res) => {
     try {
       const client = await (await import("./db")).pool.connect();
@@ -604,9 +721,9 @@ Reponds UNIQUEMENT en JSON :
     res.json(allRuns);
   });
 
-  // ══════════════════════════════════════════════════════════════
-  // EXTRACT AXES — parse description + bullets into mission axes
-  // ══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // EXTRACT AXES â€” parse description + bullets into mission axes
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   app.post("/api/experiences/:id/extract-axes", async (req, res) => {
     try {
       const exp = await storage.getExperience(req.params.id);
@@ -655,9 +772,9 @@ Reponds en JSON : {"axes": [{"text": "description courte de l'axe", "source": "d
     }
   });
 
-  // ══════════════════════════════════════════════════════════════
-  // GAP DETECTION — analyze experience + bullets, find what's missing
-  // ══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // GAP DETECTION â€” analyze experience + bullets, find what's missing
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   app.post("/api/experiences/:id/detect-gaps", async (req, res) => {
     try {
       const exp = await storage.getExperience(req.params.id);
@@ -675,7 +792,7 @@ Reponds en JSON : {"axes": [{"text": "description courte de l'axe", "source": "d
 
       const prompt = `Tu analyses un CV pour trouver ce qui MANQUE. Tu dois identifier les lacunes et poser UNE question par lacune.
 
-ETAPE 1 — IDENTIFIER LES MISSIONS/PERIMETRES DISTINCTS
+ETAPE 1 â€” IDENTIFIER LES MISSIONS/PERIMETRES DISTINCTS
 Regarde la description et les bullets. S'il y a plusieurs MISSIONS ou PERIMETRES de travail differents (ex: CRM + B2B, app mobile + back-office, produit client + produit interne), identifie-les.
 ATTENTION : une competence transversale (design system, user research, figma) n'est PAS un perimetre distinct. Un perimetre = un projet, un produit, ou un scope de responsabilite separe.
 
@@ -685,14 +802,14 @@ EXPERIENCE :
 - Description : ${exp.description || "Aucune"}
 ${existingBullets.length > 0 ? `\nBULLETS EXISTANTS :\n${bulletTexts}` : "\nAucun bullet existant."}
 
-ETAPE 2 — TROUVER LES LACUNES
+ETAPE 2 â€” TROUVER LES LACUNES
 Pour CHAQUE mission/perimetre, verifie ces dimensions. PRIORISE les dimensions qui donnent des CHIFFRES :
-1. SCOPE — combien ? (utilisateurs, marques, boutiques, equipe, budget)
-2. IMPACT — quel resultat mesurable ? (%, temps gagne, avant/apres, adoption)
-3. CONTEXTE — pourquoi ? quel probleme concret a resoudre ?
-4. METHODE — comment ? quelle approche specifique ?
-5. COLLABORATION — avec qui ? combien de personnes ?
-6. DIFFICULTES — quelles contraintes concretes ?
+1. SCOPE â€” combien ? (utilisateurs, marques, boutiques, equipe, budget)
+2. IMPACT â€” quel resultat mesurable ? (%, temps gagne, avant/apres, adoption)
+3. CONTEXTE â€” pourquoi ? quel probleme concret a resoudre ?
+4. METHODE â€” comment ? quelle approche specifique ?
+5. COLLABORATION â€” avec qui ? combien de personnes ?
+6. DIFFICULTES â€” quelles contraintes concretes ?
 
 REGLES :
 - PRIORISE scope et impact (ce sont les dimensions qui produisent les meilleurs bullets CV)
@@ -735,9 +852,9 @@ Reponds UNIQUEMENT en JSON valide :
     }
   });
 
-  // ══════════════════════════════════════════════════════════════
-  // TAG + EVALUATE — user writes bullet, LLM tags + evaluates
-  // ══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // TAG + EVALUATE â€” user writes bullet, LLM tags + evaluates
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   app.post("/api/experiences/:id/tag-evaluate", async (req, res) => {
     try {
       const exp = await storage.getExperience(req.params.id);
@@ -754,7 +871,7 @@ Reponds UNIQUEMENT en JSON valide :
 
 1. TAGGER avec 3-6 mots-cles pour le matching ATS
    - Des mots SIMPLES qu'un recruteur taperait : "CRM", "B2B", "Product Design", "Figma", "User Research", "Partnership", "Loyalty"
-   - PAS de mots composes avec tirets : "partnership-management" → juste "Partnership"
+   - PAS de mots composes avec tirets : "partnership-management" â†’ juste "Partnership"
    - PAS de termes generiques : "travail", "experience", "UX" (trop vague)
    - Specifiques au contenu reel du bullet
    
@@ -767,12 +884,12 @@ Reponds UNIQUEMENT en JSON valide :
 
 3. EXPLIQUER chaque critere (reasons)
    - Pour chaque critere, donne une explication COURTE (10 mots max)
-   - Si true → cite les elements du bullet qui valident (ex: "CRM Accor, structuration produit, vision")
-   - Si false → dis ce qui manque + un exemple concret (ex: "Pas d'echelle. Ex: pour combien d'equipes ?")
+   - Si true â†’ cite les elements du bullet qui valident (ex: "CRM Accor, structuration produit, vision")
+   - Si false â†’ dis ce qui manque + un exemple concret (ex: "Pas d'echelle. Ex: pour combien d'equipes ?")
 
 4. SUGGERER une amelioration (optionnel)
-   - Si un critere est false → UNE suggestion courte (15 mots max)
-   - Si tout est true → suggestion = null
+   - Si un critere est false â†’ UNE suggestion courte (15 mots max)
+   - Si tout est true â†’ suggestion = null
    - Ne demande JAMAIS un % ou KPI exact
 
 EXPERIENCE : ${exp.title} chez ${exp.company}
@@ -809,145 +926,46 @@ JSON uniquement :
     }
   });
 
-  // ══════════════════════════════════════════════════════════════
-  // CHECK MATCH — dry run (steps 1-4 only, no CV saved)
-  // ══════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // CHECK MATCH â€” dry run (steps 1-4 only, no CV saved)
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   app.post("/api/check-match", async (req, res) => {
     try {
       const { url, text, extraContext } = req.body;
-      const normalizedUrl = url ? normalizeLinkedInUrl(url) : undefined;
-      let effectiveJobText = text || "";
-
-      if (!effectiveJobText && normalizedUrl) {
-        const BLOCKED_DOMAINS = ["indeed.com", "glassdoor.com", "monster.com",
-          "apec.fr", "francetravail.fr", "pole-emploi.fr", "hellowork.com", "cadremploi.fr"];
-        try {
-          const hostname = new URL(normalizedUrl).hostname.toLowerCase();
-          if (BLOCKED_DOMAINS.some(d => hostname.includes(d))) {
-            return res.status(400).json({ message: "Site bloqué.", scrapeFailed: true });
-          }
-        } catch {}
-        try {
-          const jinaRes = await fetch(`https://r.jina.ai/${normalizedUrl}`, {
-            headers: { "Accept": "text/plain", "X-Return-Format": "text" },
-            signal: AbortSignal.timeout(15000),
-          });
-          if (jinaRes.ok) effectiveJobText = (await jinaRes.text()).slice(0, 6000).trim();
-        } catch {}
+      const resolvedInput = await resolveJobInput({ url, text, extraContext });
+      if (!resolvedInput.ok) {
+        return res.status(400).json({ message: resolvedInput.errorMessage, scrapeFailed: resolvedInput.metadata.scrapeStatus !== "not_attempted", jobInput: resolvedInput.metadata });
       }
-
-      if (!effectiveJobText || effectiveJobText.length < 150) {
-        return res.status(400).json({ message: "Impossible de récupérer le contenu.", scrapeFailed: true });
-      }
-
-      const lowerText = effectiveJobText.toLowerCase();
-      if (lowerText.includes("cloudflare") || lowerText.includes("just a moment") || lowerText.includes("checking your browser")) {
-        return res.status(400).json({ message: "Site bloqué par anti-bot.", scrapeFailed: true });
-      }
-
-      if (extraContext?.trim()) {
-        effectiveJobText += `\n\n---\nAdditional context:\n${extraContext.trim()}`;
-      }
-
       if (!openai) return res.status(500).json({ message: "AI service not configured." });
-
       const allExps = await storage.getExperiences();
       const allBullets = await storage.getAllBullets();
-      if (allExps.length === 0) return res.status(400).json({ message: "Bibliothèque vide." });
-
+      if (allExps.length === 0) return res.status(400).json({ message: "Bibliotheque vide." });
       const result = await runDryRunCheck({
-        jobText: effectiveJobText, mode: "polished",
+        jobText: resolvedInput.effectiveJobText, mode: "polished",
         allExperiences: allExps, allBullets, allSkills: [],
       }, openai);
-
-      res.json(result);
+      res.json({ ...result, jobInput: resolvedInput.metadata });
     } catch (e: any) {
       console.error("[CHECK-MATCH] Error:", e.message);
       res.status(500).json({ message: "Erreur lors du check match." });
     }
   });
 
-  // Tailor — Pipeline V2
+  // Tailor â€” Pipeline V2
   app.post(api.tailor.generate.path, async (req, res) => {
     try {
       const { url, text, mode, outputLength, customMaxChars, introMaxChars, bodyMaxChars, extraContext } = api.tailor.generate.input.parse(req.body);
-
-      // Normalize LinkedIn URL
-      const normalizedUrl = url ? normalizeLinkedInUrl(url) : undefined;
-      let effectiveJobText = text || "";
-
-      if (!effectiveJobText && !normalizedUrl) {
-        return res.status(400).json({ message: "Please provide a job description or URL." });
-      }
-
-      // Block known non-scrapable domains before even trying
-      if (!effectiveJobText && normalizedUrl) {
-        const BLOCKED_DOMAINS = [
-          "indeed.com", "glassdoor.com", "monster.com",
-          "apec.fr", "francetravail.fr", "pole-emploi.fr", "hellowork.com", "cadremploi.fr",
-        ];
-        try {
-          const hostname = new URL(normalizedUrl).hostname.toLowerCase();
-          if (BLOCKED_DOMAINS.some(d => hostname.includes(d))) {
-            return res.status(400).json({
-              message: "Ce site bloque le scraping automatique (acces restreint). Copiez-collez la description du poste directement dans le champ texte.",
-              scrapeFailed: true,
-            });
-          }
-        } catch {}
-      }
-
-      // Scrape URL if needed
-      if (!effectiveJobText && normalizedUrl) {
-        try {
-          const jinaUrl = `https://r.jina.ai/${normalizedUrl}`;
-          const jinaRes = await fetch(jinaUrl, {
-            headers: { "Accept": "text/plain", "X-Return-Format": "text" },
-            signal: AbortSignal.timeout(15000),
-          });
-          if (jinaRes.ok) {
-            effectiveJobText = (await jinaRes.text()).slice(0, 6000).trim();
-            console.log("[TAILOR] Scraped", effectiveJobText.length, "chars");
-          } else {
-            console.warn("[TAILOR] Scrape HTTP error:", jinaRes.status);
-          }
-        } catch (e: any) {
-          console.warn("[TAILOR] Scrape failed:", e.message);
-        }
-      }
-
-      if (!effectiveJobText || effectiveJobText.length < 150) {
+      const resolvedInput = await resolveJobInput({ url, text, extraContext });
+      if (!resolvedInput.ok) {
         return res.status(400).json({
-          message: "Impossible de recuperer le contenu de cette URL (acces restreint ou timeout). Veuillez coller la description du poste directement dans le champ texte.",
-          scrapeFailed: true,
+          message: resolvedInput.errorMessage,
+          scrapeFailed: resolvedInput.metadata.scrapeStatus !== "not_attempted",
+          jobInput: resolvedInput.metadata,
         });
       }
-
-      // Detect Cloudflare / bot-blocker pages
-      const lowerText = effectiveJobText.toLowerCase();
-      const isBlocked =
-        lowerText.includes("cloudflare") ||
-        lowerText.includes("just a moment") ||
-        lowerText.includes("checking your browser") ||
-        lowerText.includes("enable javascript") ||
-        lowerText.includes("access denied") ||
-        lowerText.includes("403 forbidden") ||
-        (lowerText.includes("indeed") && lowerText.includes("robot") && effectiveJobText.length < 2000);
-      if (isBlocked) {
-        return res.status(400).json({
-          message: "Ce site bloque le scraping automatique (protection anti-bot). Copiez-collez la description du poste directement dans le champ texte.",
-          scrapeFailed: true,
-        });
-      }
-
-      if (extraContext?.trim()) {
-        effectiveJobText += `\n\n---\nAdditional context provided by the candidate:\n${extraContext.trim()}`;
-      }
-
       if (!openai) {
         return res.status(500).json({ message: "AI service not configured. Please set OPENAI_API_KEY." });
       }
-
       // Load all data
       const allExps = await storage.getExperiences();
       const allBullets = await storage.getAllBullets();
@@ -962,7 +980,7 @@ JSON uniquement :
 
       // Run Pipeline V2
       const result = await runTailorPipeline({
-        jobText: effectiveJobText,
+        jobText: resolvedInput.effectiveJobText,
         mode,
         outputLength,
         customMaxChars,
@@ -978,9 +996,9 @@ JSON uniquement :
 
       // Save job post
       const jobPost = await storage.createJobPost({
-        url: normalizedUrl,
-        rawText: effectiveJobText,
-        extractedJson: result.report as any,
+        url: resolvedInput.metadata.normalizedUrl,
+        rawText: resolvedInput.effectiveJobText,
+        extractedJson: { jobInput: resolvedInput.metadata } as any,
       });
 
       // Save run

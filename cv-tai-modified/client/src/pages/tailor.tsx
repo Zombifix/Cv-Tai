@@ -28,6 +28,9 @@ function getUrlWarning(url: string): string | null {
     if (SCRAPE_BLOCKED_DOMAINS.some(d => hostname.includes(d))) {
       return "Ce site bloque le scraping automatique. Copie-colle le texte de l'annonce directement dans le champ ci-dessous.";
     }
+    if (hostname.includes("linkedin.com")) {
+      return "LinkedIn peut bloquer la recuperation automatique. Si l'analyse echoue, colle le texte de l'annonce pour continuer.";
+    }
   } catch {}
   return null;
 }
@@ -126,8 +129,12 @@ export default function Tailor() {
         setPendingConfirm({ score: check.preliminaryConfidence, jobTitle: check.jobTitle });
         return;
       }
-    } catch {
-      // If check fails (scrape error, network, etc.), proceed with full generation anyway
+    } catch (err) {
+      const message = (err as Error).message;
+      if (url && !text && /colle le texte|je n'ai pas pu lire|bloque la recuperation|impossible de recuperer/i.test(message.toLowerCase())) {
+        toast({ title: "Annonce non lisible", description: message, variant: "destructive" });
+        return;
+      }
     }
     await doGenerate();
   };

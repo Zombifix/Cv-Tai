@@ -16,7 +16,7 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
-// ─── Confidence Ring ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Confidence Ring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ConfidenceRing({ value, size = 72 }: { value: number; size?: number }) {
   const strokeWidth = 6;
@@ -55,7 +55,7 @@ function ConfidenceRing({ value, size = 72 }: { value: number; size?: number }) 
   );
 }
 
-// ─── Keyword highlighter ──────────────────────────────────────────────────────
+// â”€â”€â”€ Keyword highlighter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function highlightKeywords(text: string, keywords: string[]): React.ReactNode {
   if (!keywords.length) return text;
@@ -71,7 +71,7 @@ function highlightKeywords(text: string, keywords: string[]): React.ReactNode {
   );
 }
 
-// ─── Formatted CV document renderer ──────────────────────────────────────────
+// â”€â”€â”€ Formatted CV document renderer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function FormattedCV({ text, keywords = [] }: { text: string; keywords?: string[] }) {
   const lines = text.split("\n");
@@ -95,7 +95,7 @@ function FormattedCV({ text, keywords = [] }: { text: string; keywords?: string[
         <div key={i} className="mt-5 first:mt-0">
           <p className="text-[13px] font-bold text-foreground leading-snug">
             {roleRaw}
-            {company && <span className="font-normal text-muted-foreground"> — {company}</span>}
+            {company && <span className="font-normal text-muted-foreground"> â€” {company}</span>}
           </p>
         </div>
       );
@@ -107,9 +107,9 @@ function FormattedCV({ text, keywords = [] }: { text: string; keywords?: string[
           <div className="flex-1 h-px bg-border/70" />
         </div>
       );
-    } else if (line.match(/^(SKILLS?|COMPÉTENCES?)[:\s]*/i) && !line.startsWith("•")) {
-      const rest = line.replace(/^(SKILLS?|COMPÉTENCES?)[:\s]*/i, "").trim();
-      const sectionLabel = line.match(/compétences/i) ? "Compétences" : "Skills";
+    } else if (line.match(/^(SKILLS?|COMPÃ‰TENCES?)[:\s]*/i) && !line.startsWith("â€¢")) {
+      const rest = line.replace(/^(SKILLS?|COMPÃ‰TENCES?)[:\s]*/i, "").trim();
+      const sectionLabel = line.match(/compÃ©tences/i) ? "CompÃ©tences" : "Skills";
       elements.push(
         <div key={i} className="mt-7">
           <div className="flex items-center gap-3 mb-3">
@@ -118,7 +118,7 @@ function FormattedCV({ text, keywords = [] }: { text: string; keywords?: string[
           </div>
           {rest && (
             <div className="flex flex-wrap gap-2">
-              {rest.split(/[,·•|]/).map(s => s.trim()).filter(Boolean).map((skill, j) => (
+              {rest.split(/[,Â·â€¢|]/).map(s => s.trim()).filter(Boolean).map((skill, j) => (
                 <span key={j} className="px-2.5 py-1 text-[11px] rounded-md bg-primary/8 border border-primary/20 text-primary font-medium">{skill}</span>
               ))}
             </div>
@@ -132,15 +132,15 @@ function FormattedCV({ text, keywords = [] }: { text: string; keywords?: string[
           <div className="flex-1 h-px bg-border/70" />
         </div>
       );
-    } else if (line.startsWith("•") || line.startsWith("–") || (line.startsWith("-") && !line.startsWith("---"))) {
-      const bulletText = line.replace(/^[•\-–]\s*/, "").replace(/\*\*/g, "");
+    } else if (line.startsWith("â€¢") || line.startsWith("â€“") || (line.startsWith("-") && !line.startsWith("---"))) {
+      const bulletText = line.replace(/^[â€¢\-â€“]\s*/, "").replace(/\*\*/g, "");
       elements.push(
         <div key={i} className="flex items-start gap-2.5 pl-0.5">
           <span className="mt-[7px] flex-shrink-0 w-1 h-1 rounded-full bg-foreground/40" />
           <p className="text-[13px] text-foreground/90 leading-relaxed">{highlightKeywords(bulletText, keywords)}</p>
         </div>
       );
-    } else if (line.match(/^\d{4}/) && (line.includes("–") || line.includes("-") || line.match(/présent|present/i))) {
+    } else if (line.match(/^\d{4}/) && (line.includes("â€“") || line.includes("-") || line.match(/prÃ©sent|present/i))) {
       elements.push(<p key={i} className="text-[11px] text-muted-foreground mt-0.5 mb-1">{line}</p>);
     } else if (isFirstContent && i <= 3) {
       const content = line.replace(/\*\*/g, "").replace(/^#+\s*/, "");
@@ -159,11 +159,11 @@ function FormattedCV({ text, keywords = [] }: { text: string; keywords?: string[
   return <div className="space-y-1.5 font-sans">{elements}</div>;
 }
 
-// ─── Report Sections ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Report Sections â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const MODE_META: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  original: { label: "Fidèle", icon: <ShieldCheck className="w-3 h-3" />, color: "bg-primary/10 text-primary" },
-  polished: { label: "Optimisé", icon: <Zap className="w-3 h-3" />, color: "bg-accent/10 text-accent" },
+  original: { label: "FidÃ¨le", icon: <ShieldCheck className="w-3 h-3" />, color: "bg-primary/10 text-primary" },
+  polished: { label: "OptimisÃ©", icon: <Zap className="w-3 h-3" />, color: "bg-accent/10 text-accent" },
   adaptive: { label: "Adaptatif", icon: <RefreshCw className="w-3 h-3" />, color: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" },
 };
 
@@ -182,12 +182,12 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
   return (
     <Card className="border-border/60 shadow-none" data-testid="section-match-score">
       <CardContent className="p-4">
-        {/* Domain mismatch warning — prominent, above the ring */}
+        {/* Domain mismatch warning â€” prominent, above the ring */}
         {scoreBreakdown?.domainMismatch && (
           <div className="flex items-start gap-2 mb-3 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40">
             <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
             <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug font-medium">
-              Mismatch détecté ({scoreBreakdown.domainMismatch}) — les compétences se croisent partiellement mais le cœur du rôle diffère.
+              Mismatch dÃ©tectÃ© ({scoreBreakdown.domainMismatch}) â€” les compÃ©tences se croisent partiellement mais le cÅ“ur du rÃ´le diffÃ¨re.
             </p>
           </div>
         )}
@@ -208,15 +208,15 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
           <div className="flex-1 min-w-0">
             <p className={`text-sm font-bold ${textColor}`} data-testid="text-match-score-label">{label}</p>
             {scoreBreakdown?.cappedByKeywords && (
-              <p className="text-[10px] text-red-500 dark:text-red-400 font-medium mt-0.5">Plafonné — keywords critiques absents du CV</p>
+              <p className="text-[10px] text-red-500 dark:text-red-400 font-medium mt-0.5">PlafonnÃ© â€” keywords critiques absents du CV</p>
             )}
             {fallbackUsed && !scoreBreakdown?.cappedByKeywords && (
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Match faible — bullets de substitution utilisés</p>
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Match faible â€” bullets de substitution utilisÃ©s</p>
             )}
           </div>
         </div>
 
-        {/* Score breakdown — ATS vs semantic */}
+        {/* Score breakdown â€” ATS vs semantic */}
         {scoreBreakdown && (
           <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-border/50">
             <div className="space-y-1">
@@ -230,7 +230,7 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
               </div>
             </div>
             <div className="space-y-1">
-              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Bullets sémantique</p>
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Bullets sÃ©mantique</p>
               <div className="flex items-center gap-1.5">
                 <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
                   <div className={`h-full rounded-full ${scoreBreakdown.semantic >= 70 ? "bg-green-500" : scoreBreakdown.semantic >= 40 ? "bg-amber-500" : "bg-red-500"}`}
@@ -295,7 +295,7 @@ function SkillsCoverage({ matched, missing }: { matched: string[]; missing: stri
         {missing.length > 0 && (
           <div>
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 font-semibold">
-              {matched.length === 0 ? "Absentes de ta bibliothèque — cliquer pour ajouter" : "Manquantes — cliquer pour ajouter"}
+              {matched.length === 0 ? "Absentes de ta bibliothÃ¨que â€” cliquer pour ajouter" : "Manquantes â€” cliquer pour ajouter"}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {missing.map((s, i) => {
@@ -306,7 +306,7 @@ function SkillsCoverage({ matched, missing }: { matched: string[]; missing: stri
                     data-testid={`badge-missing-${i}`}
                     onClick={() => handleAdd(s)}
                     disabled={isAdded || mutation.isPending}
-                    title={isAdded ? "Ajouté à la bibliothèque" : "Ajouter à la bibliothèque"}
+                    title={isAdded ? "AjoutÃ© Ã  la bibliothÃ¨que" : "Ajouter Ã  la bibliothÃ¨que"}
                     className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full font-medium border transition-all ${
                       isAdded
                         ? "bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 cursor-default"
@@ -321,12 +321,12 @@ function SkillsCoverage({ matched, missing }: { matched: string[]; missing: stri
             </div>
             {matched.length === 0 && (
               <p className="text-[10px] text-muted-foreground mt-2 italic">
-                Ces compétences ne sont pas encore dans votre Super-CV. Cliquez sur "+" pour les ajouter.
+                Ces compÃ©tences ne sont pas encore dans votre Super-CV. Cliquez sur "+" pour les ajouter.
               </p>
             )}
           </div>
         )}
-        {total === 0 && <p className="text-xs text-muted-foreground italic">Aucune donnée de compétence disponible.</p>}
+        {total === 0 && <p className="text-xs text-muted-foreground italic">Aucune donnÃ©e de compÃ©tence disponible.</p>}
       </CardContent>
     </Card>
   );
@@ -360,7 +360,7 @@ function KeyTips({ tips, insight }: { tips: string[]; insight?: string }) {
   );
 }
 
-function DetailsDisclosure({ report }: { report: any }) {
+function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreakdown?: { ats: number; semantic: number; domainMismatch?: string; cappedByKeywords?: boolean } }) {
   const [open, setOpen] = useState(false);
   const [showKeywords, setShowKeywords] = useState(false);
 
@@ -371,12 +371,38 @@ function DetailsDisclosure({ report }: { report: any }) {
         className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
         data-testid="button-toggle-details"
       >
-        <span className="flex items-center gap-2"><BookOpen className="w-3.5 h-3.5" /> Analyse détaillée</span>
+        <span className="flex items-center gap-2"><BookOpen className="w-3.5 h-3.5" /> Analyse dÃ©taillÃ©e</span>
         {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
 
       {open && (
         <div className="border-t border-border/60 px-4 py-4 space-y-4 bg-muted/10 rounded-b-xl">
+          {scoreBreakdown && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Detail du score</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <p className="text-[10px] text-muted-foreground font-medium">Keywords ATS</p>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${scoreBreakdown.ats >= 70 ? "bg-green-500" : scoreBreakdown.ats >= 40 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${scoreBreakdown.ats}%` }} />
+                    </div>
+                    <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown.ats}%</span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] text-muted-foreground font-medium">Alignement des bullets selectionnes</p>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${scoreBreakdown.semantic >= 70 ? "bg-green-500" : scoreBreakdown.semantic >= 40 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${scoreBreakdown.semantic}%` }} />
+                    </div>
+                    <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown.semantic}%</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">Mesure a quel point les bullets retenus racontent quelque chose de proche du role, meme sans reprendre mot pour mot l'annonce.</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Detected Keywords */}
           {report.detectedKeywords && (
@@ -387,15 +413,15 @@ function DetailsDisclosure({ report }: { report: any }) {
                 data-testid="button-toggle-keywords"
               >
                 <Hash className="w-3 h-3" />
-                Mots-clés détectés
+                Mots-clÃ©s dÃ©tectÃ©s
                 {showKeywords ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
               </button>
               {showKeywords && (
                 <div className="space-y-2">
                   {[
-                    { label: "Compétences requises", items: report.detectedKeywords.requiredSkills, cls: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400" },
-                    { label: "Compétences souhaitées", items: report.detectedKeywords.preferredSkills, cls: "bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400" },
-                    { label: "Responsabilités", items: report.detectedKeywords.responsibilities, cls: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400" },
+                    { label: "CompÃ©tences requises", items: report.detectedKeywords.requiredSkills, cls: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400" },
+                    { label: "CompÃ©tences souhaitÃ©es", items: report.detectedKeywords.preferredSkills, cls: "bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400" },
+                    { label: "ResponsabilitÃ©s", items: report.detectedKeywords.responsibilities, cls: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400" },
                     { label: "Domaine", items: report.detectedKeywords.keywords, cls: "bg-muted text-muted-foreground" },
                   ].filter(g => g.items?.length).map(g => (
                     <div key={g.label}>
@@ -418,7 +444,7 @@ function DetailsDisclosure({ report }: { report: any }) {
   );
 }
 
-// ─── Library Suggestions ──────────────────────────────────────────────────────
+// â”€â”€â”€ Library Suggestions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function LibrarySuggestions({ missingSkills }: { missingSkills: string[] }) {
   const [added, setAdded] = useState<Set<string>>(new Set());
@@ -439,10 +465,10 @@ function LibrarySuggestions({ missingSkills }: { missingSkills: string[] }) {
       <CardContent className="p-4">
         <div className="flex items-center gap-2 mb-3">
           <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-          <h3 className="text-xs font-bold text-amber-700 dark:text-amber-300 tracking-wide uppercase">Améliorer la bibliothèque</h3>
+          <h3 className="text-xs font-bold text-amber-700 dark:text-amber-300 tracking-wide uppercase">AmÃ©liorer la bibliothÃ¨que</h3>
         </div>
         <p className="text-[11px] text-muted-foreground mb-3 leading-relaxed">
-          Ces compétences manquent dans votre Super-CV. Ajoutez-les en 1 clic pour améliorer vos prochains tailorings.
+          Ces compÃ©tences manquent dans votre Super-CV. Ajoutez-les en 1 clic pour amÃ©liorer vos prochains tailorings.
         </p>
         <div className="flex flex-wrap gap-1.5">
           {missingSkills.slice(0, 12).map(skill => {
@@ -473,7 +499,7 @@ function LibrarySuggestions({ missingSkills }: { missingSkills: string[] }) {
   );
 }
 
-// ─── Critical Keywords Coverage ──────────────────────────────────────────────
+// â”€â”€â”€ Critical Keywords Coverage â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function CriticalKeywordsCoverage({ covered, missing }: { covered: string[]; missing: string[] }) {
   const total = covered.length + missing.length;
@@ -511,7 +537,151 @@ function CriticalKeywordsCoverage({ covered, missing }: { covered: string[]; mis
   );
 }
 
-// ─── Application Tracker ──────────────────────────────────────────────────────
+type ReportDiagnosis = {
+  primaryDiagnosis?: string;
+  verdict?: string;
+  whatMatches?: string[];
+  whatMissing?: string[];
+  nextActions?: string[];
+};
+
+type JobInputInfo = {
+  sourceType?: "url" | "text";
+  normalizedUrl?: string;
+  scrapeStatus?: "success" | "blocked" | "failed" | "not_attempted";
+  scrapeMessage?: string;
+};
+
+function sourceBadge(meta?: JobInputInfo) {
+  if (meta?.sourceType === "url") {
+    return meta.scrapeStatus === "success" ? "URL scrapee" : "URL fournie";
+  }
+  return "Texte colle";
+}
+
+function MatchDiagnosisCard({ confidence, diagnosis, fallbackUsed, scoreBreakdown }: { confidence: number; diagnosis?: ReportDiagnosis; fallbackUsed?: boolean; scoreBreakdown?: { ats: number; semantic: number; domainMismatch?: string; cappedByKeywords?: boolean } }) {
+  const label = confidence >= 70 ? "Fort match" : confidence >= 40 ? "Match partiel" : "Match faible";
+  const textColor = confidence >= 70 ? "text-green-600 dark:text-green-400" : confidence >= 40 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
+  const verdict = diagnosis?.verdict || "Le moteur a estime un niveau de correspondance global pour cette annonce.";
+  const whatMatches = diagnosis?.whatMatches || [];
+  const whatMissing = diagnosis?.whatMissing || [];
+  const nextActions = diagnosis?.nextActions || [];
+
+  return (
+    <Card className="border-border/60 shadow-none" data-testid="section-match-diagnosis">
+      <CardContent className="p-4 space-y-4">
+        {scoreBreakdown?.domainMismatch && (
+          <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug font-medium">
+              Mismatch detecte ({scoreBreakdown.domainMismatch}) : tes experiences se croisent avec le poste, mais le coeur du role reste different.
+            </p>
+          </div>
+        )}
+
+        <div className="flex items-center gap-4">
+          <ConfidenceRing value={confidence} size={56} />
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm font-bold ${textColor}`}>{label}</p>
+            {diagnosis?.primaryDiagnosis && (
+              <p className="text-[11px] text-foreground font-medium mt-0.5">{diagnosis.primaryDiagnosis}</p>
+            )}
+            {scoreBreakdown?.cappedByKeywords && (
+              <p className="text-[10px] text-red-500 dark:text-red-400 font-medium mt-0.5">Plafonne : keywords critiques absents du CV</p>
+            )}
+            {fallbackUsed && !scoreBreakdown?.cappedByKeywords && (
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Le moteur a trouve peu de bullets forts pour cette annonce.</p>
+            )}
+          </div>
+        </div>
+
+        <p className="text-[12px] text-foreground/80 leading-relaxed">{verdict}</p>
+
+        {whatMatches.length > 0 && (
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Ce qui matche</p>
+            <ul className="space-y-1.5">
+              {whatMatches.map((item, index) => (
+                <li key={index} className="flex items-start gap-2 text-[12px] text-foreground/80 leading-relaxed">
+                  <CheckCircle className="w-3.5 h-3.5 mt-0.5 text-green-600 dark:text-green-400 flex-shrink-0" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {whatMissing.length > 0 && (
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Ce qui manque</p>
+            <ul className="space-y-1.5">
+              {whatMissing.map((item, index) => (
+                <li key={index} className="flex items-start gap-2 text-[12px] text-foreground/80 leading-relaxed">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {nextActions.length > 0 && (
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Quoi faire maintenant</p>
+            <ul className="space-y-1.5">
+              {nextActions.map((item, index) => (
+                <li key={index} className="flex items-start gap-2 text-[12px] text-foreground/80 leading-relaxed">
+                  <Lightbulb className="w-3.5 h-3.5 mt-0.5 text-yellow-500 flex-shrink-0" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function UsedJobPosting({ meta, rawText, url }: { meta?: JobInputInfo; rawText?: string; url?: string }) {
+  return (
+    <div className="bg-white dark:bg-zinc-950 px-8 py-10 md:px-14 md:py-12 min-h-[300px]" data-testid="section-used-job-posting">
+      <div className="flex items-center gap-2 flex-wrap mb-4">
+        <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
+          <Globe className="w-3 h-3" /> {sourceBadge(meta)}
+        </span>
+        {meta?.scrapeStatus && (
+          <span className="text-[11px] text-muted-foreground">{meta.scrapeMessage}</span>
+        )}
+      </div>
+
+      {(meta?.normalizedUrl || url) && (
+        <div className="mb-4">
+          <p className="text-[10px] font-extrabold text-muted-foreground tracking-[0.12em] uppercase mb-2">Source</p>
+          <a
+            href={meta?.normalizedUrl || url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-primary hover:underline break-all"
+          >
+            <ExternalLink className="w-3 h-3" /> {meta?.normalizedUrl || url}
+          </a>
+        </div>
+      )}
+
+      <div>
+        <p className="text-[10px] font-extrabold text-muted-foreground tracking-[0.12em] uppercase mb-2">Annonce utilisee</p>
+        <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
+          <pre className="whitespace-pre-wrap text-[12px] leading-relaxed text-foreground/85 font-sans">
+            {rawText || "Aucun texte d'annonce sauvegarde pour ce run."}
+          </pre>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// â”€â”€â”€ Application Tracker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface AppTracking {
   applied: boolean;
@@ -552,9 +722,9 @@ function ApplicationTracker({ runId }: { runId: string }) {
 
         {!tracking.applied ? (
           <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">Tu as postulé avec ce CV ?</p>
+            <p className="text-xs text-muted-foreground">Tu as postulÃ© avec ce CV ?</p>
             <Button size="sm" variant="outline" className="w-full gap-2 text-xs" onClick={() => save({ applied: true, appliedAt: today })}>
-              <Check className="w-3.5 h-3.5" /> J'ai postulé
+              <Check className="w-3.5 h-3.5" /> J'ai postulÃ©
             </Button>
           </div>
         ) : (
@@ -562,7 +732,7 @@ function ApplicationTracker({ runId }: { runId: string }) {
             {/* Applied row */}
             <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-border/40">
               <span className="text-xs font-medium text-green-600 dark:text-green-400 flex items-center gap-1">
-                <Check className="w-3 h-3" /> Postulé
+                <Check className="w-3 h-3" /> PostulÃ©
               </span>
               <input
                 type="date"
@@ -574,7 +744,7 @@ function ApplicationTracker({ runId }: { runId: string }) {
 
             {/* Status */}
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Réponse reçue</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">RÃ©ponse reÃ§ue</p>
               <div className="grid grid-cols-3 gap-1">
                 {STATUS_OPTIONS.map(opt => (
                   <button
@@ -594,7 +764,7 @@ function ApplicationTracker({ runId }: { runId: string }) {
             {(tracking.status === "interview" || tracking.status === "rejected") && (
               <div className="flex items-center justify-between gap-2 pt-1">
                 <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Calendar className="w-3 h-3" /> Date réponse
+                  <Calendar className="w-3 h-3" /> Date rÃ©ponse
                 </span>
                 <input
                   type="date"
@@ -610,7 +780,7 @@ function ApplicationTracker({ runId }: { runId: string }) {
               onClick={() => save(TRACKING_DEFAULT)}
               className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors block mt-1"
             >
-              Réinitialiser
+              RÃ©initialiser
             </button>
           </div>
         )}
@@ -619,7 +789,7 @@ function ApplicationTracker({ runId }: { runId: string }) {
   );
 }
 
-// ─── Main Result Page ─────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Result Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function Result() {
   const { id } = useParams<{ id: string }>();
@@ -659,7 +829,7 @@ export default function Result() {
       <Layout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
           <div className="w-16 h-16 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-          <h2 className="text-xl font-semibold text-muted-foreground animate-pulse" data-testid="text-loading">Génération du CV en cours...</h2>
+          <h2 className="text-xl font-semibold text-muted-foreground animate-pulse" data-testid="text-loading">GÃ©nÃ©ration du CV en cours...</h2>
         </div>
       </Layout>
     );
@@ -670,18 +840,23 @@ export default function Result() {
       <Layout>
         <div className="flex flex-col items-center justify-center min-h-[50vh] text-center max-w-md mx-auto gap-4">
           <AlertCircle className="w-12 h-12 text-destructive" />
-          <h2 className="text-2xl font-bold" data-testid="text-error-title">Résultat introuvable</h2>
-          <p className="text-muted-foreground" data-testid="text-error-message">Ce CV a peut-être été supprimé ou une erreur s'est produite.</p>
-          <Link href="/tailor"><Button data-testid="button-try-again">Réessayer</Button></Link>
+          <h2 className="text-2xl font-bold" data-testid="text-error-title">RÃ©sultat introuvable</h2>
+          <p className="text-muted-foreground" data-testid="text-error-message">Ce CV a peut-Ãªtre Ã©tÃ© supprimÃ© ou une erreur s'est produite.</p>
+          <Link href="/tailor"><Button data-testid="button-try-again">RÃ©essayer</Button></Link>
         </div>
       </Layout>
     );
   }
-
   const report = run.outputReportJson as any;
+  const jobInput = ((run.jobPost?.extractedJson as any)?.jobInput || {
+    sourceType: run.jobPost?.url ? "url" : "text",
+    normalizedUrl: run.jobPost?.url,
+    scrapeStatus: run.jobPost?.url ? "success" : "not_attempted",
+    scrapeMessage: run.jobPost?.url ? "Annonce recuperee pour ce run." : "Description collee manuellement.",
+  }) as JobInputInfo;
   const modeMeta = MODE_META[run.mode] || MODE_META.polished;
 
-  const pageTitle = [report?.jobTitle, report?.jobCompany].filter(Boolean).join(" — ") || "Tailored CV";
+  const pageTitle = [report?.jobTitle, report?.jobCompany].filter(Boolean).join(" â€” ") || "Tailored CV";
   const keyInsight = report?.confidenceReasoning || null;
   const jobUrl = run?.jobPost?.url;
   const allKeywords = [
@@ -694,7 +869,7 @@ export default function Result() {
     <Layout>
       <div className="flex flex-col gap-6 animate-in fade-in duration-400">
 
-        {/* ── HEADER ── */}
+        {/* â”€â”€ HEADER â”€â”€ */}
         <div className="flex items-start gap-4 flex-wrap" data-testid="section-page-header">
           <Link href="/tailor">
             <Button variant="outline" size="icon" className="rounded-xl shadow-sm flex-shrink-0 mt-0.5" data-testid="button-back">
@@ -750,14 +925,14 @@ export default function Result() {
             data-testid="button-copy-header"
           >
             {copied ? <Check className="w-4 h-4 mr-2 text-green-500" /> : <Copy className="w-4 h-4 mr-2" />}
-            {copied ? "Copié !" : "Copier"}
+            {copied ? "CopiÃ© !" : "Copier"}
           </Button>
         </div>
 
-        {/* ── MAIN GRID ── */}
+        {/* â”€â”€ MAIN GRID â”€â”€ */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
-          {/* ── LEFT: CV Document ── */}
+          {/* â”€â”€ LEFT: CV Document â”€â”€ */}
           <div className="lg:col-span-2 flex flex-col gap-0 rounded-xl overflow-hidden border border-border/60 shadow-[0_2px_24px_rgba(0,0,0,0.07)] dark:shadow-[0_2px_24px_rgba(0,0,0,0.3)]" data-testid="section-cv-panel">
 
             {/* Panel toolbar */}
@@ -766,8 +941,9 @@ export default function Result() {
                 <Tabs defaultValue="generated" className="flex-1">
                   <div className="flex items-center justify-between gap-3">
                     <TabsList className="h-7 text-xs gap-0.5 bg-background/70">
-                      <TabsTrigger value="generated" className="text-xs h-6 px-2.5" data-testid="tab-generated">CV généré</TabsTrigger>
-                      <TabsTrigger value="source" className="text-xs h-6 px-2.5" data-testid="tab-source">Bullets sources</TabsTrigger>
+                      <TabsTrigger value="generated" className="text-xs h-6 px-2.5" data-testid="tab-generated">CV gÃ©nÃ©rÃ©</TabsTrigger>
+                      <TabsTrigger value="source" className="text-xs h-6 px-2.5" data-testid="tab-source">Bibliotheque utilisee</TabsTrigger>
+                      <TabsTrigger value="job" className="text-xs h-6 px-2.5" data-testid="tab-job">Annonce utilisee</TabsTrigger>
                     </TabsList>
                     <Button
                       variant="ghost"
@@ -792,7 +968,7 @@ export default function Result() {
                   <TabsContent value="source" className="mt-0">
                     <div className="bg-white dark:bg-zinc-950 px-8 py-10 md:px-14 md:py-12 min-h-[300px]" data-testid="section-source-bullets">
                       <p className="text-xs text-muted-foreground italic mb-6 pb-4 border-b">
-                        Bullets originaux de ta bibliothèque — avant toute réécriture IA.
+                        Bullets originaux de ta bibliothÃ¨que â€” avant toute rÃ©Ã©criture IA.
                       </p>
                       {report?.selectedExperiences?.map((exp: any, i: number) => {
                         const bullets = (report.selectedBullets || []).filter((b: any) => b.experienceTitle === exp.title);
@@ -810,15 +986,19 @@ export default function Result() {
                                   <p className="text-[13px] text-foreground/85 leading-relaxed">{b.text}</p>
                                 </div>
                               ))}
-                              {bullets.length === 0 && <p className="text-xs text-muted-foreground italic pl-3">Aucun bullet enregistré.</p>}
+                              {bullets.length === 0 && <p className="text-xs text-muted-foreground italic pl-3">Aucun bullet enregistrÃ©.</p>}
                             </div>
                           </div>
                         );
                       })}
                       {!report?.selectedExperiences?.length && (
-                        <p className="text-sm text-muted-foreground italic">Aucune donnée source disponible.</p>
+                        <p className="text-sm text-muted-foreground italic">Aucune donnÃ©e source disponible.</p>
                       )}
                     </div>
+                  </TabsContent>
+
+                  <TabsContent value="job" className="mt-0">
+                    <UsedJobPosting meta={jobInput} rawText={run?.jobPost?.rawText} url={jobUrl} />
                   </TabsContent>
                 </Tabs>
               ) : (
@@ -849,14 +1029,14 @@ export default function Result() {
             )}
           </div>
 
-          {/* ── RIGHT: Report Panel ── */}
+          {/* â”€â”€ RIGHT: Report Panel â”€â”€ */}
           <div className="space-y-3" data-testid="section-report">
 
             {/* 1. Match Score */}
             {report?.confidence != null && (
-              <MatchScore
+              <MatchDiagnosisCard
                 confidence={report.confidence}
-                reasoning={report.confidenceReasoning}
+                diagnosis={report.diagnosis}
                 fallbackUsed={report.fallbackUsed}
                 scoreBreakdown={report.scoreBreakdown}
               />
@@ -885,7 +1065,7 @@ export default function Result() {
             />
 
             {/* Details Disclosure */}
-            <DetailsDisclosure report={report || {}} />
+            <DetailsDisclosure report={report || {}} scoreBreakdown={report?.scoreBreakdown} />
 
             {/* Application Tracker */}
             <ApplicationTracker runId={run.id} />
@@ -893,7 +1073,7 @@ export default function Result() {
           </div>
         </div>
 
-        {/* ── ACTION FOOTER ── */}
+        {/* â”€â”€ ACTION FOOTER â”€â”€ */}
         <div className="flex items-center justify-between gap-3 pt-4 border-t border-border/50 flex-wrap" data-testid="section-action-footer">
           <div className="flex items-center gap-2 flex-wrap">
             <Button
@@ -906,7 +1086,7 @@ export default function Result() {
             </Button>
             <Link href="/library">
               <Button variant="ghost" className="rounded-xl gap-2 text-sm text-muted-foreground hover:text-foreground" data-testid="button-improve-library">
-                <Library className="w-4 h-4" /> Améliorer la bibliothèque
+                <Library className="w-4 h-4" /> AmÃ©liorer la bibliothÃ¨que
               </Button>
             </Link>
           </div>
@@ -916,7 +1096,7 @@ export default function Result() {
             data-testid="button-copy-footer"
           >
             {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            {copied ? "Copié !" : "Copier le CV"}
+            {copied ? "CopiÃ© !" : "Copier le CV"}
           </Button>
         </div>
 
