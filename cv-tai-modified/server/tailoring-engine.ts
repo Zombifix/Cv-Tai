@@ -665,8 +665,24 @@ function collectMissionContextSupport(selExps: ScoredExperience[], criticalKeywo
   return { contextKeywords, contextOnlyKeywords };
 }
 
-function getEvidenceProgressiveCap(evidenceScore: number, criticalKeywordCount: number): number {
+function getEvidenceProgressiveCap(
+  evidenceScore: number,
+  criticalKeywordCount: number,
+  semanticScore: number = 0,
+  hasDomainMismatch: boolean = false
+): number {
   if (criticalKeywordCount < 4) return 100;
+  // Same-domain + LLM confirms semantic relevance → relaxed caps
+  const sameDomainHighSemantic = !hasDomainMismatch && semanticScore >= 55;
+  if (sameDomainHighSemantic) {
+    if (evidenceScore <= 10) return 42;
+    if (evidenceScore <= 20) return 52;
+    if (evidenceScore < 25) return 58;
+    if (evidenceScore < 35) return 65;
+    if (evidenceScore < 45) return 72;
+    return 100;
+  }
+  // Strict caps for cross-domain or low semantic
   if (evidenceScore <= 10) return 28;
   if (evidenceScore <= 20) return 36;
   if (evidenceScore < 25) return 40;
@@ -675,8 +691,19 @@ function getEvidenceProgressiveCap(evidenceScore: number, criticalKeywordCount: 
   return 100;
 }
 
-function getAtsGapCap(atsBoost: number, fitBase: number, evidenceScore: number): number {
+function getAtsGapCap(
+  atsBoost: number,
+  fitBase: number,
+  evidenceScore: number,
+  sameDomainHighSemantic: boolean = false
+): number {
   if (atsBoost < 15 || fitBase >= 55) return 100;
+  if (sameDomainHighSemantic) {
+    if (atsBoost >= 35 && evidenceScore < 25) return 58;
+    if (atsBoost >= 25 && evidenceScore < 35) return 65;
+    if (atsBoost >= 20 && evidenceScore < 45) return 72;
+    return 100;
+  }
   if (atsBoost >= 35 && evidenceScore < 25) return 45;
   if (atsBoost >= 25 && evidenceScore < 35) return 52;
   if (atsBoost >= 20 && evidenceScore < 45) return 60;
@@ -784,18 +811,42 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
     const kwNorm = normalizeEvidenceText(kw);
     return skillNames.some(sn => sn.length >= 3 && (sn.includes(kwNorm) || kwNorm.includes(sn)));
   }).length;
-  const weightedEvidenceCount = postRules.evidenceKeywordsCovered.length + missionContextSupport.contextOnlyKeywords.length * 0.5 + skillEvidenceCount * 0.5;
-  const evidenceScore = job.criticalKeywords.length > 0 ? Math.round(weightedEvidenceCount / job.criticalKeywords.length * 100) : atsEvidence;
-  // Confidence should reflect what the source library really proves, with mission context as a secondary signal only.
+  // Semantic score from average bullet quality — computed first so caps can use it
   const semanticScore = Math.min(100, Math.round(avg * 100 / 120));
+
+  // Role-family mismatch detection — must run BEFORE fitBase/fitOffer so caps are mismatch-aware
+  const jobTitleLow = job.title.toLowerCase();
+  const jobFullText = (jobTitleLow + " " + job.responsibilities.join(" ")).toLowerCase();
+  const isPOJob = /\bproduct owner\b|\bpo\b|\bchef de produit\b|\bscrum master\b|\bproduct manager\b|\bpm\b/.test(jobTitleLow);
+  const isDesignJob = /\bdesigner\b|\bux\b|\bui\b|\bdesign\b/.test(jobTitleLow);
+  const isRetailSalesJob = /responsable.{0,5}magasin|responsable magasin|directeur.{0,5}magasin|chef de rayon|store manager|retail manager|sales floor|client portfolio|portefeuille client|objectifs de vente|sales target|clienteling|floor manager|vente boutique|coaching.{0,20}equipe de vente|equipe de vente|vendeur/i.test(jobFullText);
+  const isPMJob = /chef de projet|project manager\b|programme manager|delivery manager|pilotage.{0,20}projet|jalons|livrables|moa\b|moe\b/.test(jobTitleLow);
+  const isDataJob = /\bdata analyst\b|\bdata scientist\b|\bdata engineer\b|\bBI\b|power bi|tableau\b|machine learning|statistiques?\b/.test(jobTitleLow);
+  const isDevJob = /\b(fullstack|full.?stack|developpeur|developer|front.?end|back.?end|software engineer|ingenieur.{0,10}logiciel|devops|sre)\b/i.test(jobTitleLow);
+  const userIsDesigner = allBullets.some(b => /figma|maquett|prototype|design system|ux|ui|parcours|wireframe/i.test(b.bullet.text));
+  const userIsPO = allBullets.some(b => /backlog|sprint|user stor|roadmap|priorisation|epic|okr/i.test(b.bullet.text));
+  const userIsDev = allBullets.some(b => /\b(code|commit|deploy|api|endpoint|sql|git|pull request|refactor|unit test|ci.?cd)\b/i.test(b.bullet.text));
+  const domainMismatch = isRetailSalesJob && userIsDesigner ? "retail-sales"
+    : isDevJob && userIsDesigner && !userIsDev ? "development"
+    : isPMJob && userIsDesigner && !userIsPO ? "project-management"
+    : isDataJob && userIsDesigner ? "data-analytics"
+    : isPOJob && userIsDesigner && !userIsPO ? "PO/PM vs Designer"
+    : isDesignJob && userIsPO && !userIsDesigner ? "Designer vs PO"
+    : undefined;
+
+  // Skills evidence weight: higher for same-domain (craft skills ARE real proof when domain matches)
+  const skillWeight = domainMismatch ? 0.3 : 0.75;
+  const weightedEvidenceCount = postRules.evidenceKeywordsCovered.length + missionContextSupport.contextOnlyKeywords.length * 0.5 + skillEvidenceCount * skillWeight;
+  const evidenceScore = job.criticalKeywords.length > 0 ? Math.round(weightedEvidenceCount / job.criticalKeywords.length * 100) : atsEvidence;
   const bulletBonus = total >= 6 ? Math.min(10, Math.round(evidenceScore * 0.1)) : Math.round(total * 1.5);
   const fitBase = Math.min(100, Math.round(semanticScore * 0.45 + evidenceScore * 0.45 + bulletBonus));
   const rawConfidence = Math.round(avg * 0.45 + evidenceScore * 0.45 + bulletBonus);
   // Hard cap: if less than 25% of critical keywords are present in the CV, it's a weak match regardless of bullet quality.
   // This catches cases where the profile domain is fundamentally different from the job (e.g. Designer â†’ PO).
-  const critKwHardCap = getEvidenceProgressiveCap(evidenceScore, job.criticalKeywords.length);
+  const sameDomainHighSemantic = !domainMismatch && semanticScore >= 55;
+  const critKwHardCap = getEvidenceProgressiveCap(evidenceScore, job.criticalKeywords.length, semanticScore, !!domainMismatch);
   const evidenceGapIsHigh = atsBoost >= 25 && evidenceScore <= 50;
-  const evidenceGapHardCap = getAtsGapCap(atsBoost, fitBase, evidenceScore);
+  const evidenceGapHardCap = getAtsGapCap(atsBoost, fitBase, evidenceScore, sameDomainHighSemantic);
   const fitOffer = Math.min(critKwHardCap, evidenceGapHardCap, fitBase);
   const confidence = Math.min(critKwHardCap, evidenceGapHardCap, Math.min(100, rawConfidence));
   const tips: string[] = [];
@@ -808,17 +859,7 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
     tips.push("Offre conseil : aucun bullet ne mentionne accompagnement ou structuration de pratiques.");
   }
 
-  // Role-family mismatch detection (extended)
-  const jobTitleLow = job.title.toLowerCase();
-  const jobFullText = (jobTitleLow + " " + job.responsibilities.join(" ")).toLowerCase();
-  const isPOJob = /\bproduct owner\b|\bpo\b|\bchef de produit\b|\bscrum master\b|\bproduct manager\b|\bpm\b/.test(jobTitleLow);
-  const isDesignJob = /\bdesigner\b|\bux\b|\bui\b|\bdesign\b/.test(jobTitleLow);
-  const isRetailSalesJob = /sales floor|client portfolio|portefeuille client|objectifs de vente|sales target|clienteling|floor manager|vente boutique|coaching.{0,20}equipe de vente|vendeur/.test(jobFullText);
-  const isPMJob = /chef de projet|project manager\b|programme manager|delivery manager|pilotage.{0,20}projet|jalons|livrables|moa\b|moe\b/.test(jobTitleLow);
-  const isDataJob = /\bdata analyst\b|\bdata scientist\b|\bdata engineer\b|\bBI\b|power bi|tableau\b|machine learning|statistiques?\b/.test(jobTitleLow);
-  const userIsDesigner = allBullets.some(b => /figma|maquett|prototype|design system|ux|ui|parcours|wireframe/i.test(b.bullet.text));
-  const userIsPO = allBullets.some(b => /backlog|sprint|user stor|roadmap|priorisation|epic|okr/i.test(b.bullet.text));
-
+  // Mismatch-specific tips (domainMismatch already set above)
   if (isPOJob && userIsDesigner && !userIsPO) {
     tips.push("Attention : ce poste est Product Owner/PM. Tes bullets sont orientes design. Le match est partiel, mais la gestion de backlog est absente.");
   }
@@ -834,13 +875,9 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
   if (isDataJob && userIsDesigner) {
     tips.push("Ce poste est en data / analytics. Ton profil est design. L'approche data-driven peut se retrouver, mais les competences techniques (SQL, BI, stats) sont absentes de ta bibliotheque.");
   }
-
-  const domainMismatch = isRetailSalesJob && userIsDesigner ? "retail-sales"
-    : isPMJob && userIsDesigner && !userIsPO ? "project-management"
-    : isDataJob && userIsDesigner ? "data-analytics"
-    : isPOJob && userIsDesigner && !userIsPO ? "PO/PM vs Designer"
-    : isDesignJob && userIsPO && !userIsDesigner ? "Designer vs PO"
-    : undefined;
+  if (isDevJob && userIsDesigner && !userIsDev) {
+    tips.push("Ce poste est en developpement logiciel (fullstack/frontend/backend). Ton profil est design. Les competences ne se recoupent pas directement.");
+  }
   const cappedByKeywords = critKwHardCap < 100 && rawConfidence > critKwHardCap;
   const cappedByEvidence = evidenceGapHardCap < 100 && rawConfidence > evidenceGapHardCap;
   const topMatchedAspects = topItems(selExps.flatMap(se => se.matchedAspects), 3);
@@ -874,6 +911,8 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
     whatMissing.push("Ce poste demande de la methodologie projet formelle (jalons, livrables, MOE/MOA, pilotage de planning) — absente de ta bibliotheque design.");
   } else if (domainMismatch === "data-analytics") {
     whatMissing.push("Ce poste demande des competences techniques data (SQL, BI, stats, machine learning) — hors du perimetre design produit.");
+  } else if (domainMismatch === "development") {
+    whatMissing.push("Ce poste demande des competences de developpement logiciel (code, architecture, deploiement) — hors du perimetre design produit.");
   }
   if (topMissingKeywords.length > 0) {
     whatMissing.push(`Les competences metier critiques ${joinNatural(topMissingKeywords)} ne ressortent pas assez dans le CV genere.`);
@@ -898,6 +937,8 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
       ? "Domaine adjacent : certaines competences se transferent (structuration, alignement), mais le coeur chef de projet est absent de ta bibliotheque."
       : domainMismatch === "data-analytics"
       ? "Hors domaine : ce poste demande des competences data technique qui ne font pas partie de ton profil design."
+      : domainMismatch === "development"
+      ? "Hors domaine : ce poste est en developpement logiciel. Le profil design ne correspond pas aux attendus techniques."
       : "Profil adjacent : une partie de ton experience se transfere, mais le coeur du role demande est different.";
   } else if (cappedByKeywords || cappedByEvidence || evidenceScore < 40 || topMissingKeywords.length >= 2) {
     primaryDiagnosis = "Competences metier critiques absentes";
@@ -926,6 +967,9 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
     } else if (domainMismatch === "data-analytics") {
       nextActions.push("Si tu vises la data, il faut construire des competences techniques (SQL, Python, BI) avant de postuler.");
       nextActions.push("Des postes UX Research ou Product Analytics sont plus accessibles depuis un profil design.");
+    } else if (domainMismatch === "development") {
+      nextActions.push("Si tu vises le dev, il faut acquerir des competences techniques (code, frameworks, architecture) avant de postuler.");
+      nextActions.push("Des postes Design System, DesignOps ou Design Engineer sont plus accessibles depuis un profil design.");
     } else if (jobTitleLow.includes("product")) {
       nextActions.push("Ajoute des bullets ancres dans backlog, roadmap, priorisation ou delivery produit.");
       nextActions.push("Garde les experiences transferables, mais prouve davantage le coeur du metier vise.");
