@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /c/Users/theop/OneDrive/Documents/GitHub/Cv-Tai add cv-tai-modified/server/tailoring-engine.ts)",
+      "Bash(git -C:*)"
+    ]
+  }
+}

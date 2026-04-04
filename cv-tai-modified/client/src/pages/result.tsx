@@ -890,10 +890,42 @@ function MatchDiagnosisCard({ fitOffer, diagnosis, fallbackUsed, scoreBreakdown 
   );
 }
 
-function UsedJobPosting({ meta, rawText, url }: { meta?: JobInputInfo; rawText?: string; url?: string }) {
+const POSITIONING_DISPLAY: Record<string, string> = {
+  ic: "IC / Craft",
+  lead: "Lead",
+  consultant: "Consultant",
+  manager: "Manager",
+};
+
+type ParsedJobDisplay = {
+  title: string;
+  company: string;
+  seniority?: string;
+  domain?: string;
+  positioning?: string;
+  responsibilities: string[];
+  requiredSkills: string[];
+  criticalKeywords: string[];
+  intentions: string[];
+  language?: string;
+};
+
+function UsedJobPosting({
+  meta,
+  rawText,
+  url,
+  parsedJob,
+}: {
+  meta?: JobInputInfo;
+  rawText?: string;
+  url?: string;
+  parsedJob?: ParsedJobDisplay;
+}) {
+  const hasParsed = Boolean(parsedJob && parsedJob.responsibilities.length > 0);
   const [showRaw, setShowRaw] = useState(false);
   const cleanedText = cleanJobPostingForAnalysis(rawText);
-  const displayText = showRaw ? (trimBlock(rawText) || "Aucun texte d'annonce sauvegarde pour ce run.") : (cleanedText || trimBlock(rawText) || "Aucun texte d'annonce sauvegarde pour ce run.");
+  const rawDisplay = trimBlock(rawText) || "Aucun texte d'annonce sauvegarde pour ce run.";
+  const textDisplay = cleanedText || rawDisplay;
   const wasCleaned = Boolean(cleanedText) && cleanedText !== trimBlock(rawText);
 
   return (
@@ -903,15 +935,9 @@ function UsedJobPosting({ meta, rawText, url }: { meta?: JobInputInfo; rawText?:
           <Globe className="w-3 h-3" /> {sourceBadge(meta)}
         </span>
         {meta?.scrapeStatus && (
-          <span className="text-[11px] text-muted-foreground">{meta.scrapeMessage}</span>
+          <span className="text-[11px] text-muted-foreground">{repairMojibake(meta.scrapeMessage || "")}</span>
         )}
       </div>
-      {meta?.sourceType === "url" && meta?.scrapeStatus === "success" && (
-        <div className="flex items-start gap-2 mb-4 text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 p-2.5 rounded-lg">
-          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-          <span>Contenu scrappé automatiquement. Si les scores semblent incohérents, vérifie que le texte ci-dessous correspond bien à l'annonce complète — sinon relance avec le texte collé manuellement.</span>
-        </div>
-      )}
 
       {(meta?.normalizedUrl || url) && (
         <div className="mb-4">
@@ -928,35 +954,141 @@ function UsedJobPosting({ meta, rawText, url }: { meta?: JobInputInfo; rawText?:
       )}
 
       <div>
-        <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
           <p className="text-[10px] font-extrabold text-muted-foreground tracking-[0.12em] uppercase">Annonce utilisee</p>
-          {wasCleaned && (
+          {hasParsed ? (
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setShowRaw(value => !value)}
+              onClick={() => setShowRaw(v => !v)}
+              className="h-7 px-2.5 text-[11px]"
+              data-testid="button-toggle-job-posting-raw"
+            >
+              {showRaw ? "Voir la synthèse" : "Voir le texte brut"}
+            </Button>
+          ) : wasCleaned ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowRaw(v => !v)}
               className="h-7 px-2.5 text-[11px]"
               data-testid="button-toggle-job-posting-raw"
             >
               {showRaw ? "Voir nettoyee" : "Voir brut"}
             </Button>
-          )}
+          ) : null}
         </div>
-        {wasCleaned && !showRaw && (
-          <p className="text-[11px] text-muted-foreground mb-3">
-            Texte nettoye pour la lecture. Le contenu brut reste accessible si tu veux verifier le scraping.
-          </p>
+
+        {/* Parsed structured view */}
+        {hasParsed && !showRaw ? (
+          <div className="space-y-5">
+            <div>
+              <h3 className="text-base font-semibold text-foreground leading-snug">
+                {parsedJob!.title}
+                {parsedJob!.company && (
+                  <span className="text-muted-foreground font-normal"> — {parsedJob!.company}</span>
+                )}
+              </h3>
+              <div className="flex gap-1.5 flex-wrap mt-2">
+                {parsedJob!.seniority && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium capitalize">
+                    {parsedJob!.seniority}
+                  </span>
+                )}
+                {parsedJob!.positioning && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+                    {POSITIONING_DISPLAY[parsedJob!.positioning] || parsedJob!.positioning}
+                  </span>
+                )}
+                {parsedJob!.domain && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+                    {parsedJob!.domain}
+                  </span>
+                )}
+                {parsedJob!.language && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+                    {parsedJob!.language}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {parsedJob!.responsibilities.length > 0 && (
+              <div>
+                <p className="text-[10px] font-extrabold text-muted-foreground tracking-[0.12em] uppercase mb-2">Missions</p>
+                <ul className="space-y-1.5">
+                  {parsedJob!.responsibilities.map((r, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-foreground/85">
+                      <span className="mt-2 w-1 h-1 rounded-full bg-primary/50 flex-shrink-0" />
+                      {r}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="flex gap-6 flex-wrap">
+              {parsedJob!.criticalKeywords.length > 0 && (
+                <div className="flex-1 min-w-[130px]">
+                  <p className="text-[10px] font-extrabold text-muted-foreground tracking-[0.12em] uppercase mb-2">
+                    Compétences clés
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {parsedJob!.criticalKeywords.map((k, i) => (
+                      <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                        {k}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {parsedJob!.requiredSkills.length > 0 && (
+                <div className="flex-1 min-w-[130px]">
+                  <p className="text-[10px] font-extrabold text-muted-foreground tracking-[0.12em] uppercase mb-2">
+                    Compétences requises
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {parsedJob!.requiredSkills.map((k, i) => (
+                      <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+                        {k}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {parsedJob!.intentions.length > 0 && (
+              <div>
+                <p className="text-[10px] font-extrabold text-muted-foreground tracking-[0.12em] uppercase mb-2">
+                  Ce que le poste cherche vraiment
+                </p>
+                <ul className="space-y-1">
+                  {parsedJob!.intentions.map((intent, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-foreground/70 italic">
+                      <span className="mt-2 w-1 h-1 rounded-full bg-muted-foreground/40 flex-shrink-0" />
+                      {intent}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Raw / cleaned text fallback */
+          <>
+            {!showRaw && wasCleaned && !hasParsed && (
+              <p className="text-[11px] text-muted-foreground mb-3">
+                Texte nettoye pour la lecture.
+              </p>
+            )}
+            <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
+              <pre className="whitespace-pre-wrap text-[12px] leading-relaxed text-foreground/85 font-sans">
+                {showRaw ? rawDisplay : textDisplay}
+              </pre>
+            </div>
+          </>
         )}
-        {showRaw && wasCleaned && (
-          <p className="text-[11px] text-muted-foreground mb-3">
-            Affichage brut du scrape. Pratique pour debugger, mais plus bruite.
-          </p>
-        )}
-        <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
-          <pre className="whitespace-pre-wrap text-[12px] leading-relaxed text-foreground/85 font-sans">
-            {displayText}
-          </pre>
-        </div>
       </div>
     </div>
   );
@@ -1597,6 +1729,36 @@ export default function Result() {
     scrapeStatus: run.jobPost?.url ? "success" : "not_attempted",
     scrapeMessage: run.jobPost?.url ? "Annonce recuperee pour ce run." : "Description collee manuellement.",
   }) as JobInputInfo;
+  const parsedJob: ParsedJobDisplay | undefined = (() => {
+    const unique = (items: unknown) => Array.from(new Set(
+      (Array.isArray(items) ? items : [])
+        .map(item => repairMojibake(String(item ?? "")).trim())
+        .filter(Boolean)
+    ));
+
+    const candidate: ParsedJobDisplay = {
+      title: repairMojibake(report?.jobTitle || ""),
+      company: repairMojibake(report?.jobCompany || ""),
+      seniority: repairMojibake(report?.jobSeniority || ""),
+      domain: repairMojibake(report?.jobDomain || ""),
+      positioning: repairMojibake(report?.positioning || ""),
+      responsibilities: unique(report?.detectedKeywords?.responsibilities),
+      requiredSkills: unique(report?.detectedKeywords?.requiredSkills),
+      criticalKeywords: unique(report?.detectedKeywords?.criticalKeywords),
+      intentions: unique(report?.intentions),
+      language: repairMojibake(report?.detectedLanguage || ""),
+    };
+
+    const hasContent =
+      Boolean(candidate.title) ||
+      Boolean(candidate.company) ||
+      candidate.responsibilities.length > 0 ||
+      candidate.requiredSkills.length > 0 ||
+      candidate.criticalKeywords.length > 0 ||
+      candidate.intentions.length > 0;
+
+    return hasContent ? candidate : undefined;
+  })();
   const modeMeta = MODE_META[run.mode] || MODE_META.polished;
 
   const pageTitle = repairMojibake([report?.jobTitle, report?.jobCompany].filter(Boolean).join(" - ") || "Tailored CV");
@@ -1781,7 +1943,7 @@ export default function Result() {
                   </TabsContent>
 
                   <TabsContent value="job" className="mt-0">
-                    <UsedJobPosting meta={jobInput} rawText={run?.jobPost?.rawText} url={jobUrl} />
+                    <UsedJobPosting meta={jobInput} rawText={run?.jobPost?.rawText} url={jobUrl} parsedJob={parsedJob} />
                   </TabsContent>
                 </Tabs>
               ) : (

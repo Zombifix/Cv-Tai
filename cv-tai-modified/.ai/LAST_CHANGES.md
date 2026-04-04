@@ -105,3 +105,9 @@
 - Fichiers : `.nvmrc`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
 - Impact : evite de rester sur `22.11.0` alors que `vite@7.3.x` demande `>=22.12.0`
 - Verification : a confirmer dans les prochains logs de build Railway
+
+### Result job tab structured summary
+- Quoi : finalisation de l'onglet `Annonce utilisee` en branchant une vue structuree derivee du report (`jobTitle`, `responsibilities`, `requiredSkills`, `criticalKeywords`, `intentions`) avant le texte brut, plus un durcissement local sur le message de scrape
+- Fichiers : `client/src/pages/result.tsx`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
+- Impact : le candidat voit d'abord une annonce lisible et synthetisee, sans perdre l'acces au texte scrape original quand il veut verifier la source
+- Verification : revue manuelle du diff; verification navigateur a faire sur un run avec `outputReportJson` complet
