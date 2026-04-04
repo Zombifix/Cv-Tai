@@ -776,7 +776,15 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
   const atsBoost = Math.max(0, atsOptimized - atsEvidence);
   const missionContextSupport = collectMissionContextSupport(selExps, job.criticalKeywords, postRules.evidenceKeywordsCovered);
   const contextSupport = job.criticalKeywords.length > 0 ? Math.round(missionContextSupport.contextOnlyKeywords.length / job.criticalKeywords.length * 100) : 0;
-  const weightedEvidenceCount = postRules.evidenceKeywordsCovered.length + missionContextSupport.contextOnlyKeywords.length * 0.5;
+  // Skills as partial evidence (0.5 weight): craft skills not in bullets but in the skills table count
+  const coveredNorms = new Set(postRules.evidenceKeywordsCovered.map(normalizeEvidenceText));
+  const skillNames = skills.map(s => normalizeEvidenceText(s.name));
+  const skillEvidenceCount = job.criticalKeywords.filter(kw => {
+    if (coveredNorms.has(normalizeEvidenceText(kw))) return false; // already counted as full evidence
+    const kwNorm = normalizeEvidenceText(kw);
+    return skillNames.some(sn => sn.length >= 3 && (sn.includes(kwNorm) || kwNorm.includes(sn)));
+  }).length;
+  const weightedEvidenceCount = postRules.evidenceKeywordsCovered.length + missionContextSupport.contextOnlyKeywords.length * 0.5 + skillEvidenceCount * 0.5;
   const evidenceScore = job.criticalKeywords.length > 0 ? Math.round(weightedEvidenceCount / job.criticalKeywords.length * 100) : atsEvidence;
   // Confidence should reflect what the source library really proves, with mission context as a secondary signal only.
   const semanticScore = Math.min(100, Math.round(avg * 100 / 120));
@@ -800,10 +808,14 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
     tips.push("Offre conseil : aucun bullet ne mentionne accompagnement ou structuration de pratiques.");
   }
 
-  // Role mismatch detection
+  // Role-family mismatch detection (extended)
   const jobTitleLow = job.title.toLowerCase();
+  const jobFullText = (jobTitleLow + " " + job.responsibilities.join(" ")).toLowerCase();
   const isPOJob = /\bproduct owner\b|\bpo\b|\bchef de produit\b|\bscrum master\b|\bproduct manager\b|\bpm\b/.test(jobTitleLow);
   const isDesignJob = /\bdesigner\b|\bux\b|\bui\b|\bdesign\b/.test(jobTitleLow);
+  const isRetailSalesJob = /sales floor|client portfolio|portefeuille client|objectifs de vente|sales target|clienteling|floor manager|vente boutique|coaching.{0,20}equipe de vente|vendeur/.test(jobFullText);
+  const isPMJob = /chef de projet|project manager\b|programme manager|delivery manager|pilotage.{0,20}projet|jalons|livrables|moa\b|moe\b/.test(jobTitleLow);
+  const isDataJob = /\bdata analyst\b|\bdata scientist\b|\bdata engineer\b|\bBI\b|power bi|tableau\b|machine learning|statistiques?\b/.test(jobTitleLow);
   const userIsDesigner = allBullets.some(b => /figma|maquett|prototype|design system|ux|ui|parcours|wireframe/i.test(b.bullet.text));
   const userIsPO = allBullets.some(b => /backlog|sprint|user stor|roadmap|priorisation|epic|okr/i.test(b.bullet.text));
 
@@ -811,10 +823,22 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
     tips.push("Attention : ce poste est Product Owner/PM. Tes bullets sont orientes design. Le match est partiel, mais la gestion de backlog est absente.");
   }
   if (isDesignJob && userIsPO && !userIsDesigner) {
-    tips.push("Attention : ce poste est Design mais tes bullets sont orientÃ©s Product/PO. Le match UX craft est limitÃ©.");
+    tips.push("Attention : ce poste est Design mais tes bullets sont orientes Product/PO. Le match UX craft est limite.");
+  }
+  if (isRetailSalesJob && userIsDesigner) {
+    tips.push("Ce poste est en gestion d'equipe retail / vente — pas en design produit. Le score faible est attendu et reflete la realite. Ce type de role necessite une experience de management terrain et de coaching commercial.");
+  }
+  if (isPMJob && userIsDesigner && !userIsPO) {
+    tips.push("Ce poste est en pilotage de projet (IT/DSI). Ton profil est design. Les competences de structuration et d'alignement se transferent, mais la methodologie projet formelle est absente de ta bibliotheque.");
+  }
+  if (isDataJob && userIsDesigner) {
+    tips.push("Ce poste est en data / analytics. Ton profil est design. L'approche data-driven peut se retrouver, mais les competences techniques (SQL, BI, stats) sont absentes de ta bibliotheque.");
   }
 
-  const domainMismatch = isPOJob && userIsDesigner && !userIsPO ? "PO/PM vs Designer"
+  const domainMismatch = isRetailSalesJob && userIsDesigner ? "retail-sales"
+    : isPMJob && userIsDesigner && !userIsPO ? "project-management"
+    : isDataJob && userIsDesigner ? "data-analytics"
+    : isPOJob && userIsDesigner && !userIsPO ? "PO/PM vs Designer"
     : isDesignJob && userIsPO && !userIsDesigner ? "Designer vs PO"
     : undefined;
   const cappedByKeywords = critKwHardCap < 100 && rawConfidence > critKwHardCap;
@@ -844,6 +868,12 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
     whatMissing.push("Tes bullets montrent surtout du design craft, pas assez de pilotage produit, backlog ou priorisation.");
   } else if (domainMismatch === "Designer vs PO") {
     whatMissing.push("Tes bullets montrent surtout du pilotage produit, pas assez de craft UX/UI ou de design execution.");
+  } else if (domainMismatch === "retail-sales") {
+    whatMissing.push("Ce poste est en management commercial terrain (coaching equipe de vente, objectifs, client portfolio) — domaine different du design produit.");
+  } else if (domainMismatch === "project-management") {
+    whatMissing.push("Ce poste demande de la methodologie projet formelle (jalons, livrables, MOE/MOA, pilotage de planning) — absente de ta bibliotheque design.");
+  } else if (domainMismatch === "data-analytics") {
+    whatMissing.push("Ce poste demande des competences techniques data (SQL, BI, stats, machine learning) — hors du perimetre design produit.");
   }
   if (topMissingKeywords.length > 0) {
     whatMissing.push(`Les competences metier critiques ${joinNatural(topMissingKeywords)} ne ressortent pas assez dans le CV genere.`);
@@ -862,7 +892,13 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
   let verdict: string;
   if (domainMismatch) {
     primaryDiagnosis = "Mismatch de metier";
-    verdict = "Profil adjacent : une partie de ton experience se transfere, mais le coeur du role demande est different.";
+    verdict = domainMismatch === "retail-sales"
+      ? "Hors domaine : ce poste est en vente retail, pas en design produit. Le score faible est une information utile, pas un bug."
+      : domainMismatch === "project-management"
+      ? "Domaine adjacent : certaines competences se transferent (structuration, alignement), mais le coeur chef de projet est absent de ta bibliotheque."
+      : domainMismatch === "data-analytics"
+      ? "Hors domaine : ce poste demande des competences data technique qui ne font pas partie de ton profil design."
+      : "Profil adjacent : une partie de ton experience se transfere, mais le coeur du role demande est different.";
   } else if (cappedByKeywords || cappedByEvidence || evidenceScore < 40 || topMissingKeywords.length >= 2) {
     primaryDiagnosis = "Competences metier critiques absentes";
     verdict = evidenceGapIsHigh
@@ -881,9 +917,22 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
 
   const nextActions: string[] = [];
   if (primaryDiagnosis === "Mismatch de metier") {
-    if (jobTitleLow.includes("product")) nextActions.push("Ajoute des bullets ancres dans backlog, roadmap, priorisation ou delivery produit.");
-    else nextActions.push(`Ajoute des bullets ancres dans ${joinNatural(job.criticalKeywords.slice(0, 3)) || "les attendus coeur metier du poste"}.`);
-    nextActions.push("Garde les experiences transferables, mais prouve davantage le coeur du metier vise.");
+    if (domainMismatch === "retail-sales") {
+      nextActions.push("Ce poste necessite une experience de management d'equipe de vente terrain. Si tu vises ce secteur, construis d'abord cette experience.");
+      nextActions.push("Concentre-toi sur des postes design produit ou UX Lead ou ce profil est directement valorise.");
+    } else if (domainMismatch === "project-management") {
+      nextActions.push("Si tu vises la gestion de projet, ajoute des bullets qui montrent pilotage, jalons, budget ou reporting de projet.");
+      nextActions.push("Les experiences de structuration et d'alignement se valorisent mieux sur des postes design lead ou product.");
+    } else if (domainMismatch === "data-analytics") {
+      nextActions.push("Si tu vises la data, il faut construire des competences techniques (SQL, Python, BI) avant de postuler.");
+      nextActions.push("Des postes UX Research ou Product Analytics sont plus accessibles depuis un profil design.");
+    } else if (jobTitleLow.includes("product")) {
+      nextActions.push("Ajoute des bullets ancres dans backlog, roadmap, priorisation ou delivery produit.");
+      nextActions.push("Garde les experiences transferables, mais prouve davantage le coeur du metier vise.");
+    } else {
+      nextActions.push(`Ajoute des bullets ancres dans ${joinNatural(job.criticalKeywords.slice(0, 3)) || "les attendus coeur metier du poste"}.`);
+      nextActions.push("Garde les experiences transferables, mais prouve davantage le coeur du metier vise.");
+    }
   } else if (primaryDiagnosis === "Competences metier critiques absentes") {
     nextActions.push(`Fais remonter explicitement ${joinNatural(topMissingKeywords.length ? topMissingKeywords : job.criticalKeywords.slice(0, 3))} dans tes bullets ou dans ta bibliotheque.`);
     nextActions.push("Ajoute 2 ou 3 bullets qui montrent ces competences dans un contexte reel, pas seulement en liste de skills.");

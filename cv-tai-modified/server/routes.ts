@@ -97,6 +97,33 @@ function getScrapeFailureMessage(url?: string, blocked?: boolean): string {
     : "Impossible de recuperer le contenu de cette URL. Colle le texte de l'annonce pour continuer.";
 }
 
+function assessJobTextQuality(text: string): { ok: boolean; warning?: string } {
+  const lower = text.toLowerCase();
+  const JOB_SIGNALS = [
+    "mission", "responsabilit", "profil", "requis", "experience", "competence",
+    "description du poste", "vous serez", "vous aurez", "votre role", "about the role",
+    "responsibilities", "requirements", "qualifications", "you will", "we are looking",
+    "poste", "missions", "activites", "objectifs", "perimetre",
+  ];
+  const PERK_SIGNALS = [
+    "alan", "swile", "titre-restaurant", "ticket restaurant", "ticket-restaurant",
+    "full remote", "teletravail", "mutuelle", "stock option", "rtt ",
+    "seminaire", "onboarding", "avantage", "benefits", "package salarial",
+    "bien-etre", "flexi", "conges", "prime",
+  ];
+  const jobScore = JOB_SIGNALS.filter(s => lower.includes(s)).length;
+  const perkScore = PERK_SIGNALS.filter(s => lower.includes(s)).length;
+  // Guard: short but legitimate job posts (startup style)
+  if (text.length > 600 && jobScore >= 2) return { ok: true };
+  if (jobScore === 0 && perkScore >= 3) {
+    return { ok: false, warning: "Le contenu recupere semble incomplet (avantages uniquement, sans description du poste). Colle le texte complet de l'annonce pour continuer." };
+  }
+  if (jobScore <= 1 && perkScore > 0 && perkScore >= jobScore * 2) {
+    return { ok: false, warning: "L'annonce recuperee semble partielle. Colle le texte integral de l'annonce pour un scoring fiable." };
+  }
+  return { ok: true };
+}
+
 function isBlockedScrapeText(text: string): boolean {
   const lowerText = text.toLowerCase();
   return lowerText.includes("cloudflare") ||
@@ -226,6 +253,14 @@ async function resolveJobInput(params: { url?: string; text?: string; extraConte
     metadata.scrapeStatus = "blocked";
     metadata.scrapeMessage = getScrapeFailureMessage(normalizedUrl, true);
     return { ok: false, effectiveJobText: "", metadata, errorMessage: metadata.scrapeMessage };
+  }
+
+  // Quality gate: detect perks-only or partial scrapes
+  const qualityCheck = assessJobTextQuality(effectiveJobText);
+  if (!qualityCheck.ok) {
+    metadata.scrapeStatus = "failed";
+    metadata.scrapeMessage = qualityCheck.warning!;
+    return { ok: false, effectiveJobText: "", metadata, errorMessage: qualityCheck.warning! };
   }
 
   if (params.extraContext?.trim()) {
