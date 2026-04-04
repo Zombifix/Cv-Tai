@@ -756,6 +756,7 @@ type JobInputInfo = {
   sourceType?: "url" | "text";
   normalizedUrl?: string;
   scrapeStatus?: "success" | "blocked" | "failed" | "not_attempted";
+  scrapeQuality?: "good" | "uncertain" | "bad";
   scrapeMessage?: string;
 };
 
@@ -764,6 +765,19 @@ function sourceBadge(meta?: JobInputInfo) {
     return meta.scrapeStatus === "success" ? "URL scrapee" : "URL fournie";
   }
   return "Texte colle";
+}
+
+function scrapeQualityMeta(meta?: JobInputInfo) {
+  switch (meta?.scrapeQuality) {
+    case "good":
+      return { label: "Scrape fiable", className: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" };
+    case "uncertain":
+      return { label: "Scrape a verifier", className: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" };
+    case "bad":
+      return { label: "Scrape faible", className: "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400" };
+    default:
+      return null;
+  }
 }
 
 function MatchDiagnosisCard({ fitOffer, diagnosis, fallbackUsed, scoreBreakdown }: { fitOffer: number; diagnosis?: ReportDiagnosis; fallbackUsed?: boolean; scoreBreakdown?: ReportScoreBreakdown }) {
@@ -923,6 +937,7 @@ function UsedJobPosting({
 }) {
   const hasParsed = Boolean(parsedJob && parsedJob.responsibilities.length > 0);
   const [showRaw, setShowRaw] = useState(false);
+  const qualityMeta = scrapeQualityMeta(meta);
   const cleanedText = cleanJobPostingForAnalysis(rawText);
   const rawDisplay = trimBlock(rawText) || "Aucun texte d'annonce sauvegarde pour ce run.";
   const textDisplay = cleanedText || rawDisplay;
@@ -934,6 +949,11 @@ function UsedJobPosting({
         <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
           <Globe className="w-3 h-3" /> {sourceBadge(meta)}
         </span>
+        {qualityMeta && (
+          <span className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full font-semibold ${qualityMeta.className}`}>
+            {qualityMeta.label}
+          </span>
+        )}
         {meta?.scrapeStatus && (
           <span className="text-[11px] text-muted-foreground">{repairMojibake(meta.scrapeMessage || "")}</span>
         )}
@@ -1352,6 +1372,7 @@ function buildAnalysisPayload({
     jobInput: {
       sourceType: jobInput?.sourceType || "unknown",
       scrapeStatus: jobInput?.scrapeStatus || "unknown",
+      scrapeQuality: jobInput?.scrapeQuality || "unknown",
       scrapeMessage: trimBlock(jobInput?.scrapeMessage) || "n/a",
       normalizedUrl: trimBlock(jobInput?.normalizedUrl || run?.jobPost?.url) || "n/a",
     },
@@ -1502,6 +1523,7 @@ function buildAnalysisExport({
     "## Job Input",
     `- Source type: ${payload.jobInput.sourceType}`,
     `- Scrape status: ${payload.jobInput.scrapeStatus}`,
+    `- Scrape quality: ${payload.jobInput.scrapeQuality}`,
     `- Scrape message: ${payload.jobInput.scrapeMessage}`,
     `- Source URL: ${payload.jobInput.normalizedUrl}`,
     "",
@@ -1727,6 +1749,7 @@ export default function Result() {
     sourceType: run.jobPost?.url ? "url" : "text",
     normalizedUrl: run.jobPost?.url,
     scrapeStatus: run.jobPost?.url ? "success" : "not_attempted",
+    scrapeQuality: "good",
     scrapeMessage: run.jobPost?.url ? "Annonce recuperee pour ce run." : "Description collee manuellement.",
   }) as JobInputInfo;
   const parsedJob: ParsedJobDisplay | undefined = (() => {
@@ -1943,7 +1966,7 @@ export default function Result() {
                   </TabsContent>
 
                   <TabsContent value="job" className="mt-0">
-                    <UsedJobPosting meta={jobInput} rawText={run?.jobPost?.rawText} url={jobUrl} parsedJob={parsedJob} />
+                    <UsedJobPosting meta={jobInput} rawText={run?.jobPost?.rawText || undefined} url={jobUrl || undefined} parsedJob={parsedJob} />
                   </TabsContent>
                 </Tabs>
               ) : (

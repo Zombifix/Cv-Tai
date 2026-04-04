@@ -67,8 +67,9 @@ export default function Tailor() {
   const [introMaxChars, setIntroMaxChars] = useState("");
   const [bodyMaxChars, setBodyMaxChars] = useState("");
   const [extraContext, setExtraContext] = useState("");
-  const [pendingConfirm, setPendingConfirm] = useState<{ score: number; jobTitle: string } | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<{ score: number; jobTitle: string; message?: string } | null>(null);
   const [scrapeFailReason, setScrapeFailReason] = useState<string | null>(null);
+  const [scrapeNotice, setScrapeNotice] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -116,6 +117,8 @@ export default function Tailor() {
     const { url: normalized, converted } = normalizeLinkedInUrl(value);
     setUrl(normalized);
     setUrlConverted(converted);
+    setScrapeFailReason(null);
+    setScrapeNotice(null);
   };
 
   const doGenerate = async () => {
@@ -130,7 +133,7 @@ export default function Tailor() {
         bodyMaxChars: bodyChars && bodyChars >= 500 ? bodyChars : undefined,
         extraContext: extraContext.trim() || undefined,
       });
-      toast({ title: "CV généré", description: "Ton CV a été optimisé !" });
+      toast({ title: "CV genere", description: "Ton CV a ete optimise !" });
       setLocation(`/results/${run.id}`);
     } catch (err) {
       toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
@@ -150,8 +153,17 @@ export default function Tailor() {
         text: text || undefined,
         extraContext: extraContext.trim() || undefined,
       });
-      if (check.preliminaryConfidence < 40) {
-        setPendingConfirm({ score: check.preliminaryConfidence, jobTitle: check.jobTitle });
+      setScrapeNotice(
+        check.jobInput?.scrapeQuality === "uncertain"
+          ? (check.jobInput.scrapeMessage || "Annonce partiellement bruitee: le score est a lire avec prudence.")
+          : null,
+      );
+      if (check.shouldWarn) {
+        setPendingConfirm({
+          score: check.preliminaryConfidence,
+          jobTitle: check.jobTitle,
+          message: check.warningMessage,
+        });
         return;
       }
     } catch (err) {
@@ -229,13 +241,25 @@ export default function Tailor() {
                         <span>{scrapeFailReason} Colle le texte ici pour continuer.</span>
                       </div>
                     )}
+                    {!scrapeFailReason && scrapeNotice && (
+                      <div className="flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700/50 p-3 rounded-lg">
+                        <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                        <span>{scrapeNotice}</span>
+                      </div>
+                    )}
                     <div className="relative">
                       <FileText className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
                       <Textarea
                         placeholder="Colle le texte brut de l'annonce ici..."
                         className="pl-10 pt-3 min-h-[140px] bg-background text-base rounded-xl resize-y"
                         value={text}
-                        onChange={e => { setText(e.target.value); if (e.target.value) setScrapeFailReason(null); }}
+                        onChange={e => {
+                          setText(e.target.value);
+                          if (e.target.value) {
+                            setScrapeFailReason(null);
+                            setScrapeNotice(null);
+                          }
+                        }}
                       />
                     </div>
                   </div>
@@ -350,9 +374,9 @@ export default function Tailor() {
                   {checkMatch.isPending ? (
                     <><RefreshCw className="w-5 h-5 mr-2 animate-spin" /> Analyse du match...</>
                   ) : generate.isPending ? (
-                    <><RefreshCw className="w-5 h-5 mr-2 animate-spin" /> Génération en cours...</>
+                    <><RefreshCw className="w-5 h-5 mr-2 animate-spin" /> Generation en cours...</>
                   ) : (
-                    <><WandSparkles className="w-5 h-5 mr-2" /> Générer le CV</>
+                    <><WandSparkles className="w-5 h-5 mr-2" /> Generer le CV</>
                   )}
                 </Button>
               </form>
@@ -365,14 +389,17 @@ export default function Tailor() {
       <AlertDialog open={!!pendingConfirm} onOpenChange={(open) => { if (!open) setPendingConfirm(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Match faible — générer quand même ?</AlertDialogTitle>
+            <AlertDialogTitle>Pre-check prudent - generer quand meme ?</AlertDialogTitle>
             <AlertDialogDescription className="space-y-2">
               <span className="block">
-                Match estimé : <strong className="text-red-600 dark:text-red-400">{pendingConfirm?.score}%</strong>
+                Match estime : <strong className="text-red-600 dark:text-red-400">{pendingConfirm?.score}%</strong>
                 {pendingConfirm?.jobTitle && <> pour <em>{pendingConfirm.jobTitle}</em></>}.
               </span>
               <span className="block text-muted-foreground">
-                Ton profil correspond peu à ce poste. Le CV généré risque d'être peu pertinent et de consommer des crédits IA pour un résultat limité.
+                {pendingConfirm?.message ? (
+                  <span className="block mb-1">{pendingConfirm.message}</span>
+                ) : null}
+                Ton profil correspond peu a ce poste. Le CV genere risque d'etre peu pertinent et de consommer des credits IA pour un resultat limite.
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -382,7 +409,7 @@ export default function Tailor() {
               onClick={async () => { setPendingConfirm(null); await doGenerate(); }}
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
             >
-              Générer quand même
+              Generer quand meme
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

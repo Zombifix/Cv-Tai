@@ -53,7 +53,21 @@ export function useCheckMatch() {
         const errData = await res.json().catch(() => ({}));
         throw new Error((errData as any).message || "Check failed");
       }
-      return res.json() as Promise<{ preliminaryConfidence: number; criticalKeywords: string[]; positioning: string; jobTitle: string }>;
+      return res.json() as Promise<{
+        preliminaryConfidence: number;
+        criticalKeywords: string[];
+        positioning: string;
+        jobTitle: string;
+        viability: "good" | "viable" | "uncertain" | "weak";
+        shouldWarn: boolean;
+        warningMessage?: string;
+        precheckMode: "fast" | "deep";
+        jobInput?: {
+          scrapeQuality?: "good" | "uncertain" | "bad";
+          scrapeMessage?: string;
+          scrapeStatus?: "success" | "blocked" | "failed" | "not_attempted";
+        };
+      }>;
     },
   });
 }

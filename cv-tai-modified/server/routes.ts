@@ -75,6 +75,7 @@ type JobInputMetadata = {
   sourceType: "url" | "text";
   normalizedUrl?: string;
   scrapeStatus: "success" | "blocked" | "failed" | "not_attempted";
+  scrapeQuality: "good" | "uncertain" | "bad";
   scrapeMessage: string;
 };
 
@@ -97,8 +98,36 @@ function getScrapeFailureMessage(url?: string, blocked?: boolean): string {
     : "Impossible de recuperer le contenu de cette URL. Colle le texte de l'annonce pour continuer.";
 }
 
-function assessJobTextQuality(text: string): { ok: boolean; warning?: string } {
+function suspiciousEncodingCount(text: string): number {
+  return (text.match(/Ã|Â|â€™|â€œ|â€|â€“|â€”|�/g) || []).length;
+}
+
+function repairScrapeEncoding(text: string): string {
+  let repaired = String(text ?? "");
+  const beforeScore = suspiciousEncodingCount(repaired);
+
+  if (beforeScore > 0) {
+    try {
+      const decoded = Buffer.from(repaired, "latin1").toString("utf8");
+      if (decoded && suspiciousEncodingCount(decoded) < beforeScore) {
+        repaired = decoded;
+      }
+    } catch {}
+  }
+
+  return repaired.normalize("NFKC");
+}
+
+type JobTextQualityAssessment = {
+  ok: boolean;
+  quality: "good" | "uncertain" | "bad";
+  warning?: string;
+  note?: string;
+};
+
+function assessJobTextQualityLegacy(text: string) {
   const lower = text.toLowerCase();
+  const lines = text.split("\n").map(line => line.trim()).filter(Boolean);
   const JOB_SIGNALS = [
     "mission", "responsabilit", "profil", "requis", "experience", "competence",
     "description du poste", "vous serez", "vous aurez", "votre role", "about the role",
@@ -125,6 +154,21 @@ function assessJobTextQuality(text: string): { ok: boolean; warning?: string } {
   const jobScore = JOB_SIGNALS.filter(s => lower.includes(s)).length;
   const perkScore = PERK_SIGNALS.filter(s => lower.includes(s)).length;
   const formScore = FORM_SIGNALS.filter(s => lower.includes(s)).length;
+  const uniqueLineRatio = lines.length > 0
+    ? new Set(lines.map(line => line.toLowerCase())).size / lines.length
+    : 1;
+  const noiseScore = [
+    "cookie",
+    "cookies",
+    "axeptio",
+    "gestion des cookies",
+    "se connecter",
+    "postuler",
+    "sauvegarder",
+    "partager",
+    "non merci",
+  ].filter(signal => lower.includes(signal)).length;
+  const repeatedContent = lines.length >= 8 && uniqueLineRatio < 0.75;
 
   // Application form detection — checked before all other guards
   if (formScore >= 3) {
@@ -143,6 +187,105 @@ function assessJobTextQuality(text: string): { ok: boolean; warning?: string } {
     return { ok: false, warning: "L'annonce recuperee semble partielle. Colle le texte integral de l'annonce pour un scoring fiable." };
   }
   return { ok: true };
+}
+
+function assessJobTextQuality(text: string): JobTextQualityAssessment {
+  const lower = text.toLowerCase();
+  const lines = text.split("\n").map(line => line.trim()).filter(Boolean);
+  const JOB_SIGNALS = [
+    "mission", "responsabilit", "profil", "requis", "experience", "competence",
+    "description du poste", "vous serez", "vous aurez", "votre role", "about the role",
+    "responsibilities", "requirements", "qualifications", "you will", "we are looking",
+    "poste", "missions", "activites", "objectifs", "perimetre",
+  ];
+  const PERK_SIGNALS = [
+    "alan", "swile", "titre-restaurant", "ticket restaurant", "ticket-restaurant",
+    "full remote", "teletravail", "mutuelle", "stock option", "rtt ",
+    "seminaire", "onboarding", "avantage", "benefits", "package salarial",
+    "bien-etre", "flexi", "conges", "prime",
+  ];
+  const FORM_SIGNALS = [
+    "postuler", "candidater", "soumettre ma candidature", "submit application",
+    "votre cv", "upload cv", "upload your cv", "telecharger votre cv",
+    "formulaire de candidature", "application form", "apply now",
+    "deja postule", "already applied", "je postule",
+    "etape 1", "step 1 of", "step 1:",
+    "prenom *", "nom *", "email *", "telephone *",
+    "type de contrat souhait", "lettre de motivation", "disponibilit",
+    "pieces jointes", "attach", "browse files",
+  ];
+  const jobScore = JOB_SIGNALS.filter(s => lower.includes(s)).length;
+  const perkScore = PERK_SIGNALS.filter(s => lower.includes(s)).length;
+  const formScore = FORM_SIGNALS.filter(s => lower.includes(s)).length;
+  const uniqueLineRatio = lines.length > 0
+    ? new Set(lines.map(line => line.toLowerCase())).size / lines.length
+    : 1;
+  const noiseScore = [
+    "cookie",
+    "cookies",
+    "axeptio",
+    "gestion des cookies",
+    "se connecter",
+    "postuler",
+    "sauvegarder",
+    "partager",
+    "non merci",
+  ].filter(signal => lower.includes(signal)).length;
+  const repeatedContent = lines.length >= 8 && uniqueLineRatio < 0.75;
+
+  if (formScore >= 3) {
+    return {
+      ok: false,
+      quality: "bad",
+      warning: "Le lien pointe vers un formulaire de candidature, pas vers l'annonce. Reviens sur la page de l'offre et copie le texte de la description du poste.",
+    };
+  }
+  if (formScore >= 2 && jobScore <= 2) {
+    return {
+      ok: false,
+      quality: "bad",
+      warning: "Le contenu recupere ressemble a un formulaire de candidature plutot qu'a une description de poste. Colle directement le texte de l'annonce.",
+    };
+  }
+  if (jobScore === 0 && perkScore >= 3) {
+    return {
+      ok: false,
+      quality: "bad",
+      warning: "Le contenu recupere semble incomplet (avantages uniquement, sans description du poste). Colle le texte complet de l'annonce pour continuer.",
+    };
+  }
+  if (jobScore <= 1 && perkScore > 0 && perkScore >= Math.max(2, jobScore * 2)) {
+    return {
+      ok: false,
+      quality: "bad",
+      warning: "L'annonce recuperee semble partielle. Colle le texte integral de l'annonce pour un scoring fiable.",
+    };
+  }
+  if (text.length < 260 || (jobScore === 0 && lines.length < 8)) {
+    return {
+      ok: false,
+      quality: "bad",
+      warning: "Le contenu recupere est trop court ou incomplet pour une analyse fiable. Colle le texte complet de l'annonce.",
+    };
+  }
+
+  const likelyUsable = text.length > 600 && jobScore >= 2 && noiseScore <= 2 && !repeatedContent;
+  if (likelyUsable) {
+    return { ok: true, quality: "good" };
+  }
+  if (jobScore >= 2) {
+    return {
+      ok: true,
+      quality: "uncertain",
+      note: "Annonce partiellement bruitee ou incomplete: le scoring reste possible, mais la lecture peut etre moins fiable.",
+    };
+  }
+
+  return {
+    ok: true,
+    quality: "uncertain",
+    note: "Annonce lisible mais peu structuree: le scoring repose sur des signaux partiels.",
+  };
 }
 
 function isBlockedScrapeText(text: string): boolean {
@@ -185,7 +328,7 @@ const JOB_TEXT_NOISE_PATTERNS = [
 ];
 
 function sanitizeJobText(rawText: string): string {
-  const normalized = rawText.replace(/\r/g, "").trim();
+  const normalized = repairScrapeEncoding(rawText).replace(/\r/g, "").trim();
   if (!normalized) return normalized;
 
   let lines = normalized
@@ -210,7 +353,15 @@ function sanitizeJobText(rawText: string): string {
   }
 
   const filtered = lines.filter(line => !JOB_TEXT_NOISE_PATTERNS.some(pattern => pattern.test(line)));
-  return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, 8000);
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+  for (const line of filtered) {
+    const signature = line.toLowerCase();
+    if (signature.length >= 8 && seen.has(signature)) continue;
+    if (signature.length >= 8) seen.add(signature);
+    deduped.push(line);
+  }
+  return deduped.join("\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, 8000);
 }
 
 async function resolveJobInput(params: { url?: string; text?: string; extraContext?: string }): Promise<ResolvedJobInput> {
@@ -220,6 +371,7 @@ async function resolveJobInput(params: { url?: string; text?: string; extraConte
     sourceType: effectiveJobText ? "text" : "url",
     normalizedUrl,
     scrapeStatus: effectiveJobText ? "not_attempted" : "failed",
+    scrapeQuality: effectiveJobText ? "good" : "bad",
     scrapeMessage: effectiveJobText
       ? "Description collee manuellement."
       : normalizedUrl
@@ -278,10 +430,14 @@ async function resolveJobInput(params: { url?: string; text?: string; extraConte
 
   // Quality gate: detect perks-only or partial scrapes
   const qualityCheck = assessJobTextQuality(effectiveJobText);
+  metadata.scrapeQuality = qualityCheck.quality;
   if (!qualityCheck.ok) {
     metadata.scrapeStatus = "failed";
     metadata.scrapeMessage = qualityCheck.warning!;
     return { ok: false, effectiveJobText: "", metadata, errorMessage: qualityCheck.warning! };
+  }
+  if (qualityCheck.quality === "uncertain" && qualityCheck.note) {
+    metadata.scrapeMessage = qualityCheck.note;
   }
 
   if (params.extraContext?.trim()) {
@@ -290,7 +446,9 @@ async function resolveJobInput(params: { url?: string; text?: string; extraConte
 
   if (metadata.sourceType === "url" && metadata.scrapeStatus !== "success") {
     metadata.scrapeStatus = "success";
-    metadata.scrapeMessage = "Annonce recuperee et prete a etre tailoree.";
+    metadata.scrapeMessage = metadata.scrapeQuality === "uncertain"
+      ? metadata.scrapeMessage
+      : "Annonce recuperee et prete a etre tailoree.";
   }
 
   return { ok: true, effectiveJobText, metadata };
@@ -1108,11 +1266,33 @@ JSON uniquement :
       }
       const allExps = await storage.getExperiences();
       const allBullets = await storage.getAllBullets();
+      const allSkills = await storage.getSkills();
       if (allExps.length === 0) return res.status(400).json({ message: "Bibliotheque vide." });
-      const result = await runFastDryRun({
+      const fastResult = await runFastDryRun({
         jobText: resolvedInput.effectiveJobText,
         allExperiences: allExps, allBullets,
       });
+      let result = fastResult;
+
+      if (openai && (fastResult.viability === "weak" || fastResult.viability === "uncertain")) {
+        result = await runDryRunCheck({
+          jobText: resolvedInput.effectiveJobText,
+          mode: "original",
+          bodyMaxChars: 3500,
+          allExperiences: allExps,
+          allBullets,
+          allSkills,
+        }, openai);
+      }
+
+      if (resolvedInput.metadata.scrapeQuality !== "good" && result.shouldWarn) {
+        result = {
+          ...result,
+          shouldWarn: false,
+          warningMessage: "Le pre-check reste incertain car l'annonce recuperee est partiellement bruitee. Tu peux continuer, mais le score est a lire avec prudence.",
+        };
+      }
+
       res.json({ ...result, jobInput: resolvedInput.metadata });
     } catch (e: any) {
       console.error("[CHECK-MATCH] Error:", e.message);

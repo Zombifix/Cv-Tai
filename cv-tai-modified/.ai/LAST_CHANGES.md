@@ -76,6 +76,30 @@
 
 ## 2026-04-04
 
+### Reliability update - scrape quality and pre-check softening
+- Quoi : ajout d'un vrai signal de qualite de scrape (`good` / `uncertain` / `bad`), reparation d'encodage et dedup des lignes dans `sanitizeJobText`, puis enrichissement de `/api/check-match` avec un pre-check nuance (`viability`, `shouldWarn`, `warningMessage`, `precheckMode`) et fallback vers `runDryRunCheck` quand le fast check hesite
+- Fichiers : `server/routes.ts`, `server/tailoring-engine.ts`, `client/src/hooks/use-tailor.ts`, `client/src/pages/tailor.tsx`, `client/src/pages/result.tsx`, `.ai/TODO.md`
+- Impact : le formulaire Tailor ne doit plus afficher des warnings absurdes sur des offres viables, les annonces partiellement bruitees sont explicites, et l'UI Result expose maintenant la fiabilite du scrape au lieu de laisser penser que toutes les sources se valent
+- Verification : `git diff --check`; verification runtime a faire sur des cas reels avec annonce propre vs annonce bruitee, plus comparaison pre-check avant/apres sur le corpus existant
+
+### Reliability update - baseline non-regression hardening
+- Quoi : le baseline interne du pipeline est reconstruit explicitement en mode `original`, puis le candidat `polished` n'est retenu que s'il n'est pas inferieur au baseline sur `fitOffer` ET `confidence`
+- Fichiers : `server/tailoring-engine.ts`
+- Impact : reduit fortement le risque de voir un run `optimise` sortir moins bon qu'un run `fidele` a contenu equivalent
+- Verification : revue manuelle du diff; verification runtime a faire sur une meme offre en `fidele` puis `optimise`
+
+### TypeScript baseline restored
+- Quoi : installation locale des deps de dev pour relancer le check, ajout de `target: ES2020` dans `tsconfig.json`, declaration minimale pour `pdf-parse`, et correction de deux details de typage (`Result` + `insertUserSchema`)
+- Fichiers : `tsconfig.json`, `shared/pdf-parse.d.ts`, `shared/schema.ts`, `client/src/pages/result.tsx`
+- Impact : `npm run check` repasse au vert et le repo retrouve une base de verification locale fiable pour les prochaines modifs
+- Verification : `npm run check`
+
+### Final pre-push cleanup
+- Quoi : correction des derniers libelles visibles mojibake dans `tailor.tsx`, ajout de `dist/` au `.gitignore`, et verification finale complete du repo avant push
+- Fichiers : `client/src/pages/tailor.tsx`, `.gitignore`
+- Impact : la page Tailor n'affiche plus de texte casse dans le toast, le CTA ou le dialog de pre-check, et les artefacts de build ne polluent plus le worktree
+- Verification : `git diff --check`, `npm run check`, `npm run build`
+
 ### Tailor coherence pass for duplicated offers
 - Quoi : stabilisation des `criticalKeywords` a partir du `roleFrame` / `requiredSkills`, filtrage des faux keywords critiques (diplomes / signaux RH), et matching canonique par synonymes dans le scoring / post-rules / dry-run
 - Fichiers : `server/tailoring-engine.ts`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`

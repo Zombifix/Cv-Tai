@@ -1021,7 +1021,42 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
 }
 
 // â”€â”€â”€ Dry Run Check (steps 1-4 only, no CV generation, no DB save) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-export interface DryRunResult { preliminaryConfidence: number; criticalKeywords: string[]; positioning: string; jobTitle: string; }
+export interface DryRunResult {
+  preliminaryConfidence: number;
+  criticalKeywords: string[];
+  positioning: string;
+  jobTitle: string;
+  viability: "good" | "viable" | "uncertain" | "weak";
+  shouldWarn: boolean;
+  warningMessage?: string;
+  precheckMode: "fast" | "deep";
+}
+
+function getPrecheckViability(score: number): DryRunResult["viability"] {
+  if (score >= 60) return "good";
+  if (score >= 35) return "viable";
+  if (score >= 18) return "uncertain";
+  return "weak";
+}
+
+function getPrecheckMeta(score: number): Pick<DryRunResult, "viability" | "shouldWarn" | "warningMessage"> {
+  const viability = getPrecheckViability(score);
+  if (viability === "weak") {
+    return {
+      viability,
+      shouldWarn: true,
+      warningMessage: "Le pre-check trouve tres peu de preuves directes dans ton CV actuel. Tu peux continuer, mais le match parait faible a ce stade.",
+    };
+  }
+  if (viability === "uncertain") {
+    return {
+      viability,
+      shouldWarn: false,
+      warningMessage: "Le pre-check est incertain: ton profil peut rester viable, mais l'annonce demande probablement une lecture plus fine.",
+    };
+  }
+  return { viability, shouldWarn: false };
+}
 
 export async function runDryRunCheck(input: Pick<TailorInput, "jobText" | "mode" | "bodyMaxChars" | "allExperiences" | "allBullets" | "allSkills">, openai: OpenAI): Promise<DryRunResult> {
   log("â•â•â•â•â•â• Dry Run Check (steps 1-4) â•â•â•â•â•â•");
@@ -1041,8 +1076,16 @@ export async function runDryRunCheck(input: Pick<TailorInput, "jobText" | "mode"
   const rawConfidence = Math.round(avg * 0.45 + kwCov * 0.45 + bulletBonus);
   const critKwHardCap = parsedJob.criticalKeywords.length >= 4 && kwCov < 25 ? 40 : 100;
   const preliminaryConfidence = Math.min(critKwHardCap, Math.min(100, rawConfidence));
+  const precheckMeta = getPrecheckMeta(preliminaryConfidence);
   log(`Dry Run Done â€” ${preliminaryConfidence}% | ${parsedJob.positioning}`);
-  return { preliminaryConfidence, criticalKeywords: parsedJob.criticalKeywords, positioning: parsedJob.positioning, jobTitle: parsedJob.title };
+  return {
+    preliminaryConfidence,
+    criticalKeywords: parsedJob.criticalKeywords,
+    positioning: parsedJob.positioning,
+    jobTitle: parsedJob.title,
+    ...precheckMeta,
+    precheckMode: "deep",
+  };
 }
 
 // â”€â”€â”€ Fast Dry Run (100% deterministic, 0 LLM calls) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1137,6 +1180,7 @@ export async function runFastDryRun(
   const rawConfidence = Math.round(avg * 0.45 + kwCov * 0.45 + bulletBonus);
   const critKwHardCap = critKw.length >= 4 && kwCov < 25 ? 40 : 100;
   const preliminaryConfidence = Math.min(critKwHardCap, Math.min(100, rawConfidence));
+  const precheckMeta = getPrecheckMeta(preliminaryConfidence);
 
   log("Fast Dry Run Done - " + preliminaryConfidence + "% | ic (deterministic)");
   return {
@@ -1144,6 +1188,8 @@ export async function runFastDryRun(
     criticalKeywords: minimalParsedJob.criticalKeywords,
     positioning: minimalParsedJob.positioning,
     jobTitle: minimalParsedJob.title,
+    ...precheckMeta,
+    precheckMode: "fast",
   };
 }
 
@@ -1161,7 +1207,7 @@ export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Pro
   const scored = await hybridScoreAllBullets(parsedJob, input.allExperiences, input.allBullets, openai);
   const allocs = allocateCharBudget(input.allExperiences, scored, bodyChars);
   const selExps = selectBullets(scored, allocs);
-  const baseCv = await buildStructuredCV(parsedJob, selExps, input.allSkills, input.mode, openai, { profileName: input.profile?.name, profileTitle: input.profile?.title, profileSummary: input.profile?.summary || undefined, formations: input.formations, languages: input.languages });
+  const baseCv = await buildStructuredCV(parsedJob, selExps, input.allSkills, "original", openai, { profileName: input.profile?.name, profileTitle: input.profile?.title, profileSummary: input.profile?.summary || undefined, formations: input.formations, languages: input.languages });
   if (baseCv.summary && baseCv.summary.length > introChars) { baseCv.summary = baseCv.summary.slice(0, introChars).replace(/[,;]?\s*\S*$/, "").trim(); }
 
   const baselineCv = cloneStructuredCV(baseCv);
@@ -1178,9 +1224,8 @@ export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Pro
     const candidateReport = generateOptimizationReport(parsedJob, selExps, input.allSkills, candidatePostRules, candidateReportCv);
 
     if (
-      candidateReport.scoreBreakdown.fitOffer > baselineReport.scoreBreakdown.fitOffer
-      || (candidateReport.scoreBreakdown.fitOffer === baselineReport.scoreBreakdown.fitOffer
-        && candidateReport.confidence >= baselineReport.confidence)
+      candidateReport.scoreBreakdown.fitOffer >= baselineReport.scoreBreakdown.fitOffer
+      && candidateReport.confidence >= baselineReport.confidence
     ) {
       finalCv = candidateReportCv;
       finalReport = candidateReport;
