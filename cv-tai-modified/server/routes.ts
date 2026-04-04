@@ -111,9 +111,30 @@ function assessJobTextQuality(text: string): { ok: boolean; warning?: string } {
     "seminaire", "onboarding", "avantage", "benefits", "package salarial",
     "bien-etre", "flexi", "conges", "prime",
   ];
+  // Candidate application form signals — must be checked BEFORE the early-return guard
+  const FORM_SIGNALS = [
+    "postuler", "candidater", "soumettre ma candidature", "submit application",
+    "votre cv", "upload cv", "upload your cv", "telecharger votre cv",
+    "formulaire de candidature", "application form", "apply now",
+    "deja postule", "already applied", "je postule",
+    "etape 1", "step 1 of", "step 1:",
+    "prenom *", "nom *", "email *", "telephone *",
+    "type de contrat souhait", "lettre de motivation", "disponibilit",
+    "pieces jointes", "attach", "browse files",
+  ];
   const jobScore = JOB_SIGNALS.filter(s => lower.includes(s)).length;
   const perkScore = PERK_SIGNALS.filter(s => lower.includes(s)).length;
-  // Guard: short but legitimate job posts (startup style)
+  const formScore = FORM_SIGNALS.filter(s => lower.includes(s)).length;
+
+  // Application form detection — checked before all other guards
+  if (formScore >= 3) {
+    return { ok: false, warning: "Le lien pointe vers un formulaire de candidature, pas vers l'annonce. Reviens sur la page de l'offre et copie le texte de la description du poste." };
+  }
+  if (formScore >= 2 && jobScore <= 2) {
+    return { ok: false, warning: "Le contenu recupere ressemble a un formulaire de candidature plutot qu'a une description de poste. Colle directement le texte de l'annonce." };
+  }
+
+  // Guard: long enough text with job signals → ok (startup-style short posts still pass)
   if (text.length > 600 && jobScore >= 2) return { ok: true };
   if (jobScore === 0 && perkScore >= 3) {
     return { ok: false, warning: "Le contenu recupere semble incomplet (avantages uniquement, sans description du poste). Colle le texte complet de l'annonce pour continuer." };

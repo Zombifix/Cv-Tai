@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  ArrowLeft, Copy, Check, AlertCircle, CheckCircle,
+  ArrowLeft, Copy, Check, AlertCircle, CheckCircle, AlertTriangle,
   Lightbulb, Hash, ChevronDown, ChevronUp,
   Globe, ShieldCheck, Zap, RefreshCw, Pencil, X,
   WandSparkles, Library, BookOpen, ExternalLink, Plus, Sparkles, FileDown,
@@ -906,6 +906,12 @@ function UsedJobPosting({ meta, rawText, url }: { meta?: JobInputInfo; rawText?:
           <span className="text-[11px] text-muted-foreground">{meta.scrapeMessage}</span>
         )}
       </div>
+      {meta?.sourceType === "url" && meta?.scrapeStatus === "success" && (
+        <div className="flex items-start gap-2 mb-4 text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 p-2.5 rounded-lg">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          <span>Contenu scrappé automatiquement. Si les scores semblent incohérents, vérifie que le texte ci-dessous correspond bien à l'annonce complète — sinon relance avec le texte collé manuellement.</span>
+        </div>
+      )}
 
       {(meta?.normalizedUrl || url) && (
         <div className="mb-4">
