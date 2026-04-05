@@ -4,6 +4,7 @@
 - Le score visible est maintenant recable sur une evaluation du CV genere, pas sur `ProfileFrame`
 - Le score visible est un triage; le CV reste le vrai produit
 - Calibration V3 recentree sur `fitMetier + recruiterCredibilityScore + evidenceGrounding`, avec `overstatementRisk` comme frein reel
+- Nouveau pass grounded : nettoyage d'encodage, selection moins generique et garde-fous `lead` / `PM`
 
 ## In progress
 - Pipeline refactorise : evaluation `fidele` / `optimise` dans le meme passage
@@ -24,6 +25,9 @@
 - Verifier que les hors-scope restent bas sans faux positifs
 - Verifier que les adjacents credibles remontent sans survente
 - Verifier le badge document contre la qualite humaine reelle du CV
+- Verifier que les roles `lead` proches metier mais faibles en scope redescendent en `a_renforcer`
+- Verifier que la selection garde moins de bullets "bons partout" et plus de preuves specifiques au role
+- Verifier que les CV ne sortent plus avec mojibake (`Ã`, `â€™`, `�`, controles)
 - Verifier la coherence inter-source sur les doublons d'offre
 - Verifier le pre-check et `scrapeQuality` sur des annonces propres vs bruitees
 
@@ -32,7 +36,9 @@
 - L'evaluateur `generated_cv_v1` reste un appel LLM : toujours garder le fallback legacy et controler ses sorties
 - `fitMetier` ne doit plus redevenir une theorie sur le profil; il doit rester ancre dans le CV final + les bullets source
 - `Badge document` doit rester conservateur
-- `ATS` reste utile mais ne doit plus remonter artificiellement des documents mal ancrés
+- `ATS` reste utile mais ne doit plus remonter artificiellement des documents mal ancres
+- Le fix d'encodage repare la plupart des mojibake courants, mais ne peut pas ressusciter un caractere deja perdu en amont du scrape
+- Les garde-fous `lead` / `PM` sont generiques : surveiller toute sur-correction sur des roles hybrides
 - Auth toujours non multi-tenant (`userId` absent des tables coeur)
 - Railway peut encore diverger local/prod sur cookies et version Node
 

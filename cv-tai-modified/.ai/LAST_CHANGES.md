@@ -2,6 +2,18 @@
 
 ## 2026-04-05
 
+### Grounded quality pass
+- Quoi : correctifs concrets sur la qualite documentaire et la lecture du scope, sans relancer une refonte
+- Fichiers : `server/tailoring-engine.ts`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
+- Impact :
+  - nettoyage d'encodage / mojibake branche tres tot dans le pipeline (`jobText`, experiences, bullets, skills, CV structure, rendu final)
+  - selection de bullets legerement durcie pour privilegier les preuves specifiques au role et reduire les bullets "bons partout"
+  - garde-fous contextuels `lead` / `PM` au moment de l'application de l'assessment final
+  - un role `lead` proche metier mais faible en preuves de scope ne monte plus aussi facilement en `probant`
+  - un role `PM` sans vraies preuves PM reste freine meme si quelques signaux produits existent
+  - `whatMatches` / `whatMissing` / `nextActions` sont maintenant regeneres depuis l'etat final pour eviter les contradictions score / verdict
+- Verification : `npm run check`, `npm run build`
+
 ### Calibration pass grounded
 - Quoi : recalibrage du moteur visible autour de `credibility + grounding + overstatement`, durcissement du badge, alignement du pre-check et ajout d'une cible de calibration versionnee
 - Fichiers : `server/tailoring-engine.ts`, `server/routes.ts`, `client/src/pages/tailor.tsx`, `client/src/hooks/use-tailor.ts`, `client/src/pages/result.tsx`, `analysis/calibration_targets_2026-04-05.md`, `CLAUDE.md`, `.ai/TODO.md`
