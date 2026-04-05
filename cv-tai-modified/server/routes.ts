@@ -1288,8 +1288,17 @@ JSON uniquement :
       if (resolvedInput.metadata.scrapeQuality !== "good" && result.shouldWarn) {
         result = {
           ...result,
+          precheckVerdict: "prudence",
           shouldWarn: false,
           warningMessage: "Le pre-check reste incertain car l'annonce recuperee est partiellement bruitee. Tu peux continuer, mais le score est a lire avec prudence.",
+        };
+      }
+
+      if (resolvedInput.metadata.scrapeQuality !== "good" && result.precheckVerdict === "go") {
+        result = {
+          ...result,
+          precheckVerdict: "prudence",
+          warningMessage: result.warningMessage || "Le triage rapide est positif, mais la source de l'annonce reste partiellement bruitee. Lis ce signal avec prudence.",
         };
       }
 

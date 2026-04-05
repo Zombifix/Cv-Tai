@@ -59,6 +59,36 @@ function getUrlWarning(url: string): string | null {
 }
 
 type Mode = "fidele" | "optimise";
+type PrecheckVerdict = "go" | "prudence" | "faible_chance";
+
+function getPrecheckVerdictMeta(verdict?: PrecheckVerdict) {
+  switch (verdict) {
+    case "go":
+      return {
+        label: "Go",
+        emphasisClassName: "text-green-600 dark:text-green-400",
+        description: "Le triage rapide voit assez de signaux pour lancer la generation sereinement.",
+      };
+    case "prudence":
+      return {
+        label: "Prudence",
+        emphasisClassName: "text-amber-600 dark:text-amber-400",
+        description: "Le triage rapide reste ouvert, mais l'annonce demande une lecture plus fine ou une source plus propre.",
+      };
+    case "faible_chance":
+      return {
+        label: "Faible chance",
+        emphasisClassName: "text-red-600 dark:text-red-400",
+        description: "Le triage rapide voit peu de preuves directes pour cette offre a ce stade.",
+      };
+    default:
+      return {
+        label: "Pre-check",
+        emphasisClassName: "text-muted-foreground",
+        description: "Le triage rapide reste un signal indicatif avant la generation complete.",
+      };
+  }
+}
 
 function normalizeLinkedInUrl(rawUrl: string): { url: string; converted: boolean } {
   if (!rawUrl) return { url: rawUrl, converted: false };
@@ -88,7 +118,7 @@ export default function Tailor() {
   const [introMaxChars, setIntroMaxChars] = useState("");
   const [bodyMaxChars, setBodyMaxChars] = useState("");
   const [extraContext, setExtraContext] = useState("");
-  const [pendingConfirm, setPendingConfirm] = useState<{ score: number; jobTitle: string; message?: string } | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<{ score: number; jobTitle: string; verdict?: PrecheckVerdict; message?: string } | null>(null);
   const [scrapeFailReason, setScrapeFailReason] = useState<string | null>(null);
   const [scrapeNotice, setScrapeNotice] = useState<string | null>(null);
 
@@ -135,6 +165,7 @@ export default function Tailor() {
   const urlWarning = getUrlWarning(url);
   const hasAnnouncement = Boolean(url.trim() || text.trim());
   const isBusy = checkMatch.isPending || generate.isPending;
+  const pendingVerdictMeta = getPrecheckVerdictMeta(pendingConfirm?.verdict);
   const selectedMode =
     mode === "optimise"
       ? {
@@ -201,6 +232,7 @@ export default function Tailor() {
         setPendingConfirm({
           score: check.preliminaryConfidence,
           jobTitle: check.jobTitle,
+          verdict: check.precheckVerdict,
           message: check.warningMessage,
         });
         return;
@@ -518,15 +550,16 @@ export default function Tailor() {
       <AlertDialog open={!!pendingConfirm} onOpenChange={(open) => { if (!open) setPendingConfirm(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Pre-check prudent - generer quand meme ?</AlertDialogTitle>
+            <AlertDialogTitle>{pendingVerdictMeta.label} - generer quand meme ?</AlertDialogTitle>
             <AlertDialogDescription className="space-y-2">
               <span className="block">
-                Pre-check estime : <strong className="text-red-600 dark:text-red-400">{pendingConfirm?.score}%</strong>
+                Triage rapide : <strong className={pendingVerdictMeta.emphasisClassName}>{pendingVerdictMeta.label}</strong>
                 {pendingConfirm?.jobTitle && <> pour <em>{pendingConfirm.jobTitle}</em></>}.
               </span>
+              <span className="block text-muted-foreground">{pendingVerdictMeta.description}</span>
               <span className="block text-muted-foreground">
                 {pendingConfirm?.message ? <span className="mb-1 block">{pendingConfirm.message}</span> : null}
-                Ce score sert seulement de triage rapide avant generation. Le jugement final se fait sur le CV genere, pas sur ce pre-check seul.
+                Score indicatif : <strong className={pendingVerdictMeta.emphasisClassName}>{pendingConfirm?.score}%</strong>. Le jugement final se fait sur le CV genere, pas sur ce pre-check seul.
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>

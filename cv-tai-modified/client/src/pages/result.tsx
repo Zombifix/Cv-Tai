@@ -226,6 +226,10 @@ type ReportScoreBreakdown = {
   fitNiveau?: GeneratedCvFitNiveau;
   forcePreuve?: number;
   credibiliteCv?: number;
+  evidenceGrounding?: number;
+  recruiterCredibilityScore?: number;
+  atsReadiness?: number;
+  overstatementRisk?: number;
   badge?: BadgeLevel;
   distanceDomain?: "same" | "adjacent" | "different";
   scoreModel?: "generated_cv_v1" | "legacy_fallback" | "profile_frame_v3";
@@ -246,8 +250,8 @@ type DiagnosisCause =
   | "strong_fit";
 
 function getFitLabel(score: number) {
-  if (score >= 70) return { label: "Fit fort", textColor: "text-green-600 dark:text-green-400", ringColor: "#22c55e" };
-  if (score >= 40) return { label: "Fit partiel", textColor: "text-amber-600 dark:text-amber-400", ringColor: "#f59e0b" };
+  if (score >= 78) return { label: "Fit fort", textColor: "text-green-600 dark:text-green-400", ringColor: "#22c55e" };
+  if (score >= 45) return { label: "Fit partiel", textColor: "text-amber-600 dark:text-amber-400", ringColor: "#f59e0b" };
   return { label: "Fit faible", textColor: "text-red-600 dark:text-red-400", ringColor: "#ef4444" };
 }
 
@@ -352,6 +356,9 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
   const badgeMeta = getBadgeMeta(scoreBreakdown?.badge);
   const distanceLabel = getDistanceDomainLabel(scoreBreakdown?.distanceDomain);
   const fitNiveauLabel = getFitNiveauLabel(scoreBreakdown?.fitNiveau);
+  const evidenceGrounding = scoreBreakdown?.evidenceGrounding ?? scoreBreakdown?.forcePreuve;
+  const recruiterCredibilityScore = scoreBreakdown?.recruiterCredibilityScore ?? scoreBreakdown?.credibiliteCv;
+  const overstatementRisk = scoreBreakdown?.overstatementRisk;
 
   return (
     <Card className="border-border/60 shadow-none" data-testid="section-match-score">
@@ -400,9 +407,9 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
         </div>
 
         {/* Score breakdown ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ATS vs semantic */}
-        {/* V3 breakdown: Fit metier + Force preuve + Credibilite CV */}
+        {/* V3 breakdown: Fit metier + ancrage preuves + credibilite + risque */}
         {scoreBreakdown?.fitMetier != null && (
-          <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-border/50">
+          <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-border/50 sm:grid-cols-4">
             <div className="space-y-1">
               <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Fit metier</p>
               <div className="flex items-center gap-1.5">
@@ -414,23 +421,33 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
               </div>
             </div>
             <div className="space-y-1">
-              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Force preuve</p>
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Ancrage preuves</p>
               <div className="flex items-center gap-1.5">
                 <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full ${scoreBreakdown!.forcePreuve! >= 60 ? "bg-green-500" : scoreBreakdown!.forcePreuve! >= 30 ? "bg-amber-500" : "bg-red-500"}`}
-                    style={{ width: `${scoreBreakdown!.forcePreuve}%` }} />
+                  <div className={`h-full rounded-full ${evidenceGrounding! >= 60 ? "bg-green-500" : evidenceGrounding! >= 30 ? "bg-amber-500" : "bg-red-500"}`}
+                    style={{ width: `${evidenceGrounding}%` }} />
                 </div>
-                <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown!.forcePreuve}%</span>
+                <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{evidenceGrounding}%</span>
               </div>
             </div>
             <div className="space-y-1">
-              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Credibilite CV</p>
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Credibilite</p>
               <div className="flex items-center gap-1.5">
                 <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full ${scoreBreakdown!.credibiliteCv! >= 60 ? "bg-green-500" : scoreBreakdown!.credibiliteCv! >= 30 ? "bg-amber-500" : "bg-red-500"}`}
-                    style={{ width: `${scoreBreakdown!.credibiliteCv}%` }} />
+                  <div className={`h-full rounded-full ${recruiterCredibilityScore! >= 60 ? "bg-green-500" : recruiterCredibilityScore! >= 30 ? "bg-amber-500" : "bg-red-500"}`}
+                    style={{ width: `${recruiterCredibilityScore}%` }} />
                 </div>
-                <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown!.credibiliteCv}%</span>
+                <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{recruiterCredibilityScore}%</span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Risque survente</p>
+              <div className="flex items-center gap-1.5">
+                <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${overstatementRisk! <= 35 ? "bg-green-500" : overstatementRisk! < 60 ? "bg-amber-500" : "bg-red-500"}`}
+                    style={{ width: `${overstatementRisk}%` }} />
+                </div>
+                <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{overstatementRisk}%</span>
               </div>
             </div>
           </div>
@@ -464,6 +481,7 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
           <p className="text-[10px] text-muted-foreground leading-relaxed mt-2">
             ATS final du CV : <span className="font-semibold text-foreground">{optimizedAts}%</span>
             {atsBoost ? ` (+${atsBoost}% via optimisation)` : ""}
+            {overstatementRisk != null ? ", a lire apres la credibilite et l'ancrage preuves." : ""}
           </p>
         )}
 
@@ -646,6 +664,9 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
   const badgeMeta = getBadgeMeta(scoreBreakdown?.badge);
   const distanceLabel = getDistanceDomainLabel(scoreBreakdown?.distanceDomain);
   const fitNiveauLabel = getFitNiveauLabel(scoreBreakdown?.fitNiveau);
+  const evidenceGrounding = scoreBreakdown?.evidenceGrounding ?? scoreBreakdown?.forcePreuve;
+  const recruiterCredibilityScore = scoreBreakdown?.recruiterCredibilityScore ?? scoreBreakdown?.credibiliteCv;
+  const overstatementRisk = scoreBreakdown?.overstatementRisk;
 
   return (
     <div className="rounded-xl border border-border/60" data-testid="section-details">
@@ -686,24 +707,34 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
                     <p className="text-[10px] text-muted-foreground leading-relaxed">Juge la proximite du metier a partir du CV genere et des bullets sources retenus, pas du titre seul.</p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[10px] text-muted-foreground font-medium">Force de preuve</p>
+                    <p className="text-[10px] text-muted-foreground font-medium">Ancrage preuves</p>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${scoreBreakdown!.forcePreuve! >= 60 ? "bg-green-500" : scoreBreakdown!.forcePreuve! >= 30 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${scoreBreakdown!.forcePreuve}%` }} />
+                        <div className={`h-full rounded-full ${evidenceGrounding! >= 60 ? "bg-green-500" : evidenceGrounding! >= 30 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${evidenceGrounding}%` }} />
                       </div>
-                      <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown!.forcePreuve}%</span>
+                      <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{evidenceGrounding}%</span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground leading-relaxed">Mesure la solidite des bullets source retenus: scope, preuves concretes, objets metier et livrables reels.</p>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Mesure a quel point le document final reste bien ancre dans les preuves concretes de ton parcours.</p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[10px] text-muted-foreground font-medium">Credibilite du CV</p>
+                    <p className="text-[10px] text-muted-foreground font-medium">Credibilite recruteur</p>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${scoreBreakdown!.credibiliteCv! >= 60 ? "bg-green-500" : scoreBreakdown!.credibiliteCv! >= 30 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${scoreBreakdown!.credibiliteCv}%` }} />
+                        <div className={`h-full rounded-full ${recruiterCredibilityScore! >= 60 ? "bg-green-500" : recruiterCredibilityScore! >= 30 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${recruiterCredibilityScore}%` }} />
                       </div>
-                      <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown!.credibiliteCv}%</span>
+                      <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{recruiterCredibilityScore}%</span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground leading-relaxed">Estime si un recruteur humain croira le document final, meme si l'ATS remonte fort.</p>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Estime si un recruteur humain croira le document final, au-dela de l'ATS et du vernis lexical.</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium">Risque de survente</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${overstatementRisk! <= 35 ? "bg-green-500" : overstatementRisk! < 60 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${overstatementRisk}%` }} />
+                      </div>
+                      <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{overstatementRisk}%</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Frein de securite si la reformulation ou l'ATS poussent le document au-dela de ce que le profil prouve vraiment.</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[10px] text-muted-foreground font-medium">Badge document</p>
@@ -779,6 +810,7 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
                 <p className="text-[10px] text-muted-foreground leading-relaxed mt-2">
                   ATS final du document : <span className="font-semibold text-foreground">{scoreBreakdown.atsOptimized}%</span>
                   {scoreBreakdown.atsBoost ? `, dont ${scoreBreakdown.atsBoost}% vient d'optimisations de texte.` : "."}
+                  {" "}Cet axe reste secondaire face a la credibilite et a l'ancrage preuves.
                 </p>
               )}
               {scoreBreakdown.contextSupport !== undefined && scoreBreakdown.contextSupport > 0 && (
@@ -984,6 +1016,7 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
   const primaryCause = getCauseLabel(diagnosis?.primaryCause);
   const secondaryCauses = (diagnosis?.secondaryCauses || []).map(cause => getCauseLabel(cause));
   const recommendedAction = repairMojibake(diagnosis?.recommendedAction || "");
+  const overstatementRisk = scoreBreakdown?.overstatementRisk;
 
   return (
     <Card className="border-border/60 shadow-none" data-testid="section-match-diagnosis">
@@ -1020,13 +1053,16 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
             )}
             <div className="flex items-center gap-3 mt-2 flex-wrap">
               <p className="text-[11px] text-muted-foreground">
-                ATS final: <span className="font-semibold text-foreground">{scoreBreakdown?.atsOptimized ?? scoreBreakdown?.ats ?? "n/a"}%</span>
+                Credibilite: <span className="font-semibold text-foreground">{scoreBreakdown?.recruiterCredibilityScore ?? scoreBreakdown?.credibiliteCv ?? "n/a"}%</span>
               </p>
-              {scoreBreakdown?.atsBoost ? (
+              {overstatementRisk !== undefined ? (
                 <p className="text-[11px] text-muted-foreground">
-                  Boost ATS: <span className="font-semibold text-foreground">+{scoreBreakdown.atsBoost}%</span>
+                  Risque survente: <span className="font-semibold text-foreground">{overstatementRisk}%</span>
                 </p>
               ) : null}
+              <p className="text-[11px] text-muted-foreground">
+                ATS final: <span className="font-semibold text-foreground">{scoreBreakdown?.atsOptimized ?? scoreBreakdown?.ats ?? "n/a"}%</span>
+              </p>
               {(distanceLabel || fitNiveauLabel) ? (
                 <p className="text-[11px] text-muted-foreground">
                   {[distanceLabel, fitNiveauLabel].filter(Boolean).join(" • ")}
@@ -1542,6 +1578,10 @@ function buildAnalysisPayload({
       fitNiveau: trimBlock(report?.scoreBreakdown?.fitNiveau) || null,
       forcePreuve: report?.scoreBreakdown?.forcePreuve ?? null,
       credibiliteCv: report?.scoreBreakdown?.credibiliteCv ?? null,
+      evidenceGrounding: report?.scoreBreakdown?.evidenceGrounding ?? null,
+      recruiterCredibilityScore: report?.scoreBreakdown?.recruiterCredibilityScore ?? null,
+      atsReadiness: report?.scoreBreakdown?.atsReadiness ?? null,
+      overstatementRisk: report?.scoreBreakdown?.overstatementRisk ?? null,
       badge: trimBlock(report?.scoreBreakdown?.badge) || "n/a",
       distanceDomain: trimBlock(report?.scoreBreakdown?.distanceDomain) || null,
       scoreModel: trimBlock(report?.scoreBreakdown?.scoreModel) || null,

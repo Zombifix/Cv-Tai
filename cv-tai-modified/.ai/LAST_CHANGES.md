@@ -2,6 +2,20 @@
 
 ## 2026-04-05
 
+### Calibration pass grounded
+- Quoi : recalibrage du moteur visible autour de `credibility + grounding + overstatement`, durcissement du badge, alignement du pre-check et ajout d'une cible de calibration versionnee
+- Fichiers : `server/tailoring-engine.ts`, `server/routes.ts`, `client/src/pages/tailor.tsx`, `client/src/hooks/use-tailor.ts`, `client/src/pages/result.tsx`, `analysis/calibration_targets_2026-04-05.md`, `CLAUDE.md`, `.ai/TODO.md`
+- Impact :
+  - `Pertinence` n'est plus lue telle quelle depuis le LLM : elle est recalculee server-side depuis `fitMetier`, `recruiterCredibilityScore`, `evidenceGrounding`, `atsReadiness` et un malus fort `overstatementRisk`
+  - cap visible par distance metier : `adjacent <= 78`, `different <= 35`
+  - badge `probant` reserve aux documents vraiment credibles, bien ancres et peu survendus
+  - diagnostic serveur reconstruit depuis une matrice simple pour eviter les contradictions score / verdict
+  - guard `optimise` vs `fidele` freine aussi les regressions de risque de survente
+  - `/api/check-match` expose maintenant `precheckVerdict` (`go / prudence / faible_chance`) et raconte enfin la meme philosophie produit que la page Result
+  - la page Result met davantage en avant l'ancrage preuves, la credibilite et le risque de survente; l'ATS reste visible mais secondaire
+  - ajout d'un artefact de calibration partageable dans `analysis/`
+- Verification : `npm run check`, `npm run build`
+
 ### Grounded score reset
 - Quoi : sortie du score visible hors du `ProfileFrame` / `fitMetier` theorique, et remplacement par une evaluation du CV genere
 - Fichiers : `server/tailoring-engine.ts`, `client/src/pages/result.tsx`, `client/src/pages/tailor.tsx`, `CLAUDE.md`, `.ai/TODO.md`

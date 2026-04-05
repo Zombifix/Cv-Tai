@@ -59,6 +59,7 @@ export function useCheckMatch() {
         positioning: string;
         jobTitle: string;
         viability: "good" | "viable" | "uncertain" | "weak";
+        precheckVerdict: "go" | "prudence" | "faible_chance";
         shouldWarn: boolean;
         warningMessage?: string;
         precheckMode: "fast" | "deep";

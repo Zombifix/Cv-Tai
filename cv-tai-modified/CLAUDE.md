@@ -38,14 +38,17 @@ Generer un CV cible auquel l'utilisateur fait confiance sans relecture lourde.
 - `pertinence` : repere de triage. Repond a "est-ce que ce document vaut le coup ?"
 - `fitMetier` : proximite entre le vrai travail de l'offre et ce que prouvent les bullets source + le CV final.
 - `fitNiveau` : coherence de niveau du document pour ce poste.
-- `forcePreuve` : solidite des bullets source retenus. La reformulation ne doit pas gonfler cet axe.
-- `credibiliteCv` : qualite du document final pour un recruteur humain.
-- `ats` : couverture ATS finale, utile mais jamais souveraine seule.
+- `evidenceGrounding` : ancrage du document final dans les preuves reellement visibles du profil.
+- `recruiterCredibilityScore` : credibilite du document final pour un recruteur humain.
+- `overstatementRisk` : frein de securite si le document survend le profil.
+- `ats` / `atsReadiness` : signal secondaire, jamais souverain seul.
+- `forcePreuve` et `credibiliteCv` restent des alias de compatibilite dans certains payloads, mais la lecture produit doit se faire avec `grounding + credibility + risk`.
 
 ## Surface produit
 - `Pertinence` = score visible principal.
 - `Badge document` = `probant` / `a_renforcer` / `fragile`.
 - `ATS` = axe secondaire.
+- `Pre-check` = triage rapide `go` / `prudence` / `faible_chance`, jamais verdict final.
 - Le score visible sert au triage rapide. Le vrai produit reste le CV genere.
 
 ## Hierarchie de preuve
@@ -104,6 +107,7 @@ Generer un CV cible auquel l'utilisateur fait confiance sans relecture lourde.
   - CV genere
   - coherence inter-source si meme offre
 - Toute divergence forte entre historique, pre-check et page resultat doit etre consideree comme une incoherence produit.
+- La cible de calibration vivante est versionnee dans `analysis/calibration_targets_2026-04-05.md`.
 
 ## Pipeline
 1. `parseJobDescription`
@@ -133,9 +137,9 @@ Generer un CV cible auquel l'utilisateur fait confiance sans relecture lourde.
 - Embeddings semantiques
 
 ## Questions encore ouvertes
-- Le pre-check `/api/check-match` n'est pas encore aligne sur l'evaluation du document final.
 - L'evaluateur `generated_cv_v1` doit encore etre eprouve sur le batch reel.
 - Le badge document doit encore etre teste contre de vrais cas `bon CV / mauvais score` et `mauvais CV / score flatteur`.
+- Le calibrage du malus `overstatementRisk` doit rester surveille pour ne pas recasser `Alan` / `TheFork`.
 
 ## Reprise rapide
 1. Lire `CLAUDE.md`

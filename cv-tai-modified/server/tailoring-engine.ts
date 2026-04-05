@@ -900,6 +900,10 @@ export interface GeneratedCvAssessment {
   fitNiveau: GeneratedCvFitNiveau;
   forcePreuve: number;
   credibiliteCv: number;
+  evidenceGrounding: number;
+  recruiterCredibilityScore: number;
+  atsReadiness: number;
+  overstatementRisk: number;
   distanceDomain: DistanceDomain;
   verdict: string;
   primaryDiagnosis: PrimaryDiagnosis;
@@ -917,7 +921,7 @@ export interface GeneratedCvPairEvaluation {
   scoreModel: "generated_cv_v1" | "legacy_fallback";
 }
 
-export interface OptimizationReport { jobTitle: string; jobCompany: string; jobSeniority: string; jobDomain: string; detectedKeywords: { requiredSkills: string[]; preferredSkills: string[]; responsibilities: string[]; keywords: string[]; criticalKeywords: string[]; }; matchedSkills: string[]; missingSkills: string[]; selectedExperiences: { title: string; company: string; score: number; reason: string; matchedAspects: string[]; bulletCount: number; charBudget: number; }[]; rejectedExperiences: { title: string; company: string; score: number; reason: string }[]; selectedBullets: { text: string; experienceTitle: string; score: number; deterministicScore: number; llmScore: number; matchedKeywords: string[]; dimension: string; }[]; postRules: PostRuleResult; confidence: number; confidenceReasoning: string; fallbackUsed: boolean; detectedLanguage: "EN" | "FR"; positioning: string; intentions: string[]; tips: string[]; diagnosis: DiagnosticSummary; scoreBreakdown: { fitOffer: number; ats: number; atsOptimized: number; atsBoost: number; contextSupport: number; semantic: number; recruiterCredibility: RecruiterCredibility; domainMismatch?: string; cappedByKeywords: boolean; cappedByEvidence: boolean; pertinence: number; fitMetier: number; fitNiveauFactor: number; fitNiveau?: GeneratedCvFitNiveau; forcePreuve: number; credibiliteCv: number; badge: BadgeLevel; distanceDomain: DistanceDomain; scoreModel?: "generated_cv_v1" | "legacy_fallback" | "profile_frame_v3"; debugOverlaps?: { workObjects: number; deliverables: number; decisions: number }; }; }
+export interface OptimizationReport { jobTitle: string; jobCompany: string; jobSeniority: string; jobDomain: string; detectedKeywords: { requiredSkills: string[]; preferredSkills: string[]; responsibilities: string[]; keywords: string[]; criticalKeywords: string[]; }; matchedSkills: string[]; missingSkills: string[]; selectedExperiences: { title: string; company: string; score: number; reason: string; matchedAspects: string[]; bulletCount: number; charBudget: number; }[]; rejectedExperiences: { title: string; company: string; score: number; reason: string }[]; selectedBullets: { text: string; experienceTitle: string; score: number; deterministicScore: number; llmScore: number; matchedKeywords: string[]; dimension: string; }[]; postRules: PostRuleResult; confidence: number; confidenceReasoning: string; fallbackUsed: boolean; detectedLanguage: "EN" | "FR"; positioning: string; intentions: string[]; tips: string[]; diagnosis: DiagnosticSummary; scoreBreakdown: { fitOffer: number; ats: number; atsOptimized: number; atsBoost: number; contextSupport: number; semantic: number; recruiterCredibility: RecruiterCredibility; domainMismatch?: string; cappedByKeywords: boolean; cappedByEvidence: boolean; pertinence: number; fitMetier: number; fitNiveauFactor: number; fitNiveau?: GeneratedCvFitNiveau; forcePreuve: number; credibiliteCv: number; evidenceGrounding: number; recruiterCredibilityScore: number; atsReadiness: number; overstatementRisk: number; badge: BadgeLevel; distanceDomain: DistanceDomain; scoreModel?: "generated_cv_v1" | "legacy_fallback" | "profile_frame_v3"; debugOverlaps?: { workObjects: number; deliverables: number; decisions: number }; }; }
 
 function topItems(items: string[], count: number): string[] {
   const tally = new Map<string, number>();
@@ -1185,14 +1189,199 @@ function recruiterCredibilityFromScore(score: number): RecruiterCredibility {
   return "faible";
 }
 
+function capPertinenceByDistance(score: number, distanceDomain: DistanceDomain): number {
+  if (distanceDomain === "different") return Math.min(score, 35);
+  if (distanceDomain === "adjacent") return Math.min(score, 78);
+  return score;
+}
+
+function overstatementPenalty(params: {
+  overstatementRisk: number;
+  atsReadiness: number;
+  evidenceGrounding: number;
+}): number {
+  const { overstatementRisk, atsReadiness, evidenceGrounding } = params;
+  let penalty = overstatementRisk * 0.1;
+  if (overstatementRisk >= 60) penalty += 7;
+  if (overstatementRisk >= 80) penalty += 5;
+  if (atsReadiness >= 85 && evidenceGrounding < 55 && overstatementRisk >= 60) penalty += 8;
+  return penalty;
+}
+
+function computeGeneratedPertinence(assessment: GeneratedCvAssessment): number {
+  const base =
+    assessment.fitMetier * 0.34
+    + assessment.recruiterCredibilityScore * 0.31
+    + assessment.evidenceGrounding * 0.25
+    + assessment.atsReadiness * 0.1;
+
+  let score = base - overstatementPenalty({
+    overstatementRisk: assessment.overstatementRisk,
+    atsReadiness: assessment.atsReadiness,
+    evidenceGrounding: assessment.evidenceGrounding,
+  });
+
+  if (assessment.fitNiveau === "trop_junior") score -= 12;
+  else if (assessment.fitNiveau === "trop_senior") score -= 8;
+  else if (assessment.fitNiveau === "uncertain") score -= 4;
+
+  if (assessment.distanceDomain === "adjacent" && assessment.recruiterCredibilityScore < 65 && assessment.evidenceGrounding < 60) {
+    score -= 4;
+  }
+
+  if (
+    assessment.distanceDomain === "same"
+    && assessment.fitMetier >= 78
+    && assessment.recruiterCredibilityScore >= 75
+    && assessment.evidenceGrounding >= 70
+    && assessment.overstatementRisk <= 35
+  ) {
+    score += 3;
+  }
+
+  return clampPercent(capPertinenceByDistance(score, assessment.distanceDomain));
+}
+
+function uniqueDiagnosisCauses(causes: DiagnosisCause[]): DiagnosisCause[] {
+  return causes.filter((cause, index) => cause && causes.indexOf(cause) === index).slice(0, 3);
+}
+
+function defaultNextActionFromAssessment(assessment: GeneratedCvAssessment, primaryCause: DiagnosisCause): string {
+  if (assessment.fitNiveau === "trop_junior") {
+    return "Cible un poste un cran plus proche de ton niveau actuel, ou renforce des preuves d'autonomie et d'ownership avant d'envoyer.";
+  }
+  if (assessment.fitNiveau === "trop_senior") {
+    return "Recadre la cible vers un scope plus senior, ou rends explicite pourquoi tu vises un poste plus operationnel.";
+  }
+  if (assessment.distanceDomain === "different") {
+    return "Ne l'envoie pas tel quel: cible un role plus proche, ou assume clairement une reorientation au lieu de surpromettre.";
+  }
+  if (assessment.distanceDomain === "adjacent") {
+    return "Assume l'adjacence: garde les experiences transferables les plus solides et retire les formulations qui survendent le coeur de metier.";
+  }
+
+  return recommendedActionForCause(primaryCause, "Renforce le document genere avant d'envoyer.");
+}
+
+function finalizeGeneratedCvAssessment(assessment: GeneratedCvAssessment): GeneratedCvAssessment {
+  const evidenceGrounding = clampPercent(assessment.evidenceGrounding ?? assessment.forcePreuve, assessment.forcePreuve);
+  const recruiterCredibilityScore = clampPercent(assessment.recruiterCredibilityScore ?? assessment.credibiliteCv, assessment.credibiliteCv);
+  const atsReadiness = clampPercent(assessment.atsReadiness, 50);
+  const overstatementRisk = clampPercent(assessment.overstatementRisk, 40);
+  const normalized: GeneratedCvAssessment = {
+    ...assessment,
+    evidenceGrounding,
+    recruiterCredibilityScore,
+    atsReadiness,
+    overstatementRisk,
+    forcePreuve: evidenceGrounding,
+    credibiliteCv: recruiterCredibilityScore,
+  };
+
+  const pertinence = computeGeneratedPertinence(normalized);
+
+  let primaryDiagnosis: PrimaryDiagnosis;
+  let primaryCause: DiagnosisCause;
+  let verdict: string;
+
+  if (normalized.fitNiveau === "trop_junior") {
+    primaryDiagnosis = "Niveau de poste trop junior";
+    primaryCause = "level_mismatch";
+    verdict = "Le document reste proche du poste, mais le niveau attendu semble plus junior que la trajectoire que raconte ton profil.";
+  } else if (normalized.fitNiveau === "trop_senior") {
+    primaryDiagnosis = "Niveau de poste trop senior";
+    primaryCause = "level_mismatch";
+    verdict = "Le document reste proche du poste, mais le role demande un niveau ou un scope plus senior que les preuves les plus visibles.";
+  } else if (normalized.distanceDomain === "different") {
+    primaryDiagnosis = "Mismatch de metier";
+    primaryCause = "adjacent_role";
+    verdict = "Le CV partage quelques mots ou methodes avec l'offre, mais le coeur du role reste different.";
+  } else if (normalized.distanceDomain === "adjacent") {
+    primaryDiagnosis = "Mismatch de metier";
+    primaryCause = "adjacent_role";
+    verdict = "Le role reste adjacent a ton coeur de metier: la transition parait possible, mais elle n'est pas naturelle a la lecture du document.";
+  } else if (
+    normalized.fitMetier >= 78
+    && recruiterCredibilityScore >= 80
+    && evidenceGrounding >= 75
+    && overstatementRisk <= 35
+  ) {
+    primaryDiagnosis = "Bon alignement global";
+    primaryCause = "strong_fit";
+    verdict = "Le document reste proche du role, credible pour un recruteur et bien ancre dans les preuves visibles de ton parcours.";
+  } else if (normalized.fitMetier >= 60) {
+    primaryDiagnosis = "Experience proche mais preuves trop faibles";
+    primaryCause = overstatementRisk >= 60 ? "cv_not_credible" : "proof_gap";
+    verdict = overstatementRisk >= 60
+      ? "L'experience parait proche du poste, mais certaines formulations survendent encore ce que le profil prouve reellement."
+      : "L'experience parait proche du poste, mais les preuves visibles restent encore trop faibles ou trop generales pour convaincre sereinement.";
+  } else {
+    primaryDiagnosis = "Competences metier critiques absentes";
+    primaryCause = "proof_gap";
+    verdict = "Le document ne montre pas encore assez de preuves directes sur les competences centrales demandees par ce poste.";
+  }
+
+  const secondaryCauses = uniqueDiagnosisCauses([
+    normalized.distanceDomain !== "same" ? "adjacent_role" : undefined,
+    normalized.fitNiveau !== "coherent" ? "level_mismatch" : undefined,
+    overstatementRisk >= 60 ? "cv_not_credible" : undefined,
+    evidenceGrounding < 60 ? "proof_gap" : undefined,
+    atsReadiness >= 85 && evidenceGrounding < 55 && overstatementRisk >= 60 ? "evidence_vs_ats_gap" : undefined,
+    primaryCause === "strong_fit" ? "strong_fit" : undefined,
+  ].filter(Boolean) as DiagnosisCause[]);
+
+  const whatMatches = normalized.whatMatches.length > 0
+    ? normalized.whatMatches
+    : uniqueItems([
+        normalized.distanceDomain === "same" ? "Le coeur du role reste proche de tes experiences les plus visibles." : "",
+        evidenceGrounding >= 65 ? "Les experiences retenues apportent des preuves concretes et relisibles." : "",
+        atsReadiness >= 80 ? "Le document couvre les mots attendus sans dependre uniquement du titre." : "",
+      ].filter(Boolean)).slice(0, 3);
+
+  const whatMissing = normalized.whatMissing.length > 0
+    ? normalized.whatMissing
+    : uniqueItems([
+        evidenceGrounding < 75 ? "Les preuves restent encore trop generales ou pas assez ancrees dans des objets metier precis." : "",
+        overstatementRisk >= 60 ? "Certaines formulations paraissent plus fortes que ce que prouvent vraiment les bullets source." : "",
+        normalized.distanceDomain === "adjacent" ? "Le coeur de metier de l'offre n'est pas encore naturellement porte par le document." : "",
+        normalized.distanceDomain === "different" ? "Le document ne raconte pas encore le meme metier que l'offre ciblee." : "",
+      ].filter(Boolean)).slice(0, 3);
+
+  const nextActions = normalized.nextActions.length > 0
+    ? normalized.nextActions
+    : [defaultNextActionFromAssessment(normalized, primaryCause)];
+
+  return {
+    ...normalized,
+    pertinence,
+    verdict,
+    primaryDiagnosis,
+    primaryCause,
+    secondaryCauses,
+    whatMatches,
+    whatMissing,
+    nextActions,
+  };
+}
+
 function badgeFromGeneratedAssessment(assessment: GeneratedCvAssessment): BadgeLevel {
-  if (assessment.credibiliteCv >= 70 && assessment.pertinence >= 60 && assessment.distanceDomain !== "different") {
+  if (
+    assessment.recruiterCredibilityScore >= 80
+    && assessment.evidenceGrounding >= 75
+    && assessment.overstatementRisk <= 35
+    && assessment.distanceDomain !== "different"
+  ) {
     return "probant";
   }
-  if (assessment.credibiliteCv >= 45 && assessment.pertinence >= 35) {
-    return "a_renforcer";
+  if (
+    assessment.overstatementRisk >= 60
+    || assessment.recruiterCredibilityScore < 55
+    || assessment.evidenceGrounding < 50
+    || assessment.distanceDomain === "different"
+  ) {
+    return "fragile";
   }
-  return "fragile";
+  return "a_renforcer";
 }
 
 function assessmentFromLegacyReport(report: OptimizationReport): GeneratedCvAssessment {
@@ -1215,12 +1404,25 @@ function assessmentFromLegacyReport(report: OptimizationReport): GeneratedCvAsse
     : legacyFit >= 35 ? "adjacent"
     : "different";
 
-  return {
+  const atsReadiness = clampPercent(report.scoreBreakdown.atsOptimized ?? report.scoreBreakdown.ats, report.scoreBreakdown.ats);
+  const overstatementRisk = clampPercent(
+    (report.scoreBreakdown.atsBoost ?? 0) * 1.5
+      + (report.scoreBreakdown.domainMismatch ? 25 : 0)
+      + (legacyCred < 60 ? (60 - legacyCred) * 0.8 : 0)
+      + (legacyProof < 55 ? (55 - legacyProof) * 0.35 : 0),
+    35,
+  );
+
+  return finalizeGeneratedCvAssessment({
     pertinence: legacyFit,
     fitMetier: legacyFit,
     fitNiveau,
     forcePreuve: legacyProof,
     credibiliteCv: legacyCred,
+    evidenceGrounding: legacyProof,
+    recruiterCredibilityScore: legacyCred,
+    atsReadiness,
+    overstatementRisk,
     distanceDomain,
     verdict: report.diagnosis.verdict || report.confidenceReasoning,
     primaryDiagnosis: report.diagnosis.primaryDiagnosis,
@@ -1229,42 +1431,47 @@ function assessmentFromLegacyReport(report: OptimizationReport): GeneratedCvAsse
     nextActions: report.diagnosis.nextActions.slice(0, 3),
     primaryCause: report.diagnosis.primaryCause,
     secondaryCauses: report.diagnosis.secondaryCauses.slice(0, 3),
-  };
+  });
 }
 
 function applyGeneratedCvAssessment(report: OptimizationReport, assessment: GeneratedCvAssessment, scoreModel: GeneratedCvPairEvaluation["scoreModel"]): OptimizationReport {
-  const badge = badgeFromGeneratedAssessment(assessment);
-  const recruiterCredibility = recruiterCredibilityFromScore(assessment.credibiliteCv);
-  const recommendedAction = assessment.nextActions[0]
-    || recommendedActionForCause(assessment.primaryCause, report.diagnosis.recommendedAction || "Renforce le document genere avant d'envoyer.");
+  const finalized = finalizeGeneratedCvAssessment(assessment);
+  const badge = badgeFromGeneratedAssessment(finalized);
+  const recruiterCredibility = recruiterCredibilityFromScore(finalized.recruiterCredibilityScore);
+  const recommendedAction = finalized.nextActions[0]
+    || recommendedActionForCause(finalized.primaryCause, report.diagnosis.recommendedAction || "Renforce le document genere avant d'envoyer.");
 
   return {
     ...report,
-    confidence: assessment.pertinence,
-    confidenceReasoning: assessment.verdict || report.confidenceReasoning,
+    confidence: finalized.pertinence,
+    confidenceReasoning: finalized.verdict || report.confidenceReasoning,
     diagnosis: {
-      primaryDiagnosis: assessment.primaryDiagnosis,
-      verdict: assessment.verdict || report.diagnosis.verdict,
-      whatMatches: assessment.whatMatches,
-      whatMissing: assessment.whatMissing,
-      nextActions: assessment.nextActions,
-      primaryCause: assessment.primaryCause,
-      secondaryCauses: assessment.secondaryCauses,
+      primaryDiagnosis: finalized.primaryDiagnosis,
+      verdict: finalized.verdict || report.diagnosis.verdict,
+      whatMatches: finalized.whatMatches,
+      whatMissing: finalized.whatMissing,
+      nextActions: finalized.nextActions,
+      primaryCause: finalized.primaryCause,
+      secondaryCauses: finalized.secondaryCauses,
       recommendedAction,
     },
     scoreBreakdown: {
       ...report.scoreBreakdown,
-      domainMismatch: assessment.distanceDomain === "different"
+      domainMismatch: finalized.distanceDomain === "different"
         ? (report.scoreBreakdown.domainMismatch || "distance-domain")
         : undefined,
-      pertinence: assessment.pertinence,
-      fitMetier: assessment.fitMetier,
-      fitNiveauFactor: generatedCvFitNiveauFactor(assessment.fitNiveau),
-      fitNiveau: assessment.fitNiveau,
-      forcePreuve: assessment.forcePreuve,
-      credibiliteCv: assessment.credibiliteCv,
+      pertinence: finalized.pertinence,
+      fitMetier: finalized.fitMetier,
+      fitNiveauFactor: generatedCvFitNiveauFactor(finalized.fitNiveau),
+      fitNiveau: finalized.fitNiveau,
+      forcePreuve: finalized.forcePreuve,
+      credibiliteCv: finalized.credibiliteCv,
+      evidenceGrounding: finalized.evidenceGrounding,
+      recruiterCredibilityScore: finalized.recruiterCredibilityScore,
+      atsReadiness: finalized.atsReadiness,
+      overstatementRisk: finalized.overstatementRisk,
       badge,
-      distanceDomain: assessment.distanceDomain,
+      distanceDomain: finalized.distanceDomain,
       recruiterCredibility,
       scoreModel,
     },
@@ -1307,8 +1514,12 @@ function normalizeGeneratedCvAssessment(raw: any, fallback: GeneratedCvAssessmen
     pertinence: clampPercent(raw?.pertinence, fallback.pertinence),
     fitMetier: clampPercent(raw?.fitMetier, fallback.fitMetier),
     fitNiveau: coerceGeneratedCvFitNiveau(raw?.fitNiveau, fallback.fitNiveau),
-    forcePreuve: clampPercent(raw?.forcePreuve, fallback.forcePreuve),
-    credibiliteCv: clampPercent(raw?.credibiliteCv, fallback.credibiliteCv),
+    forcePreuve: clampPercent(raw?.forcePreuve ?? raw?.evidenceGrounding, fallback.forcePreuve),
+    credibiliteCv: clampPercent(raw?.credibiliteCv ?? raw?.recruiterCredibilityScore, fallback.credibiliteCv),
+    evidenceGrounding: clampPercent(raw?.evidenceGrounding ?? raw?.forcePreuve, fallback.evidenceGrounding),
+    recruiterCredibilityScore: clampPercent(raw?.recruiterCredibilityScore ?? raw?.credibiliteCv, fallback.recruiterCredibilityScore),
+    atsReadiness: clampPercent(raw?.atsReadiness, fallback.atsReadiness),
+    overstatementRisk: clampPercent(raw?.overstatementRisk, fallback.overstatementRisk),
     distanceDomain: ["same", "adjacent", "different"].includes(raw?.distanceDomain)
       ? raw.distanceDomain as DistanceDomain
       : fallback.distanceDomain,
@@ -1361,17 +1572,19 @@ async function evaluateGeneratedCvVariants(params: {
             "- pertinence (0-100): quick triage score. Should this generated CV be considered worth sending for this offer?",
             "- fitMetier (0-100): how close the REAL work proved by the source evidence is to the REAL work of the offer. Do not rely on job title alone.",
             "- fitNiveau: coherent | trop_junior | trop_senior | uncertain.",
-            "- forcePreuve (0-100): strength of the SOURCE bullets only. Final wording must not inflate this score.",
-            "- credibiliteCv (0-100): would a human recruiter believe the generated CV for this role?",
+            "- evidenceGrounding (0-100): strength and concreteness of the SOURCE bullets only. Final wording must not inflate this score.",
+            "- recruiterCredibilityScore (0-100): would a human recruiter believe the generated CV for this role?",
+            "- atsReadiness (0-100): how well the FINAL CV is likely to perform on ATS keyword matching without rewarding stuffing.",
+            "- overstatementRisk (0-100): risk that the FINAL CV overstates expertise beyond the source evidence.",
             "- distanceDomain: same | adjacent | different.",
             "",
             "Important constraints:",
-            "- If the optimized CV overstates unsupported expertise, lower credibiliteCv and pertinence.",
+            "- If the optimized CV overstates unsupported expertise, lower recruiterCredibilityScore, evidenceGrounding and pertinence, and raise overstatementRisk.",
             "- A role can be 'designer' in title but still be different if the work objects are 3D/motion/brand/graphic and the source evidence is product design.",
             "- Judge the final document, but always anchor your judgment in the source evidence below.",
             "",
             "Return exactly these keys:",
-            "{ faithful: {...}, optimized: {... or null}, notes: [] }",
+            "{ faithful: { pertinence, fitMetier, fitNiveau, evidenceGrounding, recruiterCredibilityScore, atsReadiness, overstatementRisk, distanceDomain, verdict, primaryDiagnosis, whatMatches, whatMissing, nextActions, primaryCause, secondaryCauses }, optimized: {... or null}, notes: [] }",
             "",
             "Allowed primaryDiagnosis values:",
             PRIMARY_DIAGNOSIS_VALUES.join(" | "),
@@ -1775,7 +1988,7 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
     fitNiveau: fitAssessment?.fitNiveau ?? "n/a",
   });
 
-  return { jobTitle: job.title, jobCompany: job.company, jobSeniority: job.seniority, jobDomain: job.domain, detectedKeywords: { requiredSkills: job.requiredSkills, preferredSkills: job.preferredSkills, responsibilities: job.responsibilities, keywords: job.keywords, criticalKeywords: job.criticalKeywords }, matchedSkills: matched.map(s => s.name), missingSkills: missingSkills.slice(0, 10), selectedExperiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, score: Math.round(se.score), reason: se.reason, matchedAspects: se.matchedAspects, bulletCount: se.selectedBullets.length, charBudget: se.charBudget })), rejectedExperiences: [], selectedBullets: allBullets.map(sb => ({ text: sb.bullet.text, experienceTitle: sb.experience.title, score: sb.totalScore, deterministicScore: sb.deterministicScore, llmScore: sb.llmScore, matchedKeywords: sb.matchedKeywords, dimension: sb.dimension })), postRules, confidence, confidenceReasoning: verdict, fallbackUsed: total === 0, detectedLanguage: job.language, positioning: job.positioning, intentions: job.intentions, tips, diagnosis: { primaryDiagnosis, verdict, whatMatches: whatMatches.slice(0, 3), whatMissing: whatMissing.slice(0, 3), nextActions: nextActions.slice(0, 3), primaryCause, secondaryCauses, recommendedAction }, scoreBreakdown: { fitOffer, ats: atsEvidence, atsOptimized, atsBoost, contextSupport, semantic: semanticScore, recruiterCredibility, domainMismatch, cappedByKeywords, cappedByEvidence, pertinence: v2pertinence, fitMetier: v2fitMetier, fitNiveauFactor: v2fitNiveauFactor, forcePreuve: v2forcePreuve, credibiliteCv: v2credibiliteCv, badge: v2badge, distanceDomain: v2distanceDomain, debugOverlaps: fitAssessment?.debugOverlaps } };
+  return { jobTitle: job.title, jobCompany: job.company, jobSeniority: job.seniority, jobDomain: job.domain, detectedKeywords: { requiredSkills: job.requiredSkills, preferredSkills: job.preferredSkills, responsibilities: job.responsibilities, keywords: job.keywords, criticalKeywords: job.criticalKeywords }, matchedSkills: matched.map(s => s.name), missingSkills: missingSkills.slice(0, 10), selectedExperiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, score: Math.round(se.score), reason: se.reason, matchedAspects: se.matchedAspects, bulletCount: se.selectedBullets.length, charBudget: se.charBudget })), rejectedExperiences: [], selectedBullets: allBullets.map(sb => ({ text: sb.bullet.text, experienceTitle: sb.experience.title, score: sb.totalScore, deterministicScore: sb.deterministicScore, llmScore: sb.llmScore, matchedKeywords: sb.matchedKeywords, dimension: sb.dimension })), postRules, confidence, confidenceReasoning: verdict, fallbackUsed: total === 0, detectedLanguage: job.language, positioning: job.positioning, intentions: job.intentions, tips, diagnosis: { primaryDiagnosis, verdict, whatMatches: whatMatches.slice(0, 3), whatMissing: whatMissing.slice(0, 3), nextActions: nextActions.slice(0, 3), primaryCause, secondaryCauses, recommendedAction }, scoreBreakdown: { fitOffer, ats: atsEvidence, atsOptimized, atsBoost, contextSupport, semantic: semanticScore, recruiterCredibility, domainMismatch, cappedByKeywords, cappedByEvidence, pertinence: v2pertinence, fitMetier: v2fitMetier, fitNiveauFactor: v2fitNiveauFactor, fitNiveau: fitAssessment?.fitNiveau === "over_qualified" ? "trop_junior" : fitAssessment?.fitNiveau === "under_qualified" ? "trop_senior" : "uncertain", forcePreuve: v2forcePreuve, credibiliteCv: v2credibiliteCv, evidenceGrounding: v2forcePreuve, recruiterCredibilityScore: v2credibiliteCv, atsReadiness: atsOptimized, overstatementRisk: domainMismatch ? 70 : Math.max(15, Math.round(atsBoost * 1.2)), badge: v2badge, distanceDomain: v2distanceDomain, debugOverlaps: fitAssessment?.debugOverlaps } };
 }
 
 // â”€â”€â”€ Dry Run Check (steps 1-4 only, no CV generation, no DB save) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1785,6 +1998,7 @@ export interface DryRunResult {
   positioning: string;
   jobTitle: string;
   viability: "good" | "viable" | "uncertain" | "weak";
+  precheckVerdict: "go" | "prudence" | "faible_chance";
   shouldWarn: boolean;
   warningMessage?: string;
   precheckMode: "fast" | "deep";
@@ -1797,23 +2011,29 @@ function getPrecheckViability(score: number): DryRunResult["viability"] {
   return "weak";
 }
 
-function getPrecheckMeta(score: number): Pick<DryRunResult, "viability" | "shouldWarn" | "warningMessage"> {
+function getPrecheckMeta(score: number): Pick<DryRunResult, "viability" | "precheckVerdict" | "shouldWarn" | "warningMessage"> {
   const viability = getPrecheckViability(score);
   if (viability === "weak") {
     return {
       viability,
+      precheckVerdict: "faible_chance",
       shouldWarn: true,
-      warningMessage: "Le pre-check trouve tres peu de preuves directes dans ton CV actuel. Tu peux continuer, mais le match parait faible a ce stade.",
+      warningMessage: "Le triage rapide voit peu de preuves directes pour cette offre. Tu peux continuer, mais la candidature parait faible a ce stade.",
     };
   }
   if (viability === "uncertain") {
     return {
       viability,
+      precheckVerdict: "prudence",
       shouldWarn: false,
-      warningMessage: "Le pre-check est incertain: ton profil peut rester viable, mais l'annonce demande probablement une lecture plus fine.",
+      warningMessage: "Le triage rapide reste prudent: ton profil peut rester viable, mais l'annonce demande probablement une lecture plus fine.",
     };
   }
-  return { viability, shouldWarn: false };
+  return {
+    viability,
+    precheckVerdict: viability === "good" || viability === "viable" ? "go" : "prudence",
+    shouldWarn: false,
+  };
 }
 
 export async function runDryRunCheck(input: Pick<TailorInput, "jobText" | "mode" | "bodyMaxChars" | "allExperiences" | "allBullets" | "allSkills">, openai: OpenAI): Promise<DryRunResult> {
@@ -1998,14 +2218,18 @@ export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Pro
     const candidateReport = applyGeneratedCvAssessment(candidateRawReport, evaluation.optimized || candidateFallbackAssessment, evaluation.scoreModel);
     const baselineAtsFinal = baselineReport.scoreBreakdown.atsOptimized ?? baselineReport.scoreBreakdown.ats;
     const candidateAtsFinal = candidateReport.scoreBreakdown.atsOptimized ?? candidateReport.scoreBreakdown.ats;
+    const baselineRisk = baselineReport.scoreBreakdown.overstatementRisk;
+    const candidateRisk = candidateReport.scoreBreakdown.overstatementRisk;
     const candidateIsNonRegressive =
       candidateReport.scoreBreakdown.pertinence >= baselineReport.scoreBreakdown.pertinence
       && candidateReport.scoreBreakdown.credibiliteCv >= baselineReport.scoreBreakdown.credibiliteCv
-      && candidateAtsFinal >= baselineAtsFinal;
+      && candidateAtsFinal >= baselineAtsFinal
+      && candidateRisk <= baselineRisk + 5;
     const candidateAddsValue =
       candidateReport.scoreBreakdown.pertinence > baselineReport.scoreBreakdown.pertinence
       || candidateReport.scoreBreakdown.credibiliteCv > baselineReport.scoreBreakdown.credibiliteCv
-      || candidateAtsFinal > baselineAtsFinal;
+      || candidateAtsFinal > baselineAtsFinal
+      || candidateRisk < baselineRisk;
 
     if (candidateIsNonRegressive && candidateAddsValue) {
       finalCv = candidateReportCv;
@@ -2017,6 +2241,8 @@ export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Pro
         candidatePertinence: candidateReport.scoreBreakdown.pertinence,
         baselineCredibilite: baselineReport.scoreBreakdown.credibiliteCv,
         candidateCredibilite: candidateReport.scoreBreakdown.credibiliteCv,
+        baselineRisk,
+        candidateRisk,
         baselineAtsFinal,
         candidateAtsFinal,
         scoreModel: evaluation.scoreModel,
