@@ -2,6 +2,18 @@
 
 ## 2026-04-05
 
+### Guardrails anti-faux-positifs
+- Quoi : durcissement des caps structurels et de la lecture d'integrite texte apres les batches SocGen / Deel / Tomorro / Schneider / Lacoste
+- Fichiers : `server/tailoring-engine.ts`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
+- Impact :
+  - correction du sens du mismatch `junior/stage` : un profil trop senior pour le role remonte maintenant en `trop_junior` au lieu de passer entre les mailles
+  - caps plus durs sur `lead_scope_underproven`, `niche_domain_underproven` et `junior_scope_mismatch`
+  - `fitNiveau != coherent` ne peut plus sortir `probant`
+  - bande haute resserree : `90+` devient beaucoup plus rare via nouveaux poids, plafond structurel et malus de survente plus fort
+  - `textIntegrityScore` n'est plus calcule sur un texte trop propre : il prend maintenant en compte le corpus visible du document et des preuves selectionnees
+  - un document ou pack clairement corrompu ne peut plus garder tranquillement `textIntegrityScore = 100`
+- Verification : `npm run check`, `npm run build`
+
 ### Legitimite + optimise humain
 - Quoi : durcissement du moteur contre les faux positifs de scope, et vrai contrat produit pour `optimise`
 - Fichiers : `server/tailoring-engine.ts`, `client/src/pages/result.tsx`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`

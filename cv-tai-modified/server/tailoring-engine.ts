@@ -1574,6 +1574,28 @@ function applyAssessmentGuardrails(report: OptimizationReport, assessment: Gener
     hardWarnings: [...(assessment.hardWarnings || [])],
   };
   const evidenceCorpus = buildReportEvidenceCorpus(report);
+  const senioritySignals = normalizeEvidenceText([
+    report.jobTitle,
+    report.jobSeniority,
+    ...(report.detectedKeywords.responsibilities || []),
+  ].join(" "));
+  const selectedScopeSignals = normalizeEvidenceText([
+    ...report.selectedExperiences.map(exp => exp.title),
+    ...report.selectedBullets.map(bullet => bullet.experienceTitle),
+    evidenceCorpus,
+  ].join(" "));
+  const juniorLikeRole = /\b(junior|stage|intern|internship|alternance|apprentice|entry level)\b/.test(senioritySignals);
+  const clearlySeniorProfile = /\b(senior|lead|head|staff|principal|manager|director)\b/.test(selectedScopeSignals);
+  const missingEvidenceCount = report.postRules.evidenceKeywordsMissing.length;
+  const atsBoost = report.scoreBreakdown.atsBoost ?? Math.max(0, (report.scoreBreakdown.atsOptimized ?? report.scoreBreakdown.ats) - report.scoreBreakdown.ats);
+
+  if (juniorLikeRole && clearlySeniorProfile) {
+    adjusted.fitMetier = Math.min(adjusted.fitMetier, 72);
+    adjusted.recruiterCredibilityScore = Math.min(adjusted.recruiterCredibilityScore, 58);
+    adjusted.credibiliteCv = adjusted.recruiterCredibilityScore;
+    adjusted.overstatementRisk = Math.max(adjusted.overstatementRisk, 72);
+    adjusted.fitNiveau = "trop_junior";
+  }
 
   if (requiresLeadScope(report)) {
     const leadGroups = countPatternGroups(evidenceCorpus, LEAD_SCOPE_EVIDENCE_GROUPS);
@@ -1583,10 +1605,10 @@ function applyAssessmentGuardrails(report: OptimizationReport, assessment: Gener
       : leadGroups < 2;
 
     if (leadScopeThin) {
-      adjusted.fitMetier = Math.min(adjusted.fitMetier, requiresPeopleManagement(report) ? 74 : 78);
-      adjusted.recruiterCredibilityScore = Math.min(adjusted.recruiterCredibilityScore, requiresPeopleManagement(report) ? 68 : 72);
+      adjusted.fitMetier = Math.min(adjusted.fitMetier, requiresPeopleManagement(report) ? 68 : 72);
+      adjusted.recruiterCredibilityScore = Math.min(adjusted.recruiterCredibilityScore, requiresPeopleManagement(report) ? 60 : 66);
       adjusted.credibiliteCv = adjusted.recruiterCredibilityScore;
-      adjusted.overstatementRisk = Math.max(adjusted.overstatementRisk, requiresPeopleManagement(report) ? 58 : 50);
+      adjusted.overstatementRisk = Math.max(adjusted.overstatementRisk, requiresPeopleManagement(report) ? 68 : 58);
       if (adjusted.fitNiveau === "coherent") adjusted.fitNiveau = "uncertain";
     }
   }
@@ -1601,6 +1623,27 @@ function applyAssessmentGuardrails(report: OptimizationReport, assessment: Gener
       adjusted.overstatementRisk = Math.max(adjusted.overstatementRisk, 78);
       if (adjusted.fitNiveau === "coherent") adjusted.fitNiveau = "uncertain";
     }
+  }
+
+  if (adjusted.distanceDomain === "same" && missingEvidenceCount >= 3) {
+    adjusted.fitMetier = Math.min(adjusted.fitMetier, missingEvidenceCount >= 5 ? 82 : 85);
+    adjusted.recruiterCredibilityScore = Math.min(adjusted.recruiterCredibilityScore, missingEvidenceCount >= 5 ? 74 : 78);
+    adjusted.credibiliteCv = adjusted.recruiterCredibilityScore;
+    if (atsBoost >= 35) {
+      adjusted.overstatementRisk = Math.max(adjusted.overstatementRisk, missingEvidenceCount >= 5 ? 55 : 42);
+    }
+  }
+
+  if (
+    inferNicheDomainRequirement(report)
+    && adjusted.distanceDomain === "same"
+    && missingEvidenceCount >= 2
+  ) {
+    adjusted.fitMetier = Math.min(adjusted.fitMetier, 74);
+    adjusted.recruiterCredibilityScore = Math.min(adjusted.recruiterCredibilityScore, 70);
+    adjusted.credibiliteCv = adjusted.recruiterCredibilityScore;
+    adjusted.overstatementRisk = Math.max(adjusted.overstatementRisk, 52);
+    if (adjusted.fitNiveau === "coherent") adjusted.fitNiveau = "uncertain";
   }
 
   return adjusted;
@@ -1618,11 +1661,11 @@ function fitNiveauLegitimacyScore(level: GeneratedCvFitNiveau): number {
     case "coherent":
       return 100;
     case "uncertain":
-      return 68;
+      return 56;
     case "trop_senior":
-      return 38;
+      return 30;
     case "trop_junior":
-      return 28;
+      return 18;
     default:
       return 60;
   }
@@ -1640,10 +1683,11 @@ function overstatementPenalty(params: {
   evidenceGrounding: number;
 }): number {
   const { overstatementRisk, atsReadiness, evidenceGrounding } = params;
-  let penalty = overstatementRisk * 0.1;
+  let penalty = overstatementRisk * 0.14;
+  if (overstatementRisk >= 45) penalty += 4;
   if (overstatementRisk >= 60) penalty += 7;
-  if (overstatementRisk >= 80) penalty += 5;
-  if (atsReadiness >= 85 && evidenceGrounding < 55 && overstatementRisk >= 60) penalty += 8;
+  if (overstatementRisk >= 80) penalty += 8;
+  if (atsReadiness >= 85 && evidenceGrounding < 70 && overstatementRisk >= 45) penalty += 6;
   return penalty;
 }
 
@@ -1664,7 +1708,18 @@ function textIntegrityScore(text: string): number {
   return clampPercent(100 - penalty * 14, 100);
 }
 
-function buildHardWarnings(report: OptimizationReport, assessment: GeneratedCvAssessment, renderedCvText?: string): HardWarningCode[] {
+function buildAssessmentTextIntegrityCorpus(report: OptimizationReport, renderedCvText?: string, jobText?: string): string {
+  return [
+    renderedCvText || "",
+    jobText || "",
+    report.confidenceReasoning || "",
+    report.jobTitle,
+    ...report.selectedBullets.map(bullet => bullet.text),
+    ...report.selectedExperiences.map(exp => `${exp.title} ${exp.reason} ${(exp.matchedAspects || []).join(" ")}`),
+  ].join("\n");
+}
+
+function buildHardWarnings(report: OptimizationReport, assessment: GeneratedCvAssessment, renderedCvText?: string, jobText?: string): HardWarningCode[] {
   const warnings: HardWarningCode[] = [];
   const senioritySignals = normalizeEvidenceText([
     report.jobTitle,
@@ -1677,34 +1732,34 @@ function buildHardWarnings(report: OptimizationReport, assessment: GeneratedCvAs
     && assessment.distanceDomain === "same"
     && assessment.evidenceGrounding < 78
     && report.postRules.evidenceKeywordsMissing.length >= 2;
+  const integrityScore = textIntegrityScore(buildAssessmentTextIntegrityCorpus(report, renderedCvText, jobText));
 
-  if (juniorLikeRole && assessment.fitNiveau === "trop_senior") warnings.push("junior_scope_mismatch");
+  if (juniorLikeRole && assessment.fitNiveau === "trop_junior") warnings.push("junior_scope_mismatch");
   if (requiresLeadScope(report) && assessment.fitNiveau === "uncertain") warnings.push("lead_scope_underproven");
   if (requiresProductManagementScope(report) && assessment.distanceDomain === "different") warnings.push("pm_scope_underproven");
   if (nicheUnderproven) warnings.push("niche_domain_underproven");
-  if (renderedCvText && textIntegrityScore(renderedCvText) < 92) warnings.push("text_integrity_issue");
+  if (integrityScore < 98) warnings.push("text_integrity_issue");
 
   return uniqueItems(warnings) as HardWarningCode[];
 }
 
 function capPertinenceByWarnings(score: number, warnings: HardWarningCode[]): number {
   let capped = score;
-  if (warnings.includes("junior_scope_mismatch")) capped = Math.min(capped, 48);
-  if (warnings.includes("lead_scope_underproven")) capped = Math.min(capped, 76);
+  if (warnings.includes("junior_scope_mismatch")) capped = Math.min(capped, 38);
+  if (warnings.includes("lead_scope_underproven")) capped = Math.min(capped, 64);
   if (warnings.includes("pm_scope_underproven")) capped = Math.min(capped, 22);
-  if (warnings.includes("niche_domain_underproven")) capped = Math.min(capped, 72);
-  if (warnings.includes("text_integrity_issue")) capped = Math.min(capped, 84);
+  if (warnings.includes("niche_domain_underproven")) capped = Math.min(capped, 66);
+  if (warnings.includes("text_integrity_issue")) capped = Math.min(capped, 58);
   return capped;
 }
 
 function computeGeneratedPertinence(assessment: GeneratedCvAssessment): number {
   const scopeFitScore = fitNiveauLegitimacyScore(assessment.fitNiveau);
   const base =
-    assessment.fitMetier * 0.42
+    assessment.fitMetier * 0.34
     + scopeFitScore * 0.28
-    + assessment.evidenceGrounding * 0.22
-    + assessment.recruiterCredibilityScore * 0.06
-    + assessment.atsReadiness * 0.02;
+    + assessment.evidenceGrounding * 0.24
+    + assessment.recruiterCredibilityScore * 0.14;
 
   let score = base - overstatementPenalty({
     overstatementRisk: assessment.overstatementRisk,
@@ -1712,23 +1767,36 @@ function computeGeneratedPertinence(assessment: GeneratedCvAssessment): number {
     evidenceGrounding: assessment.evidenceGrounding,
   });
 
-  if (assessment.fitNiveau === "trop_junior") score -= 15;
-  else if (assessment.fitNiveau === "trop_senior") score -= 10;
-  else if (assessment.fitNiveau === "uncertain") score -= 5;
+  if (assessment.fitNiveau === "trop_junior") score -= 18;
+  else if (assessment.fitNiveau === "trop_senior") score -= 12;
+  else if (assessment.fitNiveau === "uncertain") score -= 8;
 
   if (assessment.distanceDomain === "adjacent" && assessment.recruiterCredibilityScore < 65 && assessment.evidenceGrounding < 60) {
     score -= 6;
   }
 
-  if (
-    assessment.distanceDomain === "same"
-    && assessment.fitMetier >= 82
-    && assessment.recruiterCredibilityScore >= 80
-    && assessment.evidenceGrounding >= 78
-    && assessment.overstatementRisk <= 25
-  ) {
-    score += 2;
+  let structuralCeiling = 100;
+  if (assessment.fitNiveau !== "coherent") {
+    structuralCeiling = Math.min(structuralCeiling, assessment.fitNiveau === "uncertain" ? 74 : 62);
   }
+  if (assessment.distanceDomain === "same") {
+    structuralCeiling = Math.min(
+      structuralCeiling,
+      Math.round(assessment.recruiterCredibilityScore + 8),
+      Math.round(assessment.evidenceGrounding + 6),
+    );
+    if (assessment.evidenceGrounding < 80 && assessment.recruiterCredibilityScore < 80) {
+      structuralCeiling = Math.min(structuralCeiling, 84);
+    }
+    if (assessment.overstatementRisk >= 45) {
+      structuralCeiling = Math.min(structuralCeiling, 82);
+    }
+    if (assessment.evidenceGrounding < 90) {
+      structuralCeiling = Math.min(structuralCeiling, 92);
+    }
+  }
+
+  score = Math.min(score, structuralCeiling);
 
   return clampPercent(capPertinenceByDistance(score, assessment.distanceDomain));
 }
@@ -1782,7 +1850,11 @@ function finalizeGeneratedCvAssessment(assessment: GeneratedCvAssessment): Gener
   let primaryCause: DiagnosisCause;
   let verdict: string;
 
-  if (normalized.fitNiveau === "trop_junior") {
+  if (normalized.distanceDomain === "different") {
+    primaryDiagnosis = "Mismatch de metier";
+    primaryCause = "adjacent_role";
+    verdict = "Le CV partage quelques mots ou methodes avec l'offre, mais le coeur du role reste different.";
+  } else if (normalized.fitNiveau === "trop_junior") {
     primaryDiagnosis = "Niveau de poste trop junior";
     primaryCause = "level_mismatch";
     verdict = "Le document reste proche du poste, mais le niveau attendu semble plus junior que la trajectoire que raconte ton profil.";
@@ -1790,10 +1862,6 @@ function finalizeGeneratedCvAssessment(assessment: GeneratedCvAssessment): Gener
     primaryDiagnosis = "Niveau de poste trop senior";
     primaryCause = "level_mismatch";
     verdict = "Le document reste proche du poste, mais le role demande un niveau ou un scope plus senior que les preuves les plus visibles.";
-  } else if (normalized.distanceDomain === "different") {
-    primaryDiagnosis = "Mismatch de metier";
-    primaryCause = "adjacent_role";
-    verdict = "Le CV partage quelques mots ou methodes avec l'offre, mais le coeur du role reste different.";
   } else if (normalized.distanceDomain === "adjacent") {
     primaryDiagnosis = "Mismatch de metier";
     primaryCause = "adjacent_role";
@@ -1868,14 +1936,18 @@ function badgeFromGeneratedAssessment(assessment: GeneratedCvAssessment): BadgeL
   if (
     warnings.includes("text_integrity_issue")
     || warnings.includes("pm_scope_underproven")
+    || warnings.includes("junior_scope_mismatch")
+    || assessment.fitNiveau === "trop_junior"
   ) {
     return "fragile";
   }
   if (
-    assessment.recruiterCredibilityScore >= 80
+    assessment.fitNiveau === "coherent"
+    && assessment.pertinence >= 78
+    && assessment.recruiterCredibilityScore >= 80
     && assessment.evidenceGrounding >= 75
     && assessment.overstatementRisk <= 35
-    && assessment.distanceDomain !== "different"
+    && assessment.distanceDomain === "same"
     && warnings.length === 0
   ) {
     return "probant";
@@ -1885,9 +1957,11 @@ function badgeFromGeneratedAssessment(assessment: GeneratedCvAssessment): BadgeL
     || assessment.recruiterCredibilityScore < 55
     || assessment.evidenceGrounding < 50
     || assessment.distanceDomain === "different"
-    || warnings.includes("junior_scope_mismatch")
+    || assessment.fitNiveau === "trop_senior"
+    || warnings.includes("lead_scope_underproven")
+    || warnings.includes("niche_domain_underproven")
   ) {
-    return "fragile";
+    return assessment.pertinence >= 60 && assessment.fitNiveau === "trop_senior" ? "a_renforcer" : "fragile";
   }
   return "a_renforcer";
 }
@@ -1948,9 +2022,10 @@ function applyGeneratedCvAssessment(
   assessment: GeneratedCvAssessment,
   scoreModel: GeneratedCvPairEvaluation["scoreModel"],
   renderedCvText?: string,
+  jobText?: string,
 ): OptimizationReport {
   const guarded = applyAssessmentGuardrails(report, assessment);
-  const hardWarnings = buildHardWarnings(report, guarded, renderedCvText);
+  const hardWarnings = buildHardWarnings(report, guarded, renderedCvText, jobText);
   const finalized = finalizeGeneratedCvAssessment({
     ...guarded,
     hardWarnings,
@@ -1991,7 +2066,7 @@ function applyGeneratedCvAssessment(
   const whatMissing = uniqueItems([...warningMessages, ...finalized.whatMissing]).slice(0, 3);
   const recommendedAction = nextActions[0]
     || recommendedActionForCause(finalized.primaryCause, report.diagnosis.recommendedAction || "Renforce le document genere avant d'envoyer.");
-  const integrityScore = renderedCvText ? textIntegrityScore(renderedCvText) : undefined;
+  const integrityScore = textIntegrityScore(buildAssessmentTextIntegrityCorpus(report, renderedCvText, jobText));
 
   return {
     ...report,
@@ -2811,7 +2886,7 @@ export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Pro
   const baselineRawReport = generateOptimizationReport(parsedJob, faithfulSelExps, sanitizedInput.allSkills, baselinePostRules, baselineCv);
   const baselineFallbackAssessment = assessmentFromLegacyReport(baselineRawReport);
   const baselineText = renderCVText(baselineCv, parsedJob);
-  const initialAppliedReport = applyGeneratedCvAssessment(baselineRawReport, baselineFallbackAssessment, "legacy_fallback", baselineText);
+  const initialAppliedReport = applyGeneratedCvAssessment(baselineRawReport, baselineFallbackAssessment, "legacy_fallback", baselineText, sanitizedInput.jobText);
   const initialOptimizationDecision: NonNullable<OptimizationReport["scoreBreakdown"]["optimizationDecision"]> = isFidele ? "faithful_only" : "optimized_rejected";
 
   let finalCv = baselineCv;
@@ -2859,8 +2934,8 @@ export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Pro
       openai,
     });
 
-    const baselineReport = applyGeneratedCvAssessment(baselineRawReport, evaluation.faithful, evaluation.scoreModel, baselineText);
-    const candidateReport = applyGeneratedCvAssessment(candidateRawReport, evaluation.optimized || candidateFallbackAssessment, evaluation.scoreModel, candidateText);
+    const baselineReport = applyGeneratedCvAssessment(baselineRawReport, evaluation.faithful, evaluation.scoreModel, baselineText, sanitizedInput.jobText);
+    const candidateReport = applyGeneratedCvAssessment(candidateRawReport, evaluation.optimized || candidateFallbackAssessment, evaluation.scoreModel, candidateText, sanitizedInput.jobText);
     const baselineAtsFinal = baselineReport.scoreBreakdown.atsOptimized ?? baselineReport.scoreBreakdown.ats;
     const candidateAtsFinal = candidateReport.scoreBreakdown.atsOptimized ?? candidateReport.scoreBreakdown.ats;
     const baselineRisk = baselineReport.scoreBreakdown.overstatementRisk;
@@ -2932,7 +3007,7 @@ export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Pro
       faithfulFallback: baselineFallbackAssessment,
       openai,
     });
-    const faithfulReport = applyGeneratedCvAssessment(baselineRawReport, evaluation.faithful, evaluation.scoreModel, baselineText);
+    const faithfulReport = applyGeneratedCvAssessment(baselineRawReport, evaluation.faithful, evaluation.scoreModel, baselineText, sanitizedInput.jobText);
     finalReport = {
       ...faithfulReport,
       scoreBreakdown: {

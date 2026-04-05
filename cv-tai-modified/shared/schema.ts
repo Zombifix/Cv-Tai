@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, date, uuid, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, date, uuid, jsonb, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
@@ -36,15 +36,19 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 
 export const profile = pgTable("profile", {
   id: uuid("id").primaryKey().defaultRandom(),
+  userId: integer("user_id").references(() => users.id).notNull(),
   name: text("name").notNull().default(""),
   title: text("title").notNull().default(""),
   summary: text("summary"),
   targetRole: text("target_role"),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (t) => ({
+  userUnique: unique("profile_user_id_unique").on(t.userId),
+}));
 
 export const experiences = pgTable("experiences", {
   id: uuid("id").primaryKey().defaultRandom(),
+  userId: integer("user_id").references(() => users.id).notNull(),
   title: text("title").notNull(),
   company: text("company").notNull(),
   contractType: text("contract_type"),
@@ -66,15 +70,19 @@ export const bullets = pgTable("bullets", {
 
 export const skills = pgTable("skills", {
   id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").unique().notNull(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  name: text("name").notNull(),
   category: text("category"),
   level: integer("level"),
   priority: integer("priority").default(0),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (t) => ({
+  userNameUnique: unique("skills_user_id_name_unique").on(t.userId, t.name),
+}));
 
 export const formations = pgTable("formations", {
   id: uuid("id").primaryKey().defaultRandom(),
+  userId: integer("user_id").references(() => users.id).notNull(),
   school: text("school").notNull(),
   degree: text("degree").notNull(),
   year: text("year"),
@@ -83,6 +91,7 @@ export const formations = pgTable("formations", {
 
 export const languages = pgTable("languages", {
   id: uuid("id").primaryKey().defaultRandom(),
+  userId: integer("user_id").references(() => users.id).notNull(),
   name: text("name").notNull(),
   level: text("level"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -90,6 +99,7 @@ export const languages = pgTable("languages", {
 
 export const jobPosts = pgTable("job_posts", {
   id: uuid("id").primaryKey().defaultRandom(),
+  userId: integer("user_id").references(() => users.id).notNull(),
   url: text("url"),
   rawText: text("raw_text"),
   extractedJson: jsonb("extracted_json"),
@@ -98,6 +108,7 @@ export const jobPosts = pgTable("job_posts", {
 
 export const runs = pgTable("runs", {
   id: uuid("id").primaryKey().defaultRandom(),
+  userId: integer("user_id").references(() => users.id).notNull(),
   jobPostId: uuid("job_post_id").references(() => jobPosts.id).notNull(),
   mode: text("mode").notNull(), // "safe" | "ats"
   selectedExperienceIds: uuid("selected_experience_ids").array(),
@@ -107,14 +118,14 @@ export const runs = pgTable("runs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertProfileSchema = createInsertSchema(profile).omit({ id: true, updatedAt: true });
-export const insertExperienceSchema = createInsertSchema(experiences).omit({ id: true, createdAt: true });
+export const insertProfileSchema = createInsertSchema(profile).omit({ id: true, updatedAt: true, userId: true });
+export const insertExperienceSchema = createInsertSchema(experiences).omit({ id: true, createdAt: true, userId: true });
 export const insertBulletSchema = createInsertSchema(bullets).omit({ id: true, createdAt: true });
-export const insertSkillSchema = createInsertSchema(skills).omit({ id: true, createdAt: true });
-export const insertFormationSchema = createInsertSchema(formations).omit({ id: true, createdAt: true });
-export const insertLanguageSchema = createInsertSchema(languages).omit({ id: true, createdAt: true });
-export const insertJobPostSchema = createInsertSchema(jobPosts).omit({ id: true, createdAt: true });
-export const insertRunSchema = createInsertSchema(runs).omit({ id: true, createdAt: true });
+export const insertSkillSchema = createInsertSchema(skills).omit({ id: true, createdAt: true, userId: true });
+export const insertFormationSchema = createInsertSchema(formations).omit({ id: true, createdAt: true, userId: true });
+export const insertLanguageSchema = createInsertSchema(languages).omit({ id: true, createdAt: true, userId: true });
+export const insertJobPostSchema = createInsertSchema(jobPosts).omit({ id: true, createdAt: true, userId: true });
+export const insertRunSchema = createInsertSchema(runs).omit({ id: true, createdAt: true, userId: true });
 
 export type Profile = typeof profile.$inferSelect;
 export type InsertProfile = z.infer<typeof insertProfileSchema>;

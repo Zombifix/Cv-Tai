@@ -16,6 +16,7 @@ import {
   runFastDryRun,
 } from "./tailoring-engine";
 import { createUser, getUserByEmail } from "./auth";
+import type { User } from "@shared/schema";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (req.isAuthenticated()) return next();
@@ -34,36 +35,8 @@ async function getEmbedding(text: string): Promise<number[]> {
   return Array(1536).fill(0);
 }
 
-async function seedDatabase() {
-  const exps = await storage.getExperiences();
-  if (exps.length === 0) {
-    const exp = await storage.createExperience({
-      title: "Senior Software Engineer",
-      company: "Tech Solutions Inc.",
-      startDate: new Date("2020-01-01").toISOString(),
-      endDate: new Date("2023-01-01").toISOString(),
-      description: "Led the development of a cloud-native SaaS platform.",
-      priority: 10,
-    });
-    
-    await storage.createBullet({
-      experienceId: exp.id,
-      text: "Designed and implemented microservices architecture using Node.js and Docker, improving system scalability by 40%.",
-      priority: 5,
-      tags: ["Node.js", "Docker", "Architecture"],
-    });
-
-    await storage.createBullet({
-      experienceId: exp.id,
-      text: "Optimized database queries in PostgreSQL, reducing average API response time from 300ms to 50ms.",
-      priority: 8,
-      tags: ["PostgreSQL", "Performance", "SQL"],
-    });
-    
-    await storage.createSkill({ name: "TypeScript", level: 5, priority: 10 });
-    await storage.createSkill({ name: "React", level: 5, priority: 9 });
-    await storage.createSkill({ name: "Node.js", level: 4, priority: 8 });
-  }
+function uid(req: Request): number {
+  return (req.user as User).id;
 }
 
 const BLOCKED_DOMAINS = [
@@ -459,8 +432,6 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  // Seed initial data
-  seedDatabase().catch(console.error);
 
   // ── AUTH ROUTES (public) ──────────────────────────────────────────────────
   app.post("/api/auth/register", async (req, res) => {
@@ -613,12 +584,12 @@ ${truncated}`;
       if (!exps || !Array.isArray(exps)) {
         return res.status(400).json({ message: "experiences array required" });
       }
-
+      const userId = uid(req);
       const created = [];
       for (const exp of exps) {
-        const newExp = await storage.createExperience({
+        const newExp = await storage.createExperience(userId, {
           title: exp.title || "Sans titre",
-          company: exp.company || "Non renseignÃ©",
+          company: exp.company || "Non renseigné",
           startDate: exp.startDate || undefined,
           endDate: exp.endDate || undefined,
           description: exp.description || "",
@@ -627,7 +598,7 @@ ${truncated}`;
         if (exp.bullets && Array.isArray(exp.bullets)) {
           for (const bulletText of exp.bullets) {
             if (bulletText.trim()) {
-              await storage.createBullet({
+              await storage.createBullet(userId, {
                 experienceId: newExp.id,
                 text: bulletText.trim(),
                 tags: [],
@@ -682,18 +653,18 @@ ${text}`,
 
   // Experiences
   app.get(api.experiences.list.path, async (req, res) => {
-    const exps = await storage.getExperiences();
+    const exps = await storage.getExperiences(uid(req));
     res.json(exps);
   });
   app.get(api.experiences.get.path, async (req, res) => {
-    const exp = await storage.getExperience(req.params.id);
+    const exp = await storage.getExperience(uid(req), req.params.id);
     if (!exp) return res.status(404).json({ message: "Not found" });
     res.json(exp);
   });
   app.post(api.experiences.create.path, async (req, res) => {
     try {
       const input = api.experiences.create.input.parse(req.body);
-      const exp = await storage.createExperience(input);
+      const exp = await storage.createExperience(uid(req), input);
       res.status(201).json(exp);
     } catch (e) {
       if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
@@ -703,7 +674,7 @@ ${text}`,
   app.put(api.experiences.update.path, async (req, res) => {
     try {
       const input = api.experiences.update.input.parse(req.body);
-      const exp = await storage.updateExperience(req.params.id, input);
+      const exp = await storage.updateExperience(uid(req), req.params.id, input);
       res.json(exp);
     } catch (e) {
       if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
@@ -711,22 +682,23 @@ ${text}`,
     }
   });
   app.delete(api.experiences.delete.path, async (req, res) => {
-    await storage.deleteExperience(req.params.id);
+    await storage.deleteExperience(uid(req), req.params.id);
     res.status(204).end();
   });
 
   // Bullets
   app.get(api.bullets.listByExperience.path, async (req, res) => {
-    const b = await storage.getBulletsByExperience(req.params.experienceId);
+    const b = await storage.getBulletsByExperience(uid(req), req.params.experienceId);
     res.json(b);
   });
   app.post(api.bullets.create.path, async (req, res) => {
     try {
       const input = api.bullets.create.input.parse(req.body);
       const expId = req.params.experienceId;
+      const userId = uid(req);
 
       // Anti-duplicate: check if a very similar bullet already exists
-      const existing = await storage.getBulletsByExperience(expId);
+      const existing = await storage.getBulletsByExperience(userId, expId);
       const newTextLower = input.text.toLowerCase().trim();
       const isDuplicate = existing.some(b => {
         const existingLower = b.text.toLowerCase().trim();
@@ -745,7 +717,7 @@ ${text}`,
         return res.status(409).json({ message: "Un bullet similaire existe deja pour cette experience." });
       }
 
-      const bullet = await storage.createBullet({ ...input, experienceId: expId });
+      const bullet = await storage.createBullet(userId, { ...input, experienceId: expId });
       getEmbedding(bullet.text).then(emb => storage.updateBulletEmbedding(bullet.id, emb));
       res.status(201).json(bullet);
     } catch (e) {
@@ -756,7 +728,7 @@ ${text}`,
   app.put(api.bullets.update.path, async (req, res) => {
     try {
       const input = api.bullets.update.input.parse(req.body);
-      const bullet = await storage.updateBullet(req.params.id, input);
+      const bullet = await storage.updateBullet(uid(req), req.params.id, input);
       if (input.text) {
         getEmbedding(input.text).then(emb => storage.updateBulletEmbedding(bullet.id, emb));
       }
@@ -767,11 +739,11 @@ ${text}`,
     }
   });
   app.delete(api.bullets.delete.path, async (req, res) => {
-    await storage.deleteBullet(req.params.id);
+    await storage.deleteBullet(uid(req), req.params.id);
     res.status(204).end();
   });
   app.post(api.bullets.reEmbedAll.path, async (req, res) => {
-    const all = await storage.getAllBullets();
+    const all = await storage.getAllBullets(uid(req));
     let count = 0;
     for (const b of all) {
       const emb = await getEmbedding(b.text);
@@ -782,8 +754,8 @@ ${text}`,
   });
 
   // All unique tags across all bullets (for autocomplete), sorted by frequency desc
-  app.get("/api/bullets/tags", async (_req, res) => {
-    const allBullets = await storage.getAllBullets();
+  app.get("/api/bullets/tags", async (req, res) => {
+    const allBullets = await storage.getAllBullets(uid(req));
     const freq = new Map<string, number>();
     allBullets.flatMap(b => b.tags || []).filter(Boolean).forEach(t => freq.set(t, (freq.get(t) || 0) + 1));
     const tags = [...freq.entries()].sort((a, b) => b[1] - a[1]).map(([tag]) => tag);
@@ -792,13 +764,13 @@ ${text}`,
 
   // Skills
   app.get(api.skills.list.path, async (req, res) => {
-    const s = await storage.getSkills();
+    const s = await storage.getSkills(uid(req));
     res.json(s);
   });
   app.post(api.skills.create.path, async (req, res) => {
     try {
       const input = api.skills.create.input.parse(req.body);
-      const skill = await storage.createSkill(input);
+      const skill = await storage.createSkill(uid(req), input);
       res.status(201).json(skill);
     } catch (e) {
       if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
@@ -808,7 +780,7 @@ ${text}`,
   app.put(api.skills.update.path, async (req, res) => {
     try {
       const input = api.skills.update.input.parse(req.body);
-      const skill = await storage.updateSkill(req.params.id, input);
+      const skill = await storage.updateSkill(uid(req), req.params.id, input);
       res.json(skill);
     } catch (e) {
       if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
@@ -816,16 +788,17 @@ ${text}`,
     }
   });
   app.delete(api.skills.delete.path, async (req, res) => {
-    await storage.deleteSkill(req.params.id);
+    await storage.deleteSkill(uid(req), req.params.id);
     res.status(204).end();
   });
 
   // Extract skills from all experiences + bullets via LLM
   app.post("/api/skills/extract", async (req, res) => {
     try {
-      const allExps = await storage.getExperiences();
-      const allBullets = await storage.getAllBullets();
-      const existingSkills = await storage.getSkills();
+      const userId = uid(req);
+      const allExps = await storage.getExperiences(userId);
+      const allBullets = await storage.getAllBullets(userId);
+      const existingSkills = await storage.getSkills(userId);
 
       if (allExps.length === 0) {
         return res.status(400).json({ message: "Ajoutez des experiences d'abord." });
@@ -902,13 +875,13 @@ Reponds UNIQUEMENT en JSON valide :
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // PROFILE
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  app.get("/api/profile", async (_req, res) => {
-    const p = await storage.getProfile();
+  app.get("/api/profile", async (req, res) => {
+    const p = await storage.getProfile(uid(req));
     res.json(p || { name: "", title: "", summary: null, targetRole: null });
   });
   app.put("/api/profile", async (req, res) => {
     try {
-      const p = await storage.upsertProfile(req.body);
+      const p = await storage.upsertProfile(uid(req), req.body);
       res.json(p);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -920,9 +893,9 @@ Reponds UNIQUEMENT en JSON valide :
     try {
       const { role } = req.body;
       if (!role) return res.status(400).json({ message: "role required" });
-
-      const allExps = await storage.getExperiences();
-      const allBullets = await storage.getAllBullets();
+      const userId = uid(req);
+      const allExps = await storage.getExperiences(userId);
+      const allBullets = await storage.getAllBullets(userId);
 
       if (allExps.length === 0) return res.json({ summary: "Ajoutez des experiences d'abord.", dimensions: [] });
 
@@ -976,63 +949,68 @@ Reponds UNIQUEMENT en JSON :
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // FORMATIONS
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  app.get("/api/formations", async (_req, res) => {
-    const f = await storage.getFormations();
+  app.get("/api/formations", async (req, res) => {
+    const f = await storage.getFormations(uid(req));
     res.json(f);
   });
   app.post("/api/formations", async (req, res) => {
     try {
       const { school, degree, year } = req.body;
       if (!school || !degree) return res.status(400).json({ message: "school and degree required" });
-      const f = await storage.createFormation({ school, degree, year });
+      const f = await storage.createFormation(uid(req), { school, degree, year });
       res.status(201).json(f);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });
   app.delete("/api/formations/:id", async (req, res) => {
-    await storage.deleteFormation(req.params.id);
+    await storage.deleteFormation(uid(req), req.params.id);
     res.status(204).end();
   });
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // LANGUAGES
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  app.get("/api/languages", async (_req, res) => {
-    const l = await storage.getLanguages();
+  app.get("/api/languages", async (req, res) => {
+    const l = await storage.getLanguages(uid(req));
     res.json(l);
   });
   app.post("/api/languages", async (req, res) => {
     try {
       const { name, level } = req.body;
       if (!name) return res.status(400).json({ message: "name required" });
-      const l = await storage.createLanguage({ name, level });
+      const l = await storage.createLanguage(uid(req), { name, level });
       res.status(201).json(l);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });
   app.delete("/api/languages/:id", async (req, res) => {
-    await storage.deleteLanguage(req.params.id);
+    await storage.deleteLanguage(uid(req), req.params.id);
     res.status(204).end();
   });
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // SETTINGS â€” reset all data
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  app.post("/api/settings/reset", async (_req, res) => {
+  app.post("/api/settings/reset", async (req, res) => {
     try {
+      const userId = uid(req);
       const client = await (await import("./db")).pool.connect();
       try {
-        await client.query("DELETE FROM runs");
-        await client.query("DELETE FROM job_posts");
-        await client.query("DELETE FROM bullets");
-        await client.query("DELETE FROM experiences");
-        await client.query("DELETE FROM skills");
-        await client.query("DELETE FROM formations");
-        await client.query("DELETE FROM languages");
-        await client.query("DELETE FROM profile");
-        console.log("[SETTINGS] All data reset");
+        // Delete only the current user's data
+        await client.query("DELETE FROM runs WHERE user_id = $1", [userId]);
+        await client.query("DELETE FROM job_posts WHERE user_id = $1", [userId]);
+        await client.query(
+          "DELETE FROM bullets WHERE experience_id IN (SELECT id FROM experiences WHERE user_id = $1)",
+          [userId]
+        );
+        await client.query("DELETE FROM experiences WHERE user_id = $1", [userId]);
+        await client.query("DELETE FROM skills WHERE user_id = $1", [userId]);
+        await client.query("DELETE FROM formations WHERE user_id = $1", [userId]);
+        await client.query("DELETE FROM languages WHERE user_id = $1", [userId]);
+        await client.query("DELETE FROM profile WHERE user_id = $1", [userId]);
+        console.log("[SETTINGS] Data reset for user", userId);
         res.json({ success: true });
       } finally {
         client.release();
@@ -1044,8 +1022,8 @@ Reponds UNIQUEMENT en JSON :
   });
 
   // Runs history
-  app.get("/api/runs", async (_req, res) => {
-    const allRuns = await storage.getRuns();
+  app.get("/api/runs", async (req, res) => {
+    const allRuns = await storage.getRuns(uid(req));
     res.json(allRuns);
   });
 
@@ -1054,10 +1032,11 @@ Reponds UNIQUEMENT en JSON :
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   app.post("/api/experiences/:id/extract-axes", async (req, res) => {
     try {
-      const exp = await storage.getExperience(req.params.id);
+      const userId = uid(req);
+      const exp = await storage.getExperience(userId, req.params.id);
       if (!exp) return res.status(404).json({ message: "Experience not found" });
 
-      const existingBullets = await storage.getBulletsByExperience(exp.id);
+      const existingBullets = await storage.getBulletsByExperience(userId, exp.id);
       const bulletTexts = existingBullets.map(b => `- ${b.text}`).join("\n");
 
       if (!openai || (!exp.description && existingBullets.length === 0)) {
@@ -1105,10 +1084,11 @@ Reponds en JSON : {"axes": [{"text": "description courte de l'axe", "source": "d
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   app.post("/api/experiences/:id/detect-gaps", async (req, res) => {
     try {
-      const exp = await storage.getExperience(req.params.id);
+      const userId = uid(req);
+      const exp = await storage.getExperience(userId, req.params.id);
       if (!exp) return res.status(404).json({ message: "Experience not found" });
 
-      const existingBullets = await storage.getBulletsByExperience(exp.id);
+      const existingBullets = await storage.getBulletsByExperience(userId, exp.id);
       const bulletTexts = existingBullets.map(b => `- ${b.text} [tags: ${(b.tags || []).join(", ")}]`).join("\n");
 
       if (!openai) {
@@ -1185,7 +1165,7 @@ Reponds UNIQUEMENT en JSON valide :
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   app.post("/api/experiences/:id/tag-evaluate", async (req, res) => {
     try {
-      const exp = await storage.getExperience(req.params.id);
+      const exp = await storage.getExperience(uid(req), req.params.id);
       if (!exp) return res.status(404).json({ message: "Experience not found" });
 
       const { text } = req.body;
@@ -1264,9 +1244,10 @@ JSON uniquement :
       if (!resolvedInput.ok) {
         return res.status(400).json({ message: resolvedInput.errorMessage, scrapeFailed: resolvedInput.metadata.scrapeStatus !== "not_attempted", jobInput: resolvedInput.metadata });
       }
-      const allExps = await storage.getExperiences();
-      const allBullets = await storage.getAllBullets();
-      const allSkills = await storage.getSkills();
+      const userId = uid(req);
+      const allExps = await storage.getExperiences(userId);
+      const allBullets = await storage.getAllBullets(userId);
+      const allSkills = await storage.getSkills(userId);
       if (allExps.length === 0) return res.status(400).json({ message: "Bibliotheque vide." });
       const fastResult = await runFastDryRun({
         jobText: resolvedInput.effectiveJobText,
@@ -1325,12 +1306,13 @@ JSON uniquement :
         return res.status(500).json({ message: "AI service not configured. Please set OPENAI_API_KEY." });
       }
       // Load all data
-      const allExps = await storage.getExperiences();
-      const allBullets = await storage.getAllBullets();
-      const allSkills = await storage.getSkills();
-      const profileData = await storage.getProfile();
-      const formations = await storage.getFormations();
-      const langs = await storage.getLanguages();
+      const userId = uid(req);
+      const allExps = await storage.getExperiences(userId);
+      const allBullets = await storage.getAllBullets(userId);
+      const allSkills = await storage.getSkills(userId);
+      const profileData = await storage.getProfile(userId);
+      const formations = await storage.getFormations(userId);
+      const langs = await storage.getLanguages(userId);
 
       if (allExps.length === 0) {
         return res.status(400).json({ message: "Your CV library is empty. Please add experiences first." });
@@ -1353,14 +1335,14 @@ JSON uniquement :
       }, openai);
 
       // Save job post
-      const jobPost = await storage.createJobPost({
+      const jobPost = await storage.createJobPost(userId, {
         url: resolvedInput.metadata.normalizedUrl,
         rawText: resolvedInput.effectiveJobText,
         extractedJson: { jobInput: resolvedInput.metadata } as any,
       });
 
       // Save run
-      const run = await storage.createRun({
+      const run = await storage.createRun(userId, {
         jobPostId: jobPost.id,
         mode,
         selectedExperienceIds: result.selectedExperienceIds,
@@ -1378,7 +1360,7 @@ JSON uniquement :
   });
 
   app.get(api.tailor.getRun.path, async (req, res) => {
-    const run = await storage.getRun(req.params.id);
+    const run = await storage.getRun(uid(req), req.params.id);
     if (!run) return res.status(404).json({ message: "Not found" });
     res.json(run);
   });

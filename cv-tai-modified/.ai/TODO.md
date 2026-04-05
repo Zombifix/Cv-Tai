@@ -7,6 +7,7 @@
 - Nouveau pass grounded : nettoyage d'encodage, selection moins generique et garde-fous `lead` / `PM`
 - Nouveau pass legitimite : `optimise` peut maintenant re-selectionner les preuves, pas seulement rewriter les memes bullets
 - Warnings durs visibles : `junior_scope_mismatch`, `lead_scope_underproven`, `pm_scope_underproven`, `niche_domain_underproven`, `text_integrity_issue`
+- Nouveau pass anti-faux-positifs : caps plus durs sur `junior/stage`, `lead underproven`, `niche underproven` et bande haute `90+` davantage reservee
 
 ## In progress
 - Pipeline refactorise : evaluation `fidele` / `optimise` dans le meme passage
@@ -33,7 +34,9 @@
 - Verifier que la selection garde moins de bullets "bons partout" et plus de preuves specifiques au role
 - Verifier que `optimise` change vraiment la strategie de preuve sur les cas proches, pas juste le wording
 - Verifier que `optimise` ne sort plus inferieur a `fidele` sur `Cdiscount`, `Dashlane`, `Skillcorner`, `Lacoste`
-- Verifier que les CV ne sortent plus avec mojibake (`Ã`, `â€™`, `�`, controles)
+- Verifier que `textIntegrityScore` descend vraiment quand le pack ou le document contient encore du mojibake
+- Verifier que `junior/stage` ne peut plus coexister avec `93 probant`
+- Verifier que `fitNiveau != coherent` ne peut plus produire un badge `probant`
 - Verifier la coherence inter-source sur les doublons d'offre
 - Verifier le pre-check et `scrapeQuality` sur des annonces propres vs bruitees
 - Clarifier la source des bullets dupliques dans le pack debug / export review
@@ -48,6 +51,7 @@
 - Les garde-fous `lead` / `PM` sont generiques : surveiller toute sur-correction sur des roles hybrides
 - Les warnings durs doivent rester des caps generiques, pas devenir des cas speciaux caches par annonce
 - Le pack debug peut encore raconter une fausse histoire si la provenance des bullets selectionnes est polluee par des doublons inter-experiences
+- Le calcul d'integrite texte est maintenant volontairement plus dur : surveiller toute sur-penalisation si seul le debug est corrompu mais pas le CV final
 - Auth toujours non multi-tenant (`userId` absent des tables coeur)
 - Railway peut encore diverger local/prod sur cookies et version Node
 
