@@ -78,6 +78,13 @@ export default function Library() {
   return (
     <Layout>
       <div className="flex flex-col gap-10 max-w-4xl">
+        <div className="space-y-2 mt-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Super CV</p>
+          <div className="space-y-1">
+            <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Bibliotheque source</h1>
+            <p className="text-sm text-muted-foreground">La base qui alimente tous tes tailorings.</p>
+          </div>
+        </div>
 
         {/* ── PROFILE HEADER ── */}
         <Card className="border border-border">
@@ -96,7 +103,7 @@ export default function Library() {
             <div className="cursor-pointer group" onClick={() => setEditingProfile(true)}>
               <div className="flex items-start justify-between">
                 <div>
-                  <h1 className="text-2xl font-bold tracking-tight">{profile.name || "Votre nom"}</h1>
+                  <h2 className="text-2xl font-bold tracking-tight">{profile.name || "Votre nom"}</h2>
                   <p className="text-base text-muted-foreground mt-0.5">{profile.title || "Votre poste"}</p>
                   {profile.summary && <p className="text-sm text-muted-foreground/70 mt-1">{profile.summary}</p>}
                 </div>
@@ -161,7 +168,7 @@ function ExperiencesSection() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold flex items-center gap-2">
-          <Briefcase className="w-5 h-5 text-primary" /> Work History
+          <Briefcase className="w-5 h-5 text-primary" /> Experiences
         </h2>
         <div className="flex gap-2">
           <CVImportDialog open={importOpen} onOpenChange={setImportOpen} />

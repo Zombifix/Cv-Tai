@@ -19,9 +19,9 @@ export function AppSidebar() {
   const logout = useLogout();
 
   const items = [
-    { title: "Super-CV Library", url: "/library", icon: Library },
-    { title: "Tailor CV", url: "/tailor", icon: WandSparkles },
-    { title: "History", url: "/history", icon: Clock },
+    { title: "Super CV", url: "/library", icon: Library },
+    { title: "Tailoring", url: "/tailor", icon: WandSparkles },
+    { title: "Historique", url: "/history", icon: Clock },
   ];
 
   const bottomItems = [
@@ -44,7 +44,7 @@ export function AppSidebar() {
 
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-            Workspace
+            Navigation
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>

@@ -1,72 +1,107 @@
 # CV Tailor
 
 ## Source of truth
-- Ce fichier est la memoire canonique du projet pour les agents.
-- Ne pas dupliquer la vision produit ailleurs sauf pointeur minimal.
-- Avant toute analyse large, lire ce fichier puis `.ai/TODO.md` puis `.ai/LAST_CHANGES.md`.
+- Memoire canonique du projet pour les agents.
+- Lire ensuite `.ai/TODO.md`, puis `.ai/LAST_CHANGES.md`, puis le diff git.
+- Garder ces fichiers courts. Si un detail n'est plus utile pour agir, il doit disparaitre.
 
 ## Mission produit
-Outil de tailoring de CV : l'IA selectionne et adapte intelligemment les experiences et bullets d'une librairie personnelle pour les aligner sur une offre d'emploi donnee.
+Generer un CV cible auquel l'utilisateur fait confiance sans relecture lourde.
 
-## Objectif nord
-Produire un CV en lequel l'utilisateur a confiance sans avoir a relire, qui passe l'ATS et accroche un recruteur humain.
+## Objectif utilisateur
+- Postuler vite, souvent, sans repasse manuelle systematique.
+- Avoir un repere rapide pour savoir si une offre vaut le coup.
+- Recevoir surtout un CV cible credible, pas une analyse a dissquer pendant 10 minutes.
 
-## Principes produit
-- L'utilisateur ecrit ses bullets lui-meme. Le LLM ne reformule jamais la librairie source.
-- Le LLM a un role limite et fiable : tagger, evaluer, suggerer.
-- Contraintes bullets : 60-200 caracteres, max 5 bullets par experience.
-- Quick check deterministe sans appel LLM.
-- Les axes de mission sont pre-extraits de la description.
+## Principe central
+- Le produit, c'est le CV genere.
+- Le score visible est un repere rapide de triage, pas une verite.
+- L'utilisateur ne doit pas avoir a corriger le moteur pour qu'il marche.
 
-## Vision moteur
-- Positioning adaptatif : consultant, lead, IC, manager.
-- Intentions profondes extraites au-dela des seuls mots-cles ATS.
-- Scoring hybride : deterministe + LLM, avec fallback robuste si le LLM echoue.
-- Budget-aware : allocation par pertinence reelle, pas uniquement par recence.
-- Description context prise en compte dans le scoring.
-- Selection dynamique des bullets.
-- Reformulation adaptative, jamais inventee, toujours ancree dans le reel.
-- Coherence narrative globale du profil.
-- Resume pro adaptatif au positioning de l'offre.
-- Evaluation de la distance au role via un `role frame` generique, pas via le titre seul :
-  - objets de travail
-  - livrables
-  - decisions attendues
-  - collaborateurs
-  - environnement
-  - amplitude / scope
-- Hierarchie de preuve a respecter :
-  - bullets source > contexte de mission / description > skills / titres > optimisation finale
-- Justification : le titre de l'annonce peut etre bruite ou trompeur; le moteur doit faire davantage confiance au corps de l'annonce et aux preuves source qu'au titre ou au texte optimise final.
-- Restitution resultat a respecter :
-  - `Fit offre` = metrique principale visible
-  - `ATS` = axe secondaire visible
-  - `Credibilite recruteur` = etat discret
-  - `confidence` = champ legacy conserve pour compatibilite, pas comme score central UI
-  - le diagnostic doit afficher une cause principale explicite + action recommandee
+## Vision enrichissement library
+- L'utilisateur ecrit ses bullets lui-meme dans la library.
+- Le LLM ne doit pas reecrire librement la library.
+- Le LLM peut aider a :
+  - tagger
+  - evaluer
+  - suggerer
+- La library reste la source de verite du profil.
 
-## Guardrails absolus
-- Ne jamais inventer de metriques, noms de produits ou achievements absents.
-- Ne jamais injecter de phrases descriptives dans les competences.
-- Ne jamais mixer les langues dans un meme CV.
-- Ne jamais selectionner des bullets qui se repetent entre experiences.
-- Ne jamais ignorer le positioning.
-- Ne jamais confondre compatibilite ATS optimisee et preuve reelle du profil : le score global doit rester borne par ce que la bibliotheque prouve vraiment.
+## Philosophie V3
+- `ProfileFrame` : synthese structuree du profil, inferee automatiquement depuis la library.
+- `RoleFrame` : synthese structuree de l'offre, issue du parsing.
+- Axes internes :
+  - `fitMetier`
+  - `fitNiveau`
+  - `forcePreuve`
+  - `credibiliteCv`
+  - `ats`
+- Surface produit :
+  - `Pertinence` = score visible principal
+  - `Badge document` = `probant` / `a_renforcer` / `fragile`
+  - `ATS` = axe secondaire
+
+## Sens des axes V3
+- `fitMetier` : proximite entre le travail reel du profil et le travail reel de l'offre.
+- `fitNiveau` : coherence de niveau entre la trajectoire du profil et le niveau du poste.
+- `forcePreuve` : qualite de preuve du CV source actuel.
+- `credibiliteCv` : qualite du document genere pour un humain.
+- `ats` : couverture ATS finale, utile mais jamais souveraine seule.
 
 ## Hierarchie de preuve
-- Les bullets ecrits par l'utilisateur sont la preuve principale.
-- Le contexte de mission / `experience.description` est une preuve secondaire : il peut renforcer ou desambiguiser, mais ne doit pas compter autant qu'un bullet.
-- Le titre du poste, les tags et autres metadata sont des indices faibles.
-- Les optimisations finales de texte ne doivent jamais faire monter a elles seules la credibilite du match.
+- Preuve forte : bullets source ecrits par l'utilisateur
+- Preuve secondaire : `experience.description`
+- Indices faibles : titres, tags, skills
+- Optimisation finale : utile pour ATS, jamais suffisante seule pour prouver le fit
 
-## Stack
-- Backend : Node.js, Express, TypeScript
-- LLM : OpenAI `gpt-4o-mini`
-- BDD : PostgreSQL via Drizzle ORM
-- Frontend : React, Vite, TailwindCSS
-- Deploiement : Railway
+## Interpretation produit
+- `Pertinence` doit surtout repondre a : "est-ce que ca vaut le coup ?"
+- Le `badge document` doit surtout repondre a : "est-ce que le CV genere est assez probant ?"
+- Un score surprenant sur une offre tres proche du profil est un signal de bug moteur probable.
+- Un hors-scope qui remonte haut est un signal de bug moteur probable.
+- Le score seul ne suffit jamais pour juger la qualite du systeme : toujours relire aussi le CV genere.
 
-## Pipeline tailoring
+## Guardrails absolus
+- Ne jamais inventer metriques, scope, produits ou achievements.
+- Ne jamais transformer un hors-scope en bon fit via keywords.
+- Ne jamais degrader le resultat visible en mode optimise.
+- Ne jamais demander a l'utilisateur de corriger le moteur pour qu'il marche.
+- Ne jamais faire confiance au titre seul si le corps de l'annonce dit autre chose.
+- Ne jamais faire passer l'ATS avant la credibilite humaine.
+
+## A ne pas refaire
+- Ne pas retuner des seuils/caps sur un mini-batch de quelques offres design: ca overfit vite.
+- Ne pas laisser `evidence` ou des hard caps decider seuls du fit: ca cree des falaises absurdes.
+- Ne pas exposer une nouvelle logique visible avant de la valider sur le corpus reel.
+- Ne pas juger le moteur sur le score seul: toujours relire aussi le CV genere.
+- Ne pas confondre `profil global`, `CV actuel`, `CV optimise` et `ATS final`.
+
+## Regles produit
+- Le score visible doit surtout repondre a : "est-ce que ca vaut le coup ?"
+- Le badge doit repondre a : "le document genere est-il assez probant ?"
+- Si l'optimisation n'ameliore pas le document, fallback silencieux sur le mode fidele.
+- Les sous-scores servent au raisonnement interne et au debug, pas a encombrer l'UI.
+- Le pre-check est un triage prudent, pas un verdict metier definitif.
+- Le badge doit rester conservateur: mieux vaut sous-promettre que laisser partir un mauvais CV.
+
+## Vision moteur
+- Positioning adaptatif : consultant / lead / IC / manager
+- Intentions profondes en plus des seuls keywords ATS
+- Scoring hybride : deterministe + LLM
+- Allocation de budget par pertinence reelle
+- Coherence narrative du profil
+- Reformulation adaptee, toujours ancree dans le reel
+
+## Contraintes de rollout
+- Toute grosse refonte se valide d'abord sur le corpus reel avant d'etre prise pour acquise.
+- Toujours comparer :
+  - score visible
+  - badge document
+  - CV genere
+  - coherence inter-source si meme offre
+- Toute divergence forte entre historique, pre-check et page resultat doit etre consideree comme une incoherence produit.
+
+## Pipeline
 1. `parseJobDescription`
 2. `hybridScoreAllBullets`
 3. `allocateCharBudget`
@@ -75,82 +110,39 @@ Produire un CV en lequel l'utilisateur a confiance sans avoir a relire, qui pass
 6. `reformulateBullets`
 7. `applyPostRules`
 8. `renderCVText`
+9. Evaluation V3 du resultat (`pertinence`, badge, diagnostic)
 
 ## Fichiers critiques
 - `server/tailoring-engine.ts`
 - `server/routes.ts`
-- `client/src/pages/library.tsx`
+- `client/src/pages/result.tsx`
 - `client/src/pages/tailor.tsx`
+- `client/src/pages/library.tsx`
 - `shared/schema.ts`
 - `shared/routes.ts`
-- `server/storage.ts`
 
-## Roadmap produit
-### Done
-1. Swap Groq -> OpenAI `gpt-4o-mini`
-2. Fix skills injection
-3. Fix skills dedup
-4. Enrichissement bullets via `experience.description`
-5. Guardrails summary anti-hallucination
-6. Champ `extraContext` dans le formulaire tailor
-7. Flow enrichissement simplifie
-8. Panneau lateral 3 modes
-9. Positioning adaptatif
-10. Intentions dans le scoring
-11. Budget allocator par pertinence
-12. Quick check deterministe
-13. Limites 60-200 chars, max 5 bullets
-14. Auto-tag on save
-15. UI polish
-16. Coherence narrative entre experiences
-17. Selection budget-adaptive
-18. Nettoyage code mort
+## Roadmap courte
+- Valider V3 sur corpus reel
+- Stabiliser le scraping et son quality gate
+- Multi-user / auth propre
+- Accept / reject bullet
+- Embeddings semantiques
 
-### Remaining
-19. Autocompletion des tags
-20. Scraping fallback propre
-21. Multi-user / auth
-22. Accept / reject bullet par l'utilisateur
-23. Embeddings semantiques (`pgvector`)
+## Questions encore ouvertes
+- Le pre-check `/api/check-match` n'est pas encore aligne V3.
+- Le fallback `ProfileFrame` peut encore sous-noter artificiellement certains cas.
+- Le badge document doit encore etre eprouve sur le batch reel.
 
-## Reprise rapide obligatoire
-Quand un agent reprend le repo, il doit suivre cet ordre et s'arreter des qu'il a assez de contexte :
+## Reprise rapide
 1. Lire `CLAUDE.md`
 2. Lire `.ai/TODO.md`
-3. Lire les entrees les plus recentes de `.ai/LAST_CHANGES.md`
+3. Lire `.ai/LAST_CHANGES.md`
 4. Lire `git status --short`
 5. Lire `git diff --name-only`
-6. N'inspecter que les fichiers modifies, les fichiers cites dans `.ai/TODO.md`, et leurs dependances directes
-7. Ne pas refaire une review globale du repo sauf demande explicite
-
-## Discipline de memoire
-- Apres chaque changement significatif, mettre a jour `.ai/TODO.md`
-- Apres chaque changement significatif, ajouter une entree courte dans `.ai/LAST_CHANGES.md`
-- Si rien n'a change dans le code mais qu'une decision produit ou technique a ete prise, la noter quand meme
-- Garder les entrees factuelles, courtes et actionnables
-- Preferer les listes courtes aux longs paragraphes
-
-## Format attendu pour `.ai/TODO.md`
-- `Current focus`
-- `In progress`
-- `Next`
-- `Known risks / checks`
-- `Touched files`
-- `Product backlog`
-
-## Format attendu pour `.ai/LAST_CHANGES.md`
-Pour chaque entree :
-- date
-- quoi
-- fichiers
-- impact
-- verification faite ou manquante
+6. Ne regarder que les fichiers du diff et leurs dependances directes
 
 ## Commandes utiles
-- `npm run dev`
 - `npm run check`
 - `npm run build`
+- `npm run dev`
 - `npm run db:push`
-
-## Regle de cout
-Objectif : minimiser le cout de contexte. Toujours repartir du diff et de la memoire locale avant toute reanalyse large.

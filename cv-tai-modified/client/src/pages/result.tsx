@@ -206,6 +206,8 @@ const MODE_META: Record<string, { label: string; icon: React.ReactNode; color: s
   adaptive: { label: "Adaptatif", icon: <RefreshCw className="w-3 h-3" />, color: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" },
 };
 
+type BadgeLevel = "probant" | "a_renforcer" | "fragile";
+
 type ReportScoreBreakdown = {
   fitOffer?: number;
   ats: number;
@@ -217,6 +219,14 @@ type ReportScoreBreakdown = {
   domainMismatch?: string;
   cappedByKeywords?: boolean;
   cappedByEvidence?: boolean;
+  pertinence?: number;
+  fitMetier?: number;
+  fitNiveauFactor?: number;
+  forcePreuve?: number;
+  credibiliteCv?: number;
+  badge?: BadgeLevel;
+  distanceDomain?: "same" | "adjacent" | "different";
+  debugOverlaps?: { workObjects: number; deliverables: number; decisions: number };
 };
 
 type DiagnosisCause =
@@ -225,12 +235,30 @@ type DiagnosisCause =
   | "bullets_too_generic"
   | "mission_context_too_weak"
   | "evidence_vs_ats_gap"
-  | "scoring_calibration_gap";
+  | "scoring_calibration_gap"
+  | "proof_gap"
+  | "cv_not_credible"
+  | "adjacent_role"
+  | "level_mismatch"
+  | "strong_fit";
 
 function getFitLabel(score: number) {
   if (score >= 70) return { label: "Fit fort", textColor: "text-green-600 dark:text-green-400", ringColor: "#22c55e" };
   if (score >= 40) return { label: "Fit partiel", textColor: "text-amber-600 dark:text-amber-400", ringColor: "#f59e0b" };
   return { label: "Fit faible", textColor: "text-red-600 dark:text-red-400", ringColor: "#ef4444" };
+}
+
+function getBadgeMeta(badge?: BadgeLevel) {
+  switch (badge) {
+    case "probant":
+      return { label: "Probant", className: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700" };
+    case "a_renforcer":
+      return { label: "A renforcer", className: "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700" };
+    case "fragile":
+      return { label: "Fragile", className: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-300 dark:border-red-700" };
+    default:
+      return { label: "n/a", className: "bg-muted text-muted-foreground border-border/60" };
+  }
 }
 
 function getCredibilityMeta(credibility?: ReportScoreBreakdown["recruiterCredibility"]) {
@@ -262,6 +290,16 @@ function getCauseLabel(cause?: DiagnosisCause) {
       return "ATS superieur aux preuves";
     case "scoring_calibration_gap":
       return "Calibrage moteur a surveiller";
+    case "proof_gap":
+      return "Preuves trop faibles";
+    case "cv_not_credible":
+      return "CV pas encore credible";
+    case "adjacent_role":
+      return "Role adjacent";
+    case "level_mismatch":
+      return "Niveau incoherent";
+    case "strong_fit":
+      return "Bon alignement";
     default:
       return "Cause non determinee";
   }
@@ -272,14 +310,15 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
   const strokeWidth = 5;
   const radius = (size - strokeWidth * 2) / 2;
   const circumference = 2 * Math.PI * radius;
-  const offset = circumference * (1 - Math.max(0, Math.min(100, confidence)) / 100);
-  const color = confidence >= 70 ? "#22c55e" : confidence >= 40 ? "#f59e0b" : "#ef4444";
-  const label = confidence >= 70 ? "Fort match" : confidence >= 40 ? "Match partiel" : "Match faible";
-  const textColor = confidence >= 70 ? "text-green-600 dark:text-green-400" : confidence >= 40 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
+  const displayScore = scoreBreakdown?.pertinence ?? scoreBreakdown?.fitOffer ?? confidence;
+  const offset = circumference * (1 - Math.max(0, Math.min(100, displayScore)) / 100);
+  const fitMeta = getFitLabel(displayScore);
+  const color = fitMeta.ringColor;
 
   const insightSentence = reasoning || null;
   const optimizedAts = scoreBreakdown?.atsOptimized;
   const atsBoost = scoreBreakdown?.atsBoost || 0;
+  const badgeMeta = getBadgeMeta(scoreBreakdown?.badge);
 
   return (
     <Card className="border-border/60 shadow-none" data-testid="section-match-score">
@@ -304,25 +343,62 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
               />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-sm font-extrabold tabular-nums" data-testid="text-match-score-value">{confidence}%</span>
+              <span className="text-sm font-extrabold tabular-nums" data-testid="text-match-score-value">{displayScore}%</span>
             </div>
           </div>
           <div className="flex-1 min-w-0">
-            <p className={`text-sm font-bold ${textColor}`} data-testid="text-match-score-label">{label}</p>
-            {scoreBreakdown?.cappedByEvidence && (
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Plafonne : optimisation ATS superieure aux preuves reelles du CV</p>
-            )}
-            {scoreBreakdown?.cappedByKeywords && (
-              <p className="text-[10px] text-red-500 dark:text-red-400 font-medium mt-0.5">Plafonne : keywords critiques absents du CV</p>
-            )}
-            {fallbackUsed && !scoreBreakdown?.cappedByKeywords && (
+            <div className="flex items-center gap-2">
+              <p className={`text-sm font-bold ${fitMeta.textColor}`} data-testid="text-match-score-label">{fitMeta.label}</p>
+              {scoreBreakdown?.badge && (
+                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badgeMeta.className}`}>
+                  {badgeMeta.label}
+                </span>
+              )}
+            </div>
+            {fallbackUsed && (
               <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Match faible : bullets de substitution utilises</p>
             )}
           </div>
         </div>
 
         {/* Score breakdown ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ATS vs semantic */}
-        {scoreBreakdown && (
+        {/* V3 breakdown: Fit metier + Force preuve + Credibilite CV */}
+        {scoreBreakdown?.fitMetier != null && (
+          <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-border/50">
+            <div className="space-y-1">
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Fit metier</p>
+              <div className="flex items-center gap-1.5">
+                <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${scoreBreakdown!.fitMetier! >= 60 ? "bg-green-500" : scoreBreakdown!.fitMetier! >= 30 ? "bg-amber-500" : "bg-red-500"}`}
+                    style={{ width: `${scoreBreakdown!.fitMetier}%` }} />
+                </div>
+                <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown!.fitMetier}%</span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Force preuve</p>
+              <div className="flex items-center gap-1.5">
+                <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${scoreBreakdown!.forcePreuve! >= 60 ? "bg-green-500" : scoreBreakdown!.forcePreuve! >= 30 ? "bg-amber-500" : "bg-red-500"}`}
+                    style={{ width: `${scoreBreakdown!.forcePreuve}%` }} />
+                </div>
+                <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown!.forcePreuve}%</span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Credibilite CV</p>
+              <div className="flex items-center gap-1.5">
+                <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${scoreBreakdown!.credibiliteCv! >= 60 ? "bg-green-500" : scoreBreakdown!.credibiliteCv! >= 30 ? "bg-amber-500" : "bg-red-500"}`}
+                    style={{ width: `${scoreBreakdown!.credibiliteCv}%` }} />
+                </div>
+                <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown!.credibiliteCv}%</span>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Legacy breakdown: ATS + semantic (when v3 not available) */}
+        {scoreBreakdown && scoreBreakdown.fitMetier == null && (
           <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-border/50">
             <div className="space-y-1">
               <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Keywords prouves</p>
@@ -527,8 +603,9 @@ function LibraryHealth({
 function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreakdown?: ReportScoreBreakdown }) {
   const [open, setOpen] = useState(false);
   const [showKeywords, setShowKeywords] = useState(false);
-  const fitOffer = scoreBreakdown?.fitOffer ?? report?.confidence ?? 0;
+  const displayScore = scoreBreakdown?.pertinence ?? scoreBreakdown?.fitOffer ?? report?.confidence ?? 0;
   const credibilityMeta = getCredibilityMeta(scoreBreakdown?.recruiterCredibility);
+  const badgeMeta = getBadgeMeta(scoreBreakdown?.badge);
 
   return (
     <div className="rounded-xl border border-border/60" data-testid="section-details">
@@ -546,47 +623,100 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
           {scoreBreakdown && (
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Detail du score</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <p className="text-[10px] text-muted-foreground font-medium">Fit offre</p>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${fitOffer >= 70 ? "bg-green-500" : fitOffer >= 40 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${fitOffer}%` }} />
+              {scoreBreakdown?.fitMetier != null ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium">Pertinence</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${displayScore >= 70 ? "bg-green-500" : displayScore >= 40 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${displayScore}%` }} />
+                      </div>
+                      <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{displayScore}%</span>
                     </div>
-                    <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{fitOffer}%</span>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Combine le fit metier et la force de preuve de ta bibliotheque.</p>
                   </div>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">Mesure ce que ta bibliotheque prouve vraiment pour cette offre, avant le vernis ATS.</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] text-muted-foreground font-medium">ATS prouve par le CV source</p>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${scoreBreakdown.ats >= 70 ? "bg-green-500" : scoreBreakdown.ats >= 40 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${scoreBreakdown.ats}%` }} />
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium">Fit metier</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${scoreBreakdown!.fitMetier! >= 60 ? "bg-green-500" : scoreBreakdown!.fitMetier! >= 30 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${scoreBreakdown!.fitMetier}%` }} />
+                      </div>
+                      <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown!.fitMetier}%</span>
                     </div>
-                    <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown.ats}%</span>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Mesure a quel point tes objets de travail, livrables et decisions correspondent au role.</p>
                   </div>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">Correspond aux keywords critiques reellement soutenus par les bullets, skills et un peu de contexte mission.</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] text-muted-foreground font-medium">Alignement des bullets selectionnes</p>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${scoreBreakdown.semantic >= 70 ? "bg-green-500" : scoreBreakdown.semantic >= 40 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${scoreBreakdown.semantic}%` }} />
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium">Force de preuve</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${scoreBreakdown!.forcePreuve! >= 60 ? "bg-green-500" : scoreBreakdown!.forcePreuve! >= 30 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${scoreBreakdown!.forcePreuve}%` }} />
+                      </div>
+                      <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown!.forcePreuve}%</span>
                     </div>
-                    <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown.semantic}%</span>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Mesure si tes bullets contiennent des preuves concretes (chiffres, scope, competences cles).</p>
                   </div>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">Mesure a quel point les bullets retenus racontent quelque chose de proche du role, meme sans reprendre mot pour mot l'annonce.</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] text-muted-foreground font-medium">Credibilite recruteur</p>
-                  <div>
-                    <span className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-semibold ${credibilityMeta.className}`}>
-                      {credibilityMeta.label}
-                    </span>
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium">Credibilite du CV</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${scoreBreakdown!.credibiliteCv! >= 60 ? "bg-green-500" : scoreBreakdown!.credibiliteCv! >= 30 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${scoreBreakdown!.credibiliteCv}%` }} />
+                      </div>
+                      <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown!.credibiliteCv}%</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Estime si le CV genere prouve ce que le score promet, au-dela du vernis ATS.</p>
                   </div>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">Estime si un humain croirait a la promesse du CV final, au-dela des seuls mots-cles.</p>
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium">Badge document</p>
+                    <div>
+                      <span className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-semibold ${badgeMeta.className}`}>
+                        {badgeMeta.label}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Resume si le CV genere parait probant, a renforcer ou fragile.</p>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium">Fit offre</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${displayScore >= 70 ? "bg-green-500" : displayScore >= 40 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${displayScore}%` }} />
+                      </div>
+                      <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{displayScore}%</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Mesure ce que ta bibliotheque prouve vraiment pour cette offre, avant le vernis ATS.</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium">ATS prouve</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${scoreBreakdown.ats >= 70 ? "bg-green-500" : scoreBreakdown.ats >= 40 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${scoreBreakdown.ats}%` }} />
+                      </div>
+                      <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown.ats}%</span>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium">Bullets semantiques</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${scoreBreakdown.semantic >= 70 ? "bg-green-500" : scoreBreakdown.semantic >= 40 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${scoreBreakdown.semantic}%` }} />
+                      </div>
+                      <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown.semantic}%</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Mesure a quel point les bullets retenus racontent quelque chose de proche du role, meme sans reprendre mot pour mot l'annonce.</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium">Credibilite recruteur</p>
+                    <div>
+                      <span className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-semibold ${credibilityMeta.className}`}>
+                        {credibilityMeta.label}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Estime si un humain croirait a la promesse du CV final, au-dela des seuls mots-cles.</p>
+                  </div>
+                </div>
+              )}
               {scoreBreakdown.atsOptimized !== undefined && (
                 <p className="text-[10px] text-muted-foreground leading-relaxed mt-2">
                   ATS final du document : <span className="font-semibold text-foreground">{scoreBreakdown.atsOptimized}%</span>
@@ -780,9 +910,12 @@ function scrapeQualityMeta(meta?: JobInputInfo) {
   }
 }
 
-function MatchDiagnosisCard({ fitOffer, diagnosis, fallbackUsed, scoreBreakdown }: { fitOffer: number; diagnosis?: ReportDiagnosis; fallbackUsed?: boolean; scoreBreakdown?: ReportScoreBreakdown }) {
-  const fitMeta = getFitLabel(fitOffer);
+function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: { score: number; diagnosis?: ReportDiagnosis; fallbackUsed?: boolean; scoreBreakdown?: ReportScoreBreakdown }) {
+  const displayScore = scoreBreakdown?.pertinence ?? scoreBreakdown?.fitOffer ?? score;
+  const fitMeta = getFitLabel(displayScore);
+  const badgeMeta = getBadgeMeta(scoreBreakdown?.badge);
   const credibilityMeta = getCredibilityMeta(scoreBreakdown?.recruiterCredibility);
+  const scoreLabel = scoreBreakdown?.fitMetier != null ? "Pertinence" : "Fit offre";
   const primaryDiagnosis = repairMojibake(diagnosis?.primaryDiagnosis || "");
   const verdict = repairMojibake(diagnosis?.verdict || "Le moteur a estime un niveau de correspondance global pour cette annonce.");
   const whatMatches = (diagnosis?.whatMatches || []).map(item => repairMojibake(item));
@@ -806,15 +939,21 @@ function MatchDiagnosisCard({ fitOffer, diagnosis, fallbackUsed, scoreBreakdown 
 
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-center gap-1.5">
-            <ConfidenceRing value={fitOffer} size={56} />
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Fit offre</span>
+            <ConfidenceRing value={displayScore} size={56} />
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{scoreLabel}</span>
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <p className={`text-sm font-bold ${fitMeta.textColor}`}>{fitMeta.label}</p>
-              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${credibilityMeta.className}`}>
-                {credibilityMeta.label}
-              </span>
+              {scoreBreakdown?.badge ? (
+                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badgeMeta.className}`}>
+                  {badgeMeta.label}
+                </span>
+              ) : scoreBreakdown?.recruiterCredibility ? (
+                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${credibilityMeta.className}`}>
+                  {credibilityMeta.label}
+                </span>
+              ) : null}
             </div>
             {primaryDiagnosis && (
               <p className="text-[11px] text-foreground font-medium mt-0.5">{primaryDiagnosis}</p>
@@ -829,13 +968,7 @@ function MatchDiagnosisCard({ fitOffer, diagnosis, fallbackUsed, scoreBreakdown 
                 </p>
               ) : null}
             </div>
-            {scoreBreakdown?.cappedByKeywords && (
-              <p className="text-[10px] text-red-500 dark:text-red-400 font-medium mt-0.5">Plafonne : keywords critiques absents du CV</p>
-            )}
-            {scoreBreakdown?.cappedByEvidence && (
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Plafonne : le gain ATS depasse les preuves reelles du profil</p>
-            )}
-            {fallbackUsed && !scoreBreakdown?.cappedByKeywords && (
+            {fallbackUsed && (
               <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Le moteur a trouve peu de bullets forts pour cette annonce.</p>
             )}
           </div>
@@ -1338,6 +1471,13 @@ function buildAnalysisPayload({
     match: {
       confidence: report?.confidence ?? null,
       fitOffer: report?.scoreBreakdown?.fitOffer ?? report?.confidence ?? null,
+      pertinence: report?.scoreBreakdown?.pertinence ?? null,
+      fitMetier: report?.scoreBreakdown?.fitMetier ?? null,
+      fitNiveauFactor: report?.scoreBreakdown?.fitNiveauFactor ?? null,
+      forcePreuve: report?.scoreBreakdown?.forcePreuve ?? null,
+      credibiliteCv: report?.scoreBreakdown?.credibiliteCv ?? null,
+      badge: trimBlock(report?.scoreBreakdown?.badge) || "n/a",
+      distanceDomain: trimBlock(report?.scoreBreakdown?.distanceDomain) || null,
       primaryDiagnosis: trimBlock(report?.diagnosis?.primaryDiagnosis) || "n/a",
       verdict: trimBlock(report?.diagnosis?.verdict || report?.confidenceReasoning) || "n/a",
       atsScore: report?.scoreBreakdown?.ats ?? null,
@@ -1484,7 +1624,13 @@ function buildAnalysisExport({
     `- Seniority: ${payload.meta.seniority}`,
     "",
     "## Match",
-    `- Fit offer score: ${payload.match.fitOffer ?? "n/a"}%`,
+    `- Pertinence score: ${payload.match.pertinence ?? "n/a"}%`,
+    `- Fit metier: ${payload.match.fitMetier ?? "n/a"}%`,
+    `- Force de preuve: ${payload.match.forcePreuve ?? "n/a"}%`,
+    `- Credibilite CV: ${payload.match.credibiliteCv ?? "n/a"}%`,
+    `- Badge document: ${payload.match.badge || "n/a"}`,
+    `- Distance domaine: ${payload.match.distanceDomain || "n/a"}`,
+    `- Fit offer legacy: ${payload.match.fitOffer ?? "n/a"}%`,
     `- ATS score: ${payload.match.atsScore ?? "n/a"}`,
     `- ATS final score: ${payload.match.atsOptimizedScore ?? "n/a"}`,
     `- Recruiter credibility: ${payload.match.recruiterCredibility || "n/a"}`,
@@ -1787,6 +1933,8 @@ export default function Result() {
   const pageTitle = repairMojibake([report?.jobTitle, report?.jobCompany].filter(Boolean).join(" - ") || "Tailored CV");
   const keyInsight = repairMojibake(report?.confidenceReasoning || "") || null;
   const fitOffer = report?.scoreBreakdown?.fitOffer ?? report?.confidence;
+  const displayScore = report?.scoreBreakdown?.pertinence ?? fitOffer;
+  const scoreLabel = report?.scoreBreakdown?.fitMetier != null ? "Pertinence" : "Fit offre";
   const jobUrl = run?.jobPost?.url;
   const allKeywords = [
     ...(report?.detectedKeywords?.requiredSkills || []),
@@ -1830,10 +1978,10 @@ export default function Result() {
           </Link>
 
           <div className="flex-1 min-w-0 flex items-start gap-4">
-            {fitOffer != null && (
+            {displayScore != null && (
               <div className="flex flex-col items-center gap-1">
-                <ConfidenceRing value={fitOffer} size={68} />
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Fit offre</span>
+                <ConfidenceRing value={displayScore ?? 0} size={68} />
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{scoreLabel}</span>
               </div>
             )}
 
@@ -1912,7 +2060,7 @@ export default function Result() {
                   <div className="flex items-center justify-between gap-3">
                     <TabsList className="h-7 text-xs gap-0.5 bg-background/70">
                       <TabsTrigger value="generated" className="text-xs h-6 px-2.5" data-testid="tab-generated">CV genere</TabsTrigger>
-                      <TabsTrigger value="source" className="text-xs h-6 px-2.5" data-testid="tab-source">Bibliotheque utilisee</TabsTrigger>
+                      <TabsTrigger value="source" className="text-xs h-6 px-2.5" data-testid="tab-source">Super CV utilise</TabsTrigger>
                       <TabsTrigger value="job" className="text-xs h-6 px-2.5" data-testid="tab-job">Annonce utilisee</TabsTrigger>
                     </TabsList>
                     <Button
@@ -2001,9 +2149,9 @@ export default function Result() {
           <div className="space-y-3" data-testid="section-report">
 
             {/* 1. Match Score */}
-            {fitOffer != null && (
+            {displayScore != null && (
               <MatchDiagnosisCard
-                fitOffer={fitOffer}
+                score={displayScore}
                 diagnosis={safeDiagnosis}
                 fallbackUsed={report.fallbackUsed}
                 scoreBreakdown={report.scoreBreakdown}
