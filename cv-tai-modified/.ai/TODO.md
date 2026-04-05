@@ -41,6 +41,7 @@
 - Verifier en vrai sur une offre scrapee que le texte nettoye commence bien au contenu metier et non aux cookies/navigation.
 - Verifier en prod que la page Result n'affiche plus de libelles mojibake visibles dans `Fit offre`, `Points d'attention`, `Mots-cles detectes`, `Ameliorer la bibliotheque` et les badges de langue/seniorite.
 - Verifier en prod que la page Tailor n'affiche plus de libelles mojibake visibles dans le toast de succes, le CTA principal et le dialog de pre-check.
+- Si besoin d'un nouvel audit Claude, repartir du dataset consolide `analysis/claude_tailor_test_matrix_2026-04-05.csv` et de sa note de lecture associee plutot que des exports bruts dans `Downloads`.
 - Verifier en prod qu'une annonce LinkedIn longue est maintenant reformatee en sections lisibles (`Votre mission`, `Vos responsabilites`, `Profil`, `Infos LinkedIn`) au lieu d'un bloc de 50 lignes parasite.
 - Verifier en prod que l'onglet `Annonce utilisee` affiche d'abord une synthese structuree issue du report (titre, missions, competences, intentions), avec le texte brut seulement en vue secondaire.
 - Verifier qu'un run `polished` ne sort plus avec une confiance inferieure au baseline `original` a contenu equivalent.

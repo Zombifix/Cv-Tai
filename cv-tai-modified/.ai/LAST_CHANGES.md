@@ -100,6 +100,12 @@
 - Impact : la page Tailor n'affiche plus de texte casse dans le toast, le CTA ou le dialog de pre-check, et les artefacts de build ne polluent plus le worktree
 - Verification : `git diff --check`, `npm run check`, `npm run build`
 
+### Claude test dataset export
+- Quoi : generation d'un CSV consolide pour Claude a partir des review packs `.md` trouves dans `Downloads`, avec groupes d'offre, doublons, comparaison `original/polished`, flags d'analyse, et jointure des scores de reference humains issus de `debrief_product_design_v2.csv`
+- Fichiers : `analysis/claude_tailor_test_matrix_2026-04-05.csv`, `analysis/claude_tailor_test_matrix_2026-04-05_README.md`
+- Impact : Claude peut reprendre tout l'historique de tests avec le contexte des scores de reference (`bullets_actuels`, `bullets_retravailles`, `profil_global`) sans rescanner manuellement tous les exports
+- Verification : generation du CSV avec 67 review packs consolides + 2 lignes `reference_only`, puis controle rapide de l'entete et du nombre de lignes
+
 ### Tailor coherence pass for duplicated offers
 - Quoi : stabilisation des `criticalKeywords` a partir du `roleFrame` / `requiredSkills`, filtrage des faux keywords critiques (diplomes / signaux RH), et matching canonique par synonymes dans le scoring / post-rules / dry-run
 - Fichiers : `server/tailoring-engine.ts`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`

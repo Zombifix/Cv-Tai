@@ -206,6 +206,21 @@ function uniqueItems(items: string[]): string[] {
   return [...new Set(items.map(item => item?.trim()).filter(Boolean))];
 }
 
+// Tools spécifiques qui ne doivent pas peser autant qu'une compétence structurante dans l'evidence score
+const SPECIFIC_TOOL_KEYWORDS: Set<string> = new Set([
+  "hotjar", "mixpanel", "amplitude", "heap", "fullstory", "contentsquare",
+  "miro", "notion", "jira", "confluence", "asana", "trello", "basecamp",
+  "sketch", "invision", "zeplin", "abstract", "principle", "flinto",
+  "maze", "usertesting", "lookback", "dovetail", "userlytics",
+  "airtable", "productboard", "canny", "pendo",
+  "powerpoint", "keynote", "excel", "google slides",
+]);
+
+function isSpecificToolKeyword(kw: string): boolean {
+  const norm = normalizeEvidenceText(kw);
+  return SPECIFIC_TOOL_KEYWORDS.has(norm) || [...SPECIFIC_TOOL_KEYWORDS].some(tool => norm === tool);
+}
+
 export interface RoleFrame {
   workObjects: string[];
   deliverables: string[];
@@ -675,11 +690,11 @@ function getEvidenceProgressiveCap(
   // Same-domain + LLM confirms semantic relevance → relaxed caps
   const sameDomainHighSemantic = !hasDomainMismatch && semanticScore >= 55;
   if (sameDomainHighSemantic) {
-    if (evidenceScore <= 10) return 42;
-    if (evidenceScore <= 20) return 52;
-    if (evidenceScore < 25) return 58;
-    if (evidenceScore < 35) return 65;
-    if (evidenceScore < 45) return 72;
+    if (evidenceScore <= 10) return 52;
+    if (evidenceScore <= 20) return 62;
+    if (evidenceScore < 25) return 67;
+    if (evidenceScore < 35) return 74;
+    if (evidenceScore < 45) return 82;
     return 100;
   }
   // Strict caps for cross-domain or low semantic
@@ -699,9 +714,9 @@ function getAtsGapCap(
 ): number {
   if (atsBoost < 15 || fitBase >= 55) return 100;
   if (sameDomainHighSemantic) {
-    if (atsBoost >= 35 && evidenceScore < 25) return 58;
-    if (atsBoost >= 25 && evidenceScore < 35) return 65;
-    if (atsBoost >= 20 && evidenceScore < 45) return 72;
+    if (atsBoost >= 35 && evidenceScore < 25) return 65;
+    if (atsBoost >= 25 && evidenceScore < 35) return 72;
+    if (atsBoost >= 20 && evidenceScore < 45) return 80;
     return 100;
   }
   if (atsBoost >= 35 && evidenceScore < 25) return 45;
@@ -724,6 +739,32 @@ function getRecruiterCredibility(params: {
   if (fitOffer < 50 || libraryLooksThin || evidenceIsWeak || evidenceGapIsHigh) return "fragile";
   if (fitOffer < 70 || semanticScore < 70) return "correcte";
   return "forte";
+}
+
+function inferProfileSeniority(allExps: Experience[]): "junior" | "mid" | "senior" {
+  if (allExps.length === 0) return "junior";
+  const totalYears = allExps.reduce((sum, exp) => {
+    const start = exp.startDate ? new Date(exp.startDate).getTime() : Date.now();
+    const end = exp.endDate ? new Date(exp.endDate).getTime() : Date.now();
+    return sum + Math.max(0, (end - start) / (365.25 * 24 * 3600 * 1000));
+  }, 0);
+  if (totalYears < 2) return "junior";
+  if (totalYears < 5) return "mid";
+  return "senior";
+}
+
+function detectSeniorityMismatch(jobSeniority: string, allExps: Experience[]): "over-qualified" | "under-qualified" | undefined {
+  const profileLevel = inferProfileSeniority(allExps);
+  const jobLevel = jobSeniority?.toLowerCase();
+  // Profil senior appliquant pour un stage ou junior
+  if ((jobLevel === "junior" || jobLevel === "stage" || jobLevel === "intern") && profileLevel === "senior") {
+    return "over-qualified";
+  }
+  // Profil junior appliquant pour senior/lead/director
+  if ((jobLevel === "senior" || jobLevel === "lead" || jobLevel === "director") && profileLevel === "junior") {
+    return "under-qualified";
+  }
+  return undefined;
 }
 
 function rankDiagnosisCauses(params: {
@@ -834,10 +875,17 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
     : isDesignJob && userIsPO && !userIsDesigner ? "Designer vs PO"
     : undefined;
 
+  // Seniority mismatch: profil senior sur poste junior, ou profil junior sur poste senior
+  const seniorityMismatch = detectSeniorityMismatch(job.seniority, selExps.map(se => se.experience));
+
   // Skills evidence weight: higher for same-domain (craft skills ARE real proof when domain matches)
   const skillWeight = domainMismatch ? 0.3 : 0.75;
-  const weightedEvidenceCount = postRules.evidenceKeywordsCovered.length + missionContextSupport.contextOnlyKeywords.length * 0.5 + skillEvidenceCount * skillWeight;
-  const evidenceScore = job.criticalKeywords.length > 0 ? Math.round(weightedEvidenceCount / job.criticalKeywords.length * 100) : atsEvidence;
+  // Les outils spécifiques (Hotjar, Mixpanel, Miro...) pèsent 0.5× au lieu de 1× — couverts ou non
+  const toolKeywordWeight = (kw: string) => isSpecificToolKeyword(kw) ? 0.5 : 1;
+  const coveredWeighted = postRules.evidenceKeywordsCovered.reduce((s, kw) => s + toolKeywordWeight(kw), 0);
+  const denominatorWeighted = job.criticalKeywords.reduce((s, kw) => s + toolKeywordWeight(kw), 0);
+  const weightedEvidenceCount = coveredWeighted + missionContextSupport.contextOnlyKeywords.length * 0.5 + skillEvidenceCount * skillWeight;
+  const evidenceScore = denominatorWeighted > 0 ? Math.round(weightedEvidenceCount / denominatorWeighted * 100) : atsEvidence;
   const bulletBonus = total >= 6 ? Math.min(10, Math.round(evidenceScore * 0.1)) : Math.round(total * 1.5);
   const fitBase = Math.min(100, Math.round(semanticScore * 0.45 + evidenceScore * 0.45 + bulletBonus));
   const rawConfidence = Math.round(avg * 0.45 + evidenceScore * 0.45 + bulletBonus);
@@ -857,6 +905,11 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
   if (missingSkills.length > 3) tips.push(`${missingSkills.length} competences demandees absentes.`);
   if (job.positioning === "consultant" && !allBullets.some(b => /accompagn|structur|pratiqu|form|maturit|conseil/i.test(b.bullet.text))) {
     tips.push("Offre conseil : aucun bullet ne mentionne accompagnement ou structuration de pratiques.");
+  }
+  if (seniorityMismatch === "over-qualified") {
+    tips.push("Ce poste est niveau junior/stage. Avec ton parcours, le recruteur s'attendra a un profil moins senior. Cible plutot des offres senior ou lead.");
+  } else if (seniorityMismatch === "under-qualified") {
+    tips.push("Ce poste demande un niveau senior ou lead. Renforce d'abord la preuve de ton impact et de ton scope avant de viser ce niveau.");
   }
 
   // Mismatch-specific tips (domainMismatch already set above)
@@ -940,14 +993,25 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
       : domainMismatch === "development"
       ? "Hors domaine : ce poste est en developpement logiciel. Le profil design ne correspond pas aux attendus techniques."
       : "Profil adjacent : une partie de ton experience se transfere, mais le coeur du role demande est different.";
+  } else if (seniorityMismatch) {
+    primaryDiagnosis = "Competences metier critiques absentes";
+    verdict = seniorityMismatch === "over-qualified"
+      ? "Niveau de poste trop junior pour ton profil : le recruteur privilegiera un candidat moins experimente. Cible des postes senior ou lead."
+      : "Niveau de poste trop senior pour ton profil actuel : renforce d'abord les preuves de ton impact avant de viser ce niveau.";
+  } else if (libraryLooksThin) {
+    primaryDiagnosis = "Bibliotheque insuffisamment detaillee";
+    verdict = "Match difficile a juger : ta bibliotheque actuelle ne donne pas encore assez de matiere solide pour cette annonce.";
+  } else if (!domainMismatch && semanticScore >= 60 && evidenceScore >= 25) {
+    // Bon fit metier, mais les preuves manquent dans les bullets
+    primaryDiagnosis = "Experience proche mais preuves trop faibles";
+    verdict = evidenceGapIsHigh
+      ? "Bon profil pour ce role, mais le CV optimise couvre plus de mots-cles que ce que ta bibliotheque prouve vraiment. Renforce les bullets sources."
+      : "Ton profil est proche de ce role, mais les competences cles manquent encore dans les bullets selectionnes. Renforce la preuve avant d'optimiser le texte.";
   } else if (cappedByKeywords || cappedByEvidence || evidenceScore < 40 || topMissingKeywords.length >= 2) {
     primaryDiagnosis = "Competences metier critiques absentes";
     verdict = evidenceGapIsHigh
       ? "Match fragile : le CV final couvre mieux les mots-cles de l'annonce que ce que ta bibliotheque prouve reellement."
       : "Match partiel : le fond peut coller, mais les competences metier cles de l'annonce ne ressortent pas assez dans ton CV.";
-  } else if (libraryLooksThin) {
-    primaryDiagnosis = "Bibliotheque insuffisamment detaillee";
-    verdict = "Match difficile a juger : ta bibliotheque actuelle ne donne pas encore assez de matiere solide pour cette annonce.";
   } else if (evidenceIsWeak || semanticScore < 65) {
     primaryDiagnosis = "Experience proche mais preuves trop faibles";
     verdict = "Experience proche, mais pas encore assez prouvee dans les bullets retenus.";
@@ -1226,6 +1290,7 @@ export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Pro
     if (
       candidateReport.scoreBreakdown.fitOffer >= baselineReport.scoreBreakdown.fitOffer
       && candidateReport.confidence >= baselineReport.confidence
+      && candidateReport.scoreBreakdown.ats >= baselineReport.scoreBreakdown.ats
     ) {
       finalCv = candidateReportCv;
       finalReport = candidateReport;
