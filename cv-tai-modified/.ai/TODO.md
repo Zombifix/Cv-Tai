@@ -1,19 +1,21 @@
 # TODO
 
 ## Current focus
-- V3 est active : juger la qualite du CV genere et la coherence de `pertinence`
+- Le score visible est maintenant recable sur une evaluation du CV genere, pas sur `ProfileFrame`
 - Le score visible est un triage; le CV reste le vrai produit
 
 ## In progress
-- Pipeline V3 + UI Result branches sur `pertinence` et `badge document`
+- Pipeline refactorise : evaluation `fidele` / `optimise` dans le meme passage
+- `Pertinence` et badge document derives du document final + preuve source
 - Page `Tailoring` refondue en mode fast lane, avec backup local de l'ancienne version
 - Page `Historique` refondue pour un triage plus rapide, avec backup local de l'ancienne version
 - `npm run check` et `npm run build` passent
 
 ## Next
+- Rejouer le batch grounded : `Beelix`, `Thales`, `Behaviour`, `Everbridge`, `Decathlon`
+- Verifier que `Pertinence` suit enfin la qualite du CV genere sur ces cas
 - Verifier la nouvelle ergonomie Tailor sur desktop + mobile avec un vrai usage rapide
 - Verifier la nouvelle ergonomie Historique sur desktop + mobile avec un vrai usage de triage
-- Rejouer le batch V3 : `Beelix`, `Thales`, `Behaviour`, `Everbridge`, `Decathlon`
 - Verifier `0` cas `polished < original`
 - Verifier que les hors-scope restent bas sans faux positifs
 - Verifier que les adjacents credibles remontent sans survente
@@ -22,11 +24,10 @@
 - Verifier le pre-check et `scrapeQuality` sur des annonces propres vs bruitees
 
 ## Known risks / checks
-- `ProfileFrame` est un point sensible : garder un mode debug inspectable
-- Si `inferProfileFrame` tombe en fallback, la `pertinence` peut devenir artificiellement trop basse
-- `fitMetier` ne doit pas devenir un score aux vibes
+- Le pre-check `/api/check-match` reste legacy et peut diverger du score final
+- L'evaluateur `generated_cv_v1` reste un appel LLM : toujours garder le fallback legacy et controler ses sorties
+- `fitMetier` ne doit plus redevenir une theorie sur le profil; il doit rester ancre dans le CV final + les bullets source
 - `Badge document` doit rester conservateur
-- Le pre-check `/api/check-match` reste legacy et peut diverger du score V3 final
 - Auth toujours non multi-tenant (`userId` absent des tables coeur)
 - Railway peut encore diverger local/prod sur cookies et version Node
 
@@ -34,6 +35,8 @@
 - Relever / baisser des caps sur quelques cas design a deja cree de l'overfit
 - Laisser `evidence` ecraser tout le reste a deja produit des cliff effects
 - Basculer l'UI avant validation batch a deja cree du drift entre moteur et facade
+- Faire du `ProfileFrame` visible la source principale du score a deja donne des scores absurdes sur des cas proches
+- Juger `fidele` et `optimise` dans deux logiques differentes a deja cree du drift et des regressions inutiles
 
 ## Touched files
 - `client/src/components/layout.tsx`

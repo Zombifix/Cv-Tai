@@ -207,6 +207,7 @@ const MODE_META: Record<string, { label: string; icon: React.ReactNode; color: s
 };
 
 type BadgeLevel = "probant" | "a_renforcer" | "fragile";
+type GeneratedCvFitNiveau = "coherent" | "trop_junior" | "trop_senior" | "uncertain";
 
 type ReportScoreBreakdown = {
   fitOffer?: number;
@@ -222,10 +223,12 @@ type ReportScoreBreakdown = {
   pertinence?: number;
   fitMetier?: number;
   fitNiveauFactor?: number;
+  fitNiveau?: GeneratedCvFitNiveau;
   forcePreuve?: number;
   credibiliteCv?: number;
   badge?: BadgeLevel;
   distanceDomain?: "same" | "adjacent" | "different";
+  scoreModel?: "generated_cv_v1" | "legacy_fallback" | "profile_frame_v3";
   debugOverlaps?: { workObjects: number; deliverables: number; decisions: number };
 };
 
@@ -305,6 +308,34 @@ function getCauseLabel(cause?: DiagnosisCause) {
   }
 }
 
+function getDistanceDomainLabel(distance?: ReportScoreBreakdown["distanceDomain"]) {
+  switch (distance) {
+    case "same":
+      return "Metier proche";
+    case "adjacent":
+      return "Metier adjacent";
+    case "different":
+      return "Metier different";
+    default:
+      return null;
+  }
+}
+
+function getFitNiveauLabel(level?: GeneratedCvFitNiveau) {
+  switch (level) {
+    case "coherent":
+      return "Niveau coherent";
+    case "trop_junior":
+      return "Poste trop junior";
+    case "trop_senior":
+      return "Poste plus senior";
+    case "uncertain":
+      return "Niveau a confirmer";
+    default:
+      return null;
+  }
+}
+
 function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { confidence: number; reasoning?: string; fallbackUsed?: boolean; scoreBreakdown?: ReportScoreBreakdown }) {
   const size = 56;
   const strokeWidth = 5;
@@ -319,16 +350,18 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
   const optimizedAts = scoreBreakdown?.atsOptimized;
   const atsBoost = scoreBreakdown?.atsBoost || 0;
   const badgeMeta = getBadgeMeta(scoreBreakdown?.badge);
+  const distanceLabel = getDistanceDomainLabel(scoreBreakdown?.distanceDomain);
+  const fitNiveauLabel = getFitNiveauLabel(scoreBreakdown?.fitNiveau);
 
   return (
     <Card className="border-border/60 shadow-none" data-testid="section-match-score">
       <CardContent className="p-4">
         {/* Domain mismatch warning ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â prominent, above the ring */}
-        {scoreBreakdown?.domainMismatch && (
+        {(scoreBreakdown?.domainMismatch || scoreBreakdown?.distanceDomain === "different") && (
           <div className="flex items-start gap-2 mb-3 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40">
             <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
             <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug font-medium">
-              Mismatch detecte ({scoreBreakdown.domainMismatch}) : les competences se croisent partiellement mais le coeur du role differe.
+              Mismatch detecte ({scoreBreakdown.domainMismatch || "distance metier"}) : les competences se croisent partiellement mais le coeur du role differe.
             </p>
           </div>
         )}
@@ -357,6 +390,11 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
             </div>
             {fallbackUsed && (
               <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Match faible : bullets de substitution utilises</p>
+            )}
+            {(distanceLabel || fitNiveauLabel) && (
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {[distanceLabel, fitNiveauLabel].filter(Boolean).join(" • ")}
+              </p>
             )}
           </div>
         </div>
@@ -606,6 +644,8 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
   const displayScore = scoreBreakdown?.pertinence ?? scoreBreakdown?.fitOffer ?? report?.confidence ?? 0;
   const credibilityMeta = getCredibilityMeta(scoreBreakdown?.recruiterCredibility);
   const badgeMeta = getBadgeMeta(scoreBreakdown?.badge);
+  const distanceLabel = getDistanceDomainLabel(scoreBreakdown?.distanceDomain);
+  const fitNiveauLabel = getFitNiveauLabel(scoreBreakdown?.fitNiveau);
 
   return (
     <div className="rounded-xl border border-border/60" data-testid="section-details">
@@ -633,7 +673,7 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
                       </div>
                       <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{displayScore}%</span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground leading-relaxed">Combine le fit metier et la force de preuve de ta bibliotheque.</p>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Repere de triage base sur le document genere, le bon metier, la preuve source et la credibilite du CV.</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[10px] text-muted-foreground font-medium">Fit metier</p>
@@ -643,7 +683,7 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
                       </div>
                       <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown!.fitMetier}%</span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground leading-relaxed">Mesure a quel point tes objets de travail, livrables et decisions correspondent au role.</p>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Juge la proximite du metier a partir du CV genere et des bullets sources retenus, pas du titre seul.</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[10px] text-muted-foreground font-medium">Force de preuve</p>
@@ -653,7 +693,7 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
                       </div>
                       <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown!.forcePreuve}%</span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground leading-relaxed">Mesure si tes bullets contiennent des preuves concretes (chiffres, scope, competences cles).</p>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Mesure la solidite des bullets source retenus: scope, preuves concretes, objets metier et livrables reels.</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[10px] text-muted-foreground font-medium">Credibilite du CV</p>
@@ -663,7 +703,7 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
                       </div>
                       <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{scoreBreakdown!.credibiliteCv}%</span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground leading-relaxed">Estime si le CV genere prouve ce que le score promet, au-dela du vernis ATS.</p>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Estime si un recruteur humain croira le document final, meme si l'ATS remonte fort.</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[10px] text-muted-foreground font-medium">Badge document</p>
@@ -674,6 +714,24 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
                     </div>
                     <p className="text-[10px] text-muted-foreground leading-relaxed">Resume si le CV genere parait probant, a renforcer ou fragile.</p>
                   </div>
+                  {(distanceLabel || fitNiveauLabel) && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-muted-foreground font-medium">Lecture rapide</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {distanceLabel && (
+                          <span className="inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-semibold bg-muted/40 text-foreground">
+                            {distanceLabel}
+                          </span>
+                        )}
+                        {fitNiveauLabel && (
+                          <span className="inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-semibold bg-muted/40 text-foreground">
+                            {fitNiveauLabel}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">Ces libelles resument la distance metier et la coherence de niveau du document final.</p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
@@ -916,6 +974,8 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
   const badgeMeta = getBadgeMeta(scoreBreakdown?.badge);
   const credibilityMeta = getCredibilityMeta(scoreBreakdown?.recruiterCredibility);
   const scoreLabel = scoreBreakdown?.fitMetier != null ? "Pertinence" : "Fit offre";
+  const distanceLabel = getDistanceDomainLabel(scoreBreakdown?.distanceDomain);
+  const fitNiveauLabel = getFitNiveauLabel(scoreBreakdown?.fitNiveau);
   const primaryDiagnosis = repairMojibake(diagnosis?.primaryDiagnosis || "");
   const verdict = repairMojibake(diagnosis?.verdict || "Le moteur a estime un niveau de correspondance global pour cette annonce.");
   const whatMatches = (diagnosis?.whatMatches || []).map(item => repairMojibake(item));
@@ -928,11 +988,11 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
   return (
     <Card className="border-border/60 shadow-none" data-testid="section-match-diagnosis">
       <CardContent className="p-4 space-y-4">
-        {scoreBreakdown?.domainMismatch && (
+        {(scoreBreakdown?.domainMismatch || scoreBreakdown?.distanceDomain === "different") && (
           <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40">
             <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
             <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug font-medium">
-              Mismatch detecte ({scoreBreakdown.domainMismatch}) : tes experiences se croisent avec le poste, mais le coeur du role reste different.
+              Mismatch detecte ({scoreBreakdown.domainMismatch || "distance metier"}) : tes experiences se croisent avec le poste, mais le coeur du role reste different.
             </p>
           </div>
         )}
@@ -965,6 +1025,11 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
               {scoreBreakdown?.atsBoost ? (
                 <p className="text-[11px] text-muted-foreground">
                   Boost ATS: <span className="font-semibold text-foreground">+{scoreBreakdown.atsBoost}%</span>
+                </p>
+              ) : null}
+              {(distanceLabel || fitNiveauLabel) ? (
+                <p className="text-[11px] text-muted-foreground">
+                  {[distanceLabel, fitNiveauLabel].filter(Boolean).join(" • ")}
                 </p>
               ) : null}
             </div>
@@ -1474,10 +1539,12 @@ function buildAnalysisPayload({
       pertinence: report?.scoreBreakdown?.pertinence ?? null,
       fitMetier: report?.scoreBreakdown?.fitMetier ?? null,
       fitNiveauFactor: report?.scoreBreakdown?.fitNiveauFactor ?? null,
+      fitNiveau: trimBlock(report?.scoreBreakdown?.fitNiveau) || null,
       forcePreuve: report?.scoreBreakdown?.forcePreuve ?? null,
       credibiliteCv: report?.scoreBreakdown?.credibiliteCv ?? null,
       badge: trimBlock(report?.scoreBreakdown?.badge) || "n/a",
       distanceDomain: trimBlock(report?.scoreBreakdown?.distanceDomain) || null,
+      scoreModel: trimBlock(report?.scoreBreakdown?.scoreModel) || null,
       primaryDiagnosis: trimBlock(report?.diagnosis?.primaryDiagnosis) || "n/a",
       verdict: trimBlock(report?.diagnosis?.verdict || report?.confidenceReasoning) || "n/a",
       atsScore: report?.scoreBreakdown?.ats ?? null,
@@ -1630,6 +1697,8 @@ function buildAnalysisExport({
     `- Credibilite CV: ${payload.match.credibiliteCv ?? "n/a"}%`,
     `- Badge document: ${payload.match.badge || "n/a"}`,
     `- Distance domaine: ${payload.match.distanceDomain || "n/a"}`,
+    `- Fit niveau: ${payload.match.fitNiveau || "n/a"}`,
+    `- Score model: ${payload.match.scoreModel || "n/a"}`,
     `- Fit offer legacy: ${payload.match.fitOffer ?? "n/a"}%`,
     `- ATS score: ${payload.match.atsScore ?? "n/a"}`,
     `- ATS final score: ${payload.match.atsOptimizedScore ?? "n/a"}`,

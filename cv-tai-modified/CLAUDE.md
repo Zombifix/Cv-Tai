@@ -27,26 +27,26 @@ Generer un CV cible auquel l'utilisateur fait confiance sans relecture lourde.
   - suggerer
 - La library reste la source de verite du profil.
 
-## Philosophie V3
-- `ProfileFrame` : synthese structuree du profil, inferee automatiquement depuis la library.
-- `RoleFrame` : synthese structuree de l'offre, issue du parsing.
-- Axes internes :
-  - `fitMetier`
-  - `fitNiveau`
-  - `forcePreuve`
-  - `credibiliteCv`
-  - `ats`
-- Surface produit :
-  - `Pertinence` = score visible principal
-  - `Badge document` = `probant` / `a_renforcer` / `fragile`
-  - `ATS` = axe secondaire
+## Philosophie de scoring grounded
+- Le score visible ne doit plus etre pilote par un `ProfileFrame` ou par un overlap theorique entre listes LLM.
+- Le score visible doit juger le **CV genere** qui va etre envoye.
+- Le moteur genere toujours une base `fidele`, puis une version `optimisee` si demandee.
+- Un evaluateur unique juge les deux versions dans le **meme passage** pour limiter la derive.
+- Le verdict final sert a choisir la meilleure version visible, pas a theoriser le profil.
 
-## Sens des axes V3
-- `fitMetier` : proximite entre le travail reel du profil et le travail reel de l'offre.
-- `fitNiveau` : coherence de niveau entre la trajectoire du profil et le niveau du poste.
-- `forcePreuve` : qualite de preuve du CV source actuel.
-- `credibiliteCv` : qualite du document genere pour un humain.
+## Axes internes utiles
+- `pertinence` : repere de triage. Repond a "est-ce que ce document vaut le coup ?"
+- `fitMetier` : proximite entre le vrai travail de l'offre et ce que prouvent les bullets source + le CV final.
+- `fitNiveau` : coherence de niveau du document pour ce poste.
+- `forcePreuve` : solidite des bullets source retenus. La reformulation ne doit pas gonfler cet axe.
+- `credibiliteCv` : qualite du document final pour un recruteur humain.
 - `ats` : couverture ATS finale, utile mais jamais souveraine seule.
+
+## Surface produit
+- `Pertinence` = score visible principal.
+- `Badge document` = `probant` / `a_renforcer` / `fragile`.
+- `ATS` = axe secondaire.
+- Le score visible sert au triage rapide. Le vrai produit reste le CV genere.
 
 ## Hierarchie de preuve
 - Preuve forte : bullets source ecrits par l'utilisateur
@@ -60,6 +60,7 @@ Generer un CV cible auquel l'utilisateur fait confiance sans relecture lourde.
 - Un score surprenant sur une offre tres proche du profil est un signal de bug moteur probable.
 - Un hors-scope qui remonte haut est un signal de bug moteur probable.
 - Le score seul ne suffit jamais pour juger la qualite du systeme : toujours relire aussi le CV genere.
+- Si `optimise` n'apporte rien ou abime le document, fallback silencieux sur `fidele`.
 
 ## Guardrails absolus
 - Ne jamais inventer metriques, scope, produits ou achievements.
@@ -75,6 +76,8 @@ Generer un CV cible auquel l'utilisateur fait confiance sans relecture lourde.
 - Ne pas exposer une nouvelle logique visible avant de la valider sur le corpus reel.
 - Ne pas juger le moteur sur le score seul: toujours relire aussi le CV genere.
 - Ne pas confondre `profil global`, `CV actuel`, `CV optimise` et `ATS final`.
+- Ne plus laisser `ProfileFrame -> fitMetier` piloter la facade visible: ca a cree des scores incoherents sur Beelix / Thales.
+- Ne pas comparer `fidele` et `optimise` via deux appels separes si on peut les juger dans le meme passage.
 
 ## Regles produit
 - Le score visible doit surtout repondre a : "est-ce que ca vaut le coup ?"
@@ -83,6 +86,7 @@ Generer un CV cible auquel l'utilisateur fait confiance sans relecture lourde.
 - Les sous-scores servent au raisonnement interne et au debug, pas a encombrer l'UI.
 - Le pre-check est un triage prudent, pas un verdict metier definitif.
 - Le badge doit rester conservateur: mieux vaut sous-promettre que laisser partir un mauvais CV.
+- Le score visible doit etre explicable par le document final. S'il contredit le CV genere, c'est un bug de moteur.
 
 ## Vision moteur
 - Positioning adaptatif : consultant / lead / IC / manager
@@ -129,9 +133,9 @@ Generer un CV cible auquel l'utilisateur fait confiance sans relecture lourde.
 - Embeddings semantiques
 
 ## Questions encore ouvertes
-- Le pre-check `/api/check-match` n'est pas encore aligne V3.
-- Le fallback `ProfileFrame` peut encore sous-noter artificiellement certains cas.
-- Le badge document doit encore etre eprouve sur le batch reel.
+- Le pre-check `/api/check-match` n'est pas encore aligne sur l'evaluation du document final.
+- L'evaluateur `generated_cv_v1` doit encore etre eprouve sur le batch reel.
+- Le badge document doit encore etre teste contre de vrais cas `bon CV / mauvais score` et `mauvais CV / score flatteur`.
 
 ## Reprise rapide
 1. Lire `CLAUDE.md`

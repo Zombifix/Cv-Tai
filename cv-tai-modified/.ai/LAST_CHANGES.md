@@ -2,6 +2,18 @@
 
 ## 2026-04-05
 
+### Grounded score reset
+- Quoi : sortie du score visible hors du `ProfileFrame` / `fitMetier` theorique, et remplacement par une evaluation du CV genere
+- Fichiers : `server/tailoring-engine.ts`, `client/src/pages/result.tsx`, `client/src/pages/tailor.tsx`, `CLAUDE.md`, `.ai/TODO.md`
+- Impact :
+  - `runTailorPipeline` n'utilise plus `ProfileFrame` comme source souveraine du score visible
+  - le moteur evalue `fidele` et `optimise` dans le meme passage (`generated_cv_v1`)
+  - le guard anti-regression choisit la version finale sur `pertinence + credibiliteCv + ATS final`
+  - fallback legacy conserve si l'evaluateur du document final tombe
+  - la page Result explique mieux la logique `document final + preuve source`
+  - la modale de pre-check rappelle que le score avant generation reste un triage rapide, pas le verdict final
+- Verification : `npm run check`, `npm run build`
+
 ### V3 visible rollout
 - Quoi : activation complete de la V3 dans le pipeline et la page Result
 - Fichiers : `server/tailoring-engine.ts`, `client/src/pages/result.tsx`

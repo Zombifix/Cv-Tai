@@ -892,7 +892,32 @@ export interface DiagnosticSummary {
 
 export type BadgeLevel = "probant" | "a_renforcer" | "fragile";
 
-export interface OptimizationReport { jobTitle: string; jobCompany: string; jobSeniority: string; jobDomain: string; detectedKeywords: { requiredSkills: string[]; preferredSkills: string[]; responsibilities: string[]; keywords: string[]; criticalKeywords: string[]; }; matchedSkills: string[]; missingSkills: string[]; selectedExperiences: { title: string; company: string; score: number; reason: string; matchedAspects: string[]; bulletCount: number; charBudget: number; }[]; rejectedExperiences: { title: string; company: string; score: number; reason: string }[]; selectedBullets: { text: string; experienceTitle: string; score: number; deterministicScore: number; llmScore: number; matchedKeywords: string[]; dimension: string; }[]; postRules: PostRuleResult; confidence: number; confidenceReasoning: string; fallbackUsed: boolean; detectedLanguage: "EN" | "FR"; positioning: string; intentions: string[]; tips: string[]; diagnosis: DiagnosticSummary; scoreBreakdown: { fitOffer: number; ats: number; atsOptimized: number; atsBoost: number; contextSupport: number; semantic: number; recruiterCredibility: RecruiterCredibility; domainMismatch?: string; cappedByKeywords: boolean; cappedByEvidence: boolean; pertinence: number; fitMetier: number; fitNiveauFactor: number; forcePreuve: number; credibiliteCv: number; badge: BadgeLevel; distanceDomain: DistanceDomain; debugOverlaps?: { workObjects: number; deliverables: number; decisions: number }; }; }
+export type GeneratedCvFitNiveau = "coherent" | "trop_junior" | "trop_senior" | "uncertain";
+
+export interface GeneratedCvAssessment {
+  pertinence: number;
+  fitMetier: number;
+  fitNiveau: GeneratedCvFitNiveau;
+  forcePreuve: number;
+  credibiliteCv: number;
+  distanceDomain: DistanceDomain;
+  verdict: string;
+  primaryDiagnosis: PrimaryDiagnosis;
+  whatMatches: string[];
+  whatMissing: string[];
+  nextActions: string[];
+  primaryCause: DiagnosisCause;
+  secondaryCauses: DiagnosisCause[];
+}
+
+export interface GeneratedCvPairEvaluation {
+  faithful: GeneratedCvAssessment;
+  optimized?: GeneratedCvAssessment;
+  notes: string[];
+  scoreModel: "generated_cv_v1" | "legacy_fallback";
+}
+
+export interface OptimizationReport { jobTitle: string; jobCompany: string; jobSeniority: string; jobDomain: string; detectedKeywords: { requiredSkills: string[]; preferredSkills: string[]; responsibilities: string[]; keywords: string[]; criticalKeywords: string[]; }; matchedSkills: string[]; missingSkills: string[]; selectedExperiences: { title: string; company: string; score: number; reason: string; matchedAspects: string[]; bulletCount: number; charBudget: number; }[]; rejectedExperiences: { title: string; company: string; score: number; reason: string }[]; selectedBullets: { text: string; experienceTitle: string; score: number; deterministicScore: number; llmScore: number; matchedKeywords: string[]; dimension: string; }[]; postRules: PostRuleResult; confidence: number; confidenceReasoning: string; fallbackUsed: boolean; detectedLanguage: "EN" | "FR"; positioning: string; intentions: string[]; tips: string[]; diagnosis: DiagnosticSummary; scoreBreakdown: { fitOffer: number; ats: number; atsOptimized: number; atsBoost: number; contextSupport: number; semantic: number; recruiterCredibility: RecruiterCredibility; domainMismatch?: string; cappedByKeywords: boolean; cappedByEvidence: boolean; pertinence: number; fitMetier: number; fitNiveauFactor: number; fitNiveau?: GeneratedCvFitNiveau; forcePreuve: number; credibiliteCv: number; badge: BadgeLevel; distanceDomain: DistanceDomain; scoreModel?: "generated_cv_v1" | "legacy_fallback" | "profile_frame_v3"; debugOverlaps?: { workObjects: number; deliverables: number; decisions: number }; }; }
 
 function topItems(items: string[], count: number): string[] {
   const tally = new Map<string, number>();
@@ -1074,6 +1099,322 @@ function recommendedActionForCause(cause: DiagnosisCause, fallback: string): str
       return "Le profil et le role sont bien alignes.";
     default:
       return fallback;
+  }
+}
+
+const PRIMARY_DIAGNOSIS_VALUES: PrimaryDiagnosis[] = [
+  "Bon alignement global",
+  "Mismatch de metier",
+  "Competences metier critiques absentes",
+  "Experience proche mais preuves trop faibles",
+  "Bibliotheque insuffisamment detaillee",
+  "Niveau de poste trop junior",
+  "Niveau de poste trop senior",
+];
+
+const DIAGNOSIS_CAUSE_VALUES: DiagnosisCause[] = [
+  "job_parsing_issue",
+  "library_too_thin",
+  "bullets_too_generic",
+  "mission_context_too_weak",
+  "evidence_vs_ats_gap",
+  "scoring_calibration_gap",
+  "proof_gap",
+  "cv_not_credible",
+  "adjacent_role",
+  "level_mismatch",
+  "strong_fit",
+];
+
+const GENERATED_CV_FIT_LEVEL_VALUES: GeneratedCvFitNiveau[] = [
+  "coherent",
+  "trop_junior",
+  "trop_senior",
+  "uncertain",
+];
+
+function clampPercent(value: any, fallback = 0): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function takeTextList(value: any, max = 3): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(item => String(item || "").trim())
+    .filter(Boolean)
+    .slice(0, max);
+}
+
+function coercePrimaryDiagnosis(value: any, fallback: PrimaryDiagnosis): PrimaryDiagnosis {
+  return PRIMARY_DIAGNOSIS_VALUES.includes(value as PrimaryDiagnosis)
+    ? value as PrimaryDiagnosis
+    : fallback;
+}
+
+function coerceDiagnosisCause(value: any, fallback: DiagnosisCause): DiagnosisCause {
+  return DIAGNOSIS_CAUSE_VALUES.includes(value as DiagnosisCause)
+    ? value as DiagnosisCause
+    : fallback;
+}
+
+function coerceGeneratedCvFitNiveau(value: any, fallback: GeneratedCvFitNiveau = "uncertain"): GeneratedCvFitNiveau {
+  return GENERATED_CV_FIT_LEVEL_VALUES.includes(value as GeneratedCvFitNiveau)
+    ? value as GeneratedCvFitNiveau
+    : fallback;
+}
+
+function generatedCvFitNiveauFactor(level: GeneratedCvFitNiveau): number {
+  switch (level) {
+    case "coherent":
+      return 1;
+    case "trop_junior":
+      return 0.4;
+    case "trop_senior":
+      return 0.55;
+    default:
+      return 0.75;
+  }
+}
+
+function recruiterCredibilityFromScore(score: number): RecruiterCredibility {
+  if (score >= 75) return "forte";
+  if (score >= 60) return "correcte";
+  if (score >= 40) return "fragile";
+  return "faible";
+}
+
+function badgeFromGeneratedAssessment(assessment: GeneratedCvAssessment): BadgeLevel {
+  if (assessment.credibiliteCv >= 70 && assessment.pertinence >= 60 && assessment.distanceDomain !== "different") {
+    return "probant";
+  }
+  if (assessment.credibiliteCv >= 45 && assessment.pertinence >= 35) {
+    return "a_renforcer";
+  }
+  return "fragile";
+}
+
+function assessmentFromLegacyReport(report: OptimizationReport): GeneratedCvAssessment {
+  const legacyFit = clampPercent(report.scoreBreakdown.fitOffer ?? report.confidence, 0);
+  const legacyProof = clampPercent(report.scoreBreakdown.ats, 0);
+  const legacyCred =
+    report.scoreBreakdown.recruiterCredibility === "forte" ? 82
+    : report.scoreBreakdown.recruiterCredibility === "correcte" ? 66
+    : report.scoreBreakdown.recruiterCredibility === "fragile" ? 46
+    : 28;
+
+  const fitNiveau: GeneratedCvFitNiveau =
+    report.diagnosis.primaryDiagnosis === "Niveau de poste trop junior" ? "trop_junior"
+    : report.diagnosis.primaryDiagnosis === "Niveau de poste trop senior" ? "trop_senior"
+    : "coherent";
+
+  const distanceDomain: DistanceDomain =
+    report.scoreBreakdown.domainMismatch ? "different"
+    : legacyFit >= 65 ? "same"
+    : legacyFit >= 35 ? "adjacent"
+    : "different";
+
+  return {
+    pertinence: legacyFit,
+    fitMetier: legacyFit,
+    fitNiveau,
+    forcePreuve: legacyProof,
+    credibiliteCv: legacyCred,
+    distanceDomain,
+    verdict: report.diagnosis.verdict || report.confidenceReasoning,
+    primaryDiagnosis: report.diagnosis.primaryDiagnosis,
+    whatMatches: report.diagnosis.whatMatches.slice(0, 3),
+    whatMissing: report.diagnosis.whatMissing.slice(0, 3),
+    nextActions: report.diagnosis.nextActions.slice(0, 3),
+    primaryCause: report.diagnosis.primaryCause,
+    secondaryCauses: report.diagnosis.secondaryCauses.slice(0, 3),
+  };
+}
+
+function applyGeneratedCvAssessment(report: OptimizationReport, assessment: GeneratedCvAssessment, scoreModel: GeneratedCvPairEvaluation["scoreModel"]): OptimizationReport {
+  const badge = badgeFromGeneratedAssessment(assessment);
+  const recruiterCredibility = recruiterCredibilityFromScore(assessment.credibiliteCv);
+  const recommendedAction = assessment.nextActions[0]
+    || recommendedActionForCause(assessment.primaryCause, report.diagnosis.recommendedAction || "Renforce le document genere avant d'envoyer.");
+
+  return {
+    ...report,
+    confidence: assessment.pertinence,
+    confidenceReasoning: assessment.verdict || report.confidenceReasoning,
+    diagnosis: {
+      primaryDiagnosis: assessment.primaryDiagnosis,
+      verdict: assessment.verdict || report.diagnosis.verdict,
+      whatMatches: assessment.whatMatches,
+      whatMissing: assessment.whatMissing,
+      nextActions: assessment.nextActions,
+      primaryCause: assessment.primaryCause,
+      secondaryCauses: assessment.secondaryCauses,
+      recommendedAction,
+    },
+    scoreBreakdown: {
+      ...report.scoreBreakdown,
+      domainMismatch: assessment.distanceDomain === "different"
+        ? (report.scoreBreakdown.domainMismatch || "distance-domain")
+        : undefined,
+      pertinence: assessment.pertinence,
+      fitMetier: assessment.fitMetier,
+      fitNiveauFactor: generatedCvFitNiveauFactor(assessment.fitNiveau),
+      fitNiveau: assessment.fitNiveau,
+      forcePreuve: assessment.forcePreuve,
+      credibiliteCv: assessment.credibiliteCv,
+      badge,
+      distanceDomain: assessment.distanceDomain,
+      recruiterCredibility,
+      scoreModel,
+    },
+  };
+}
+
+function buildJobAssessmentSummary(job: ParsedJob): string {
+  const responsibilities = job.responsibilities.slice(0, 8).map(item => `- ${item}`).join("\n");
+  const criticalKeywords = job.criticalKeywords.slice(0, 12).join(", ");
+  const intentions = job.intentions.slice(0, 6).join(", ");
+  return [
+    `Title: ${job.title || "n/a"}`,
+    `Company: ${job.company || "n/a"}`,
+    `Seniority: ${job.seniority || "n/a"}`,
+    `Domain: ${job.domain || "n/a"}`,
+    `Positioning: ${job.positioning || "n/a"}`,
+    `Language: ${job.language || "n/a"}`,
+    `Critical keywords: ${criticalKeywords || "n/a"}`,
+    `Intentions: ${intentions || "n/a"}`,
+    `Responsibilities:\n${responsibilities || "- n/a"}`,
+  ].join("\n");
+}
+
+function buildSelectedEvidenceSummary(selExps: ScoredExperience[]): string {
+  return selExps
+    .filter(se => se.selectedBullets.length > 0)
+    .slice(0, 8)
+    .map(se => {
+      const bullets = se.selectedBullets
+        .slice(0, 5)
+        .map(sb => `- ${sb.bullet.text}`)
+        .join("\n");
+      return `### ${se.experience.title} @ ${se.experience.company}\nReason: ${se.reason}\n${bullets}`;
+    })
+    .join("\n\n");
+}
+
+function normalizeGeneratedCvAssessment(raw: any, fallback: GeneratedCvAssessment): GeneratedCvAssessment {
+  return {
+    pertinence: clampPercent(raw?.pertinence, fallback.pertinence),
+    fitMetier: clampPercent(raw?.fitMetier, fallback.fitMetier),
+    fitNiveau: coerceGeneratedCvFitNiveau(raw?.fitNiveau, fallback.fitNiveau),
+    forcePreuve: clampPercent(raw?.forcePreuve, fallback.forcePreuve),
+    credibiliteCv: clampPercent(raw?.credibiliteCv, fallback.credibiliteCv),
+    distanceDomain: ["same", "adjacent", "different"].includes(raw?.distanceDomain)
+      ? raw.distanceDomain as DistanceDomain
+      : fallback.distanceDomain,
+    verdict: String(raw?.verdict || fallback.verdict || "").trim() || fallback.verdict,
+    primaryDiagnosis: coercePrimaryDiagnosis(raw?.primaryDiagnosis, fallback.primaryDiagnosis),
+    whatMatches: takeTextList(raw?.whatMatches, 3),
+    whatMissing: takeTextList(raw?.whatMissing, 3),
+    nextActions: takeTextList(raw?.nextActions, 3),
+    primaryCause: coerceDiagnosisCause(raw?.primaryCause, fallback.primaryCause),
+    secondaryCauses: Array.isArray(raw?.secondaryCauses)
+      ? raw.secondaryCauses
+          .map((cause: any) => coerceDiagnosisCause(cause, fallback.primaryCause))
+          .filter((cause: DiagnosisCause, index: number, arr: DiagnosisCause[]) => arr.indexOf(cause) === index)
+          .slice(0, 3)
+      : fallback.secondaryCauses,
+  };
+}
+
+async function evaluateGeneratedCvVariants(params: {
+  job: ParsedJob;
+  selExps: ScoredExperience[];
+  faithfulCv: StructuredCV;
+  faithfulFallback: GeneratedCvAssessment;
+  optimizedCv?: StructuredCV;
+  optimizedFallback?: GeneratedCvAssessment;
+  openai: OpenAI;
+}): Promise<GeneratedCvPairEvaluation> {
+  const { job, selExps, faithfulCv, faithfulFallback, optimizedCv, optimizedFallback, openai } = params;
+  const sourceEvidence = buildSelectedEvidenceSummary(selExps);
+  const faithfulText = renderCVText(faithfulCv, job);
+  const optimizedText = optimizedCv ? renderCVText(optimizedCv, job) : "";
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: MODEL,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a strict hiring reviewer. Evaluate the ACTUAL generated CV document against the ACTUAL source evidence used to build it. The product's goal is practical triage: should this generated CV be considered worth sending for this job? Be conservative. Never reward keyword stuffing, inferred expertise, or unsupported rewording. Return JSON only.",
+        },
+        {
+          role: "user",
+          content: [
+            "Evaluate these CV variants built from the same source evidence.",
+            "",
+            "Scoring rules:",
+            "- pertinence (0-100): quick triage score. Should this generated CV be considered worth sending for this offer?",
+            "- fitMetier (0-100): how close the REAL work proved by the source evidence is to the REAL work of the offer. Do not rely on job title alone.",
+            "- fitNiveau: coherent | trop_junior | trop_senior | uncertain.",
+            "- forcePreuve (0-100): strength of the SOURCE bullets only. Final wording must not inflate this score.",
+            "- credibiliteCv (0-100): would a human recruiter believe the generated CV for this role?",
+            "- distanceDomain: same | adjacent | different.",
+            "",
+            "Important constraints:",
+            "- If the optimized CV overstates unsupported expertise, lower credibiliteCv and pertinence.",
+            "- A role can be 'designer' in title but still be different if the work objects are 3D/motion/brand/graphic and the source evidence is product design.",
+            "- Judge the final document, but always anchor your judgment in the source evidence below.",
+            "",
+            "Return exactly these keys:",
+            "{ faithful: {...}, optimized: {... or null}, notes: [] }",
+            "",
+            "Allowed primaryDiagnosis values:",
+            PRIMARY_DIAGNOSIS_VALUES.join(" | "),
+            "Allowed primaryCause values:",
+            DIAGNOSIS_CAUSE_VALUES.join(" | "),
+            "",
+            "JOB",
+            buildJobAssessmentSummary(job),
+            "",
+            "SOURCE EVIDENCE USED BY THE ENGINE",
+            sourceEvidence || "No selected evidence",
+            "",
+            "FAITHFUL CV",
+            faithfulText,
+            "",
+            optimizedCv
+              ? `OPTIMIZED CV\n${optimizedText}`
+              : "OPTIMIZED CV\nnull",
+          ].join("\n"),
+        },
+      ],
+    });
+
+    const parsed = JSON.parse(response.choices[0]?.message?.content || "{}");
+    const faithful = normalizeGeneratedCvAssessment(parsed.faithful, faithfulFallback);
+    const optimized = optimizedCv
+      ? normalizeGeneratedCvAssessment(parsed.optimized, optimizedFallback || faithfulFallback)
+      : undefined;
+
+    return {
+      faithful,
+      optimized,
+      notes: takeTextList(parsed.notes, 4),
+      scoreModel: "generated_cv_v1",
+    };
+  } catch (error: any) {
+    log("evaluateGeneratedCvVariants FAILED", error?.message || String(error));
+    return {
+      faithful: faithfulFallback,
+      optimized: optimizedCv ? (optimizedFallback || faithfulFallback) : undefined,
+      notes: ["Fallback legacy: evaluation generated CV indisponible."],
+      scoreModel: "legacy_fallback",
+    };
   }
 }
 
@@ -1616,16 +1957,12 @@ export interface TailorResult { cvText: string; structuredCV: StructuredCV; repo
 const CHAR_LIMITS: Record<string, number> = { compact: 2000, balanced: 3500, detailed: 5500 };
 
 export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Promise<TailorResult> {
-  log("Pipeline V3 Start");
+  log("Pipeline Start");
   const isFidele = input.mode === "original";
   const bodyChars = input.bodyMaxChars || input.customMaxChars || CHAR_LIMITS[input.outputLength || "balanced"] || 3500;
   const introChars = input.introMaxChars || 400;
 
-  const profileFrame = input.profileFrame || await inferProfileFrame(input.allExperiences, input.allBullets, input.allSkills, openai);
   const parsedJob = await parseJobDescription(input.jobText, openai);
-  const fitAssessment = assessFitMetier(parsedJob.roleFrame, profileFrame, parsedJob.seniority);
-  log("fitAssessment", { fitMetier: fitAssessment.fitMetier, fitNiveau: fitAssessment.fitNiveau, distanceDomain: fitAssessment.distanceDomain, overlaps: fitAssessment.debugOverlaps });
-
   const scored = await hybridScoreAllBullets(parsedJob, input.allExperiences, input.allBullets, openai);
   const allocs = allocateCharBudget(input.allExperiences, scored, bodyChars);
   const selExps = selectBullets(scored, allocs);
@@ -1634,37 +1971,70 @@ export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Pro
 
   const baselineCv = cloneStructuredCV(baseCv);
   const baselinePostRules = applyPostRules(baselineCv, parsedJob);
-  const baselineReport = generateOptimizationReport(parsedJob, selExps, input.allSkills, baselinePostRules, baselineCv, fitAssessment);
+  const baselineRawReport = generateOptimizationReport(parsedJob, selExps, input.allSkills, baselinePostRules, baselineCv);
+  const baselineFallbackAssessment = assessmentFromLegacyReport(baselineRawReport);
 
   let finalCv = baselineCv;
-  let finalReport = baselineReport;
+  let finalReport = applyGeneratedCvAssessment(baselineRawReport, baselineFallbackAssessment, "legacy_fallback");
 
   if (!isFidele) {
     const candidateCv = await reformulateBullets(cloneStructuredCV(baseCv), parsedJob, openai);
     const candidateReportCv = cloneStructuredCV(candidateCv);
     const candidatePostRules = applyPostRules(candidateReportCv, parsedJob);
-    const candidateReport = generateOptimizationReport(parsedJob, selExps, input.allSkills, candidatePostRules, candidateReportCv, fitAssessment);
+    const candidateRawReport = generateOptimizationReport(parsedJob, selExps, input.allSkills, candidatePostRules, candidateReportCv);
+    const candidateFallbackAssessment = assessmentFromLegacyReport(candidateRawReport);
 
-    if (
+    const evaluation = await evaluateGeneratedCvVariants({
+      job: parsedJob,
+      selExps,
+      faithfulCv: baselineCv,
+      faithfulFallback: baselineFallbackAssessment,
+      optimizedCv: candidateReportCv,
+      optimizedFallback: candidateFallbackAssessment,
+      openai,
+    });
+
+    const baselineReport = applyGeneratedCvAssessment(baselineRawReport, evaluation.faithful, evaluation.scoreModel);
+    const candidateReport = applyGeneratedCvAssessment(candidateRawReport, evaluation.optimized || candidateFallbackAssessment, evaluation.scoreModel);
+    const baselineAtsFinal = baselineReport.scoreBreakdown.atsOptimized ?? baselineReport.scoreBreakdown.ats;
+    const candidateAtsFinal = candidateReport.scoreBreakdown.atsOptimized ?? candidateReport.scoreBreakdown.ats;
+    const candidateIsNonRegressive =
       candidateReport.scoreBreakdown.pertinence >= baselineReport.scoreBreakdown.pertinence
-      && candidateReport.scoreBreakdown.credibiliteCv >= baselineReport.scoreBreakdown.credibiliteCv - 5
-      && candidateReport.scoreBreakdown.ats >= baselineReport.scoreBreakdown.ats
-    ) {
+      && candidateReport.scoreBreakdown.credibiliteCv >= baselineReport.scoreBreakdown.credibiliteCv
+      && candidateAtsFinal >= baselineAtsFinal;
+    const candidateAddsValue =
+      candidateReport.scoreBreakdown.pertinence > baselineReport.scoreBreakdown.pertinence
+      || candidateReport.scoreBreakdown.credibiliteCv > baselineReport.scoreBreakdown.credibiliteCv
+      || candidateAtsFinal > baselineAtsFinal;
+
+    if (candidateIsNonRegressive && candidateAddsValue) {
       finalCv = candidateReportCv;
       finalReport = candidateReport;
     } else {
-      log("reformulate rejected (v3 guard)", {
+      finalReport = baselineReport;
+      log("reformulate rejected (generated-cv guard)", {
         baselinePertinence: baselineReport.scoreBreakdown.pertinence,
         candidatePertinence: candidateReport.scoreBreakdown.pertinence,
         baselineCredibilite: baselineReport.scoreBreakdown.credibiliteCv,
         candidateCredibilite: candidateReport.scoreBreakdown.credibiliteCv,
-        baselineAts: baselineReport.scoreBreakdown.ats,
-        candidateAts: candidateReport.scoreBreakdown.ats,
+        baselineAtsFinal,
+        candidateAtsFinal,
+        scoreModel: evaluation.scoreModel,
+        notes: evaluation.notes,
       });
     }
+  } else {
+    const evaluation = await evaluateGeneratedCvVariants({
+      job: parsedJob,
+      selExps,
+      faithfulCv: baselineCv,
+      faithfulFallback: baselineFallbackAssessment,
+      openai,
+    });
+    finalReport = applyGeneratedCvAssessment(baselineRawReport, evaluation.faithful, evaluation.scoreModel);
   }
 
   const cvText = renderCVText(finalCv, parsedJob);
-  log(`Pipeline V3 Done - pertinence=${finalReport.scoreBreakdown.pertinence}% badge=${finalReport.scoreBreakdown.badge} | ${parsedJob.positioning} | ${cvText.length} chars`);
-  return { cvText, structuredCV: finalCv, report: finalReport, selectedExperienceIds: selExps.filter(se => se.selectedBullets.length > 0).map(se => se.experience.id), selectedBulletIds: selExps.flatMap(se => se.selectedBullets.map(sb => sb.bullet.id)), profileFrame };
+  log(`Pipeline Done - pertinence=${finalReport.scoreBreakdown.pertinence}% badge=${finalReport.scoreBreakdown.badge} | ${parsedJob.positioning} | ${cvText.length} chars`);
+  return { cvText, structuredCV: finalCv, report: finalReport, selectedExperienceIds: selExps.filter(se => se.selectedBullets.length > 0).map(se => se.experience.id), selectedBulletIds: selExps.flatMap(se => se.selectedBullets.map(sb => sb.bullet.id)) };
 }

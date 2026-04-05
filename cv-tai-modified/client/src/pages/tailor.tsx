@@ -526,7 +526,7 @@ export default function Tailor() {
               </span>
               <span className="block text-muted-foreground">
                 {pendingConfirm?.message ? <span className="mb-1 block">{pendingConfirm.message}</span> : null}
-                Ton profil correspond peu a ce poste. Le CV genere risque d'etre peu pertinent et de consommer des credits IA pour un resultat limite.
+                Ce score sert seulement de triage rapide avant generation. Le jugement final se fait sur le CV genere, pas sur ce pre-check seul.
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
