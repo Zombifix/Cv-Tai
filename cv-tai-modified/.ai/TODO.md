@@ -5,12 +5,16 @@
 - Le score visible est un triage; le CV reste le vrai produit
 - Calibration V3 recentree sur `fitMetier + recruiterCredibilityScore + evidenceGrounding`, avec `overstatementRisk` comme frein reel
 - Nouveau pass grounded : nettoyage d'encodage, selection moins generique et garde-fous `lead` / `PM`
+- Nouveau pass legitimite : `optimise` peut maintenant re-selectionner les preuves, pas seulement rewriter les memes bullets
+- Warnings durs visibles : `junior_scope_mismatch`, `lead_scope_underproven`, `pm_scope_underproven`, `niche_domain_underproven`, `text_integrity_issue`
 
 ## In progress
 - Pipeline refactorise : evaluation `fidele` / `optimise` dans le meme passage
 - `Pertinence` et badge document derives du document final + preuve source
 - Badge durci : `probant` devient conservateur
 - Pre-check recable en verdict produit `go / prudence / faible_chance`
+- `Optimise humain` : selection dediee + summary dedie + reformulation plus ambitieuse mais toujours ancree
+- La page Result affiche maintenant la decision moteur (`fidele` / `optimise rejete` / `optimise retenu`) et les warnings prioritaires
 - Page `Tailoring` refondue en mode fast lane, avec backup local de l'ancienne version
 - Page `Historique` refondue pour un triage plus rapide, avec backup local de l'ancienne version
 - `npm run check` et `npm run build` passent
@@ -27,9 +31,12 @@
 - Verifier le badge document contre la qualite humaine reelle du CV
 - Verifier que les roles `lead` proches metier mais faibles en scope redescendent en `a_renforcer`
 - Verifier que la selection garde moins de bullets "bons partout" et plus de preuves specifiques au role
+- Verifier que `optimise` change vraiment la strategie de preuve sur les cas proches, pas juste le wording
+- Verifier que `optimise` ne sort plus inferieur a `fidele` sur `Cdiscount`, `Dashlane`, `Skillcorner`, `Lacoste`
 - Verifier que les CV ne sortent plus avec mojibake (`Ã`, `â€™`, `�`, controles)
 - Verifier la coherence inter-source sur les doublons d'offre
 - Verifier le pre-check et `scrapeQuality` sur des annonces propres vs bruitees
+- Clarifier la source des bullets dupliques dans le pack debug / export review
 
 ## Known risks / checks
 - Le pre-check garde encore un coeur legacy pour la vitesse, meme si son langage produit est maintenant aligne
@@ -39,6 +46,8 @@
 - `ATS` reste utile mais ne doit plus remonter artificiellement des documents mal ancres
 - Le fix d'encodage repare la plupart des mojibake courants, mais ne peut pas ressusciter un caractere deja perdu en amont du scrape
 - Les garde-fous `lead` / `PM` sont generiques : surveiller toute sur-correction sur des roles hybrides
+- Les warnings durs doivent rester des caps generiques, pas devenir des cas speciaux caches par annonce
+- Le pack debug peut encore raconter une fausse histoire si la provenance des bullets selectionnes est polluee par des doublons inter-experiences
 - Auth toujours non multi-tenant (`userId` absent des tables coeur)
 - Railway peut encore diverger local/prod sur cookies et version Node
 

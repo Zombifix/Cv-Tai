@@ -2,6 +2,19 @@
 
 ## 2026-04-05
 
+### Legitimite + optimise humain
+- Quoi : durcissement du moteur contre les faux positifs de scope, et vrai contrat produit pour `optimise`
+- Fichiers : `server/tailoring-engine.ts`, `client/src/pages/result.tsx`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
+- Impact :
+  - `optimise` ne repart plus de la meme selection que `fidele` : il peut maintenant re-selectionner les preuves les plus convaincantes pour le role
+  - le resume `optimise` a une consigne distincte, plus orientee legitimte humaine, sans droit de gonfler le scope
+  - l'evaluateur compare des preuves source distinctes pour `fidele` et `optimise`, pas une seule base commune
+  - ajout de warnings durs dans le moteur : `junior_scope_mismatch`, `lead_scope_underproven`, `pm_scope_underproven`, `niche_domain_underproven`, `text_integrity_issue`
+  - ces warnings peuvent maintenant caper la `Pertinence` et empecher un badge `probant`
+  - la page Result expose les warnings prioritaires, la decision moteur (`fidele`, `optimise retenu`, `optimise rejete`) et l'integrite texte
+  - la synthese d'annonce fusionne `keywords critiques` et `skills requises` dans une seule lecture `Exigences de l'offre`
+- Verification : `npm run check`, `npm run build`
+
 ### Grounded quality pass
 - Quoi : correctifs concrets sur la qualite documentaire et la lecture du scope, sans relancer une refonte
 - Fichiers : `server/tailoring-engine.ts`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`

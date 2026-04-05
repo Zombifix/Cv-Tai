@@ -757,6 +757,19 @@ Score generously for bullets matching the SPIRIT of the role.` },
 
 // â”€â”€â”€ Step 3: Budget Allocator (pertinence-weighted) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface BudgetAlloc { experience: Experience; charBudget: number; maxBullets: number; importance: "critical" | "standard" | "minimal"; }
+type SelectionStrategy = "faithful" | "optimized";
+type ProofPriority =
+  | "leadership"
+  | "people_management"
+  | "product_ownership"
+  | "data_workflows"
+  | "research"
+  | "design_system"
+  | "mobile";
+
+interface SelectBulletsOptions {
+  strategy?: SelectionStrategy;
+}
 
 export function allocateCharBudget(exps: Experience[], scored: ScoredBullet[], totalChars: number): BudgetAlloc[] {
   const OVERHEAD = 500; const EXP_HEADER = 80;
@@ -828,9 +841,54 @@ function countDirectKeywordMatches(text: string, tags: string[], keywords: strin
   return keywords.filter(keyword => textHasKeyword(evidenceText, keyword)).length;
 }
 
+function detectSelectionPriorities(job: ParsedJob): ProofPriority[] {
+  const signals = normalizeEvidenceText([
+    job.title,
+    job.company,
+    job.domain,
+    ...job.requiredSkills,
+    ...job.preferredSkills,
+    ...job.responsibilities,
+    ...job.criticalKeywords,
+  ].join(" "));
+
+  const priorities: ProofPriority[] = [];
+  if (/\b(lead|head|director|leadership|vision|strategy|strategie)\b/.test(signals)) priorities.push("leadership");
+  if (/\b(team management|people management|management d equipe|manage designers|grow the design team|faire grandir|mentoring)\b/.test(signals)) priorities.push("people_management");
+  if (/\b(product management|product owner|roadmap|prioritization|priorisation|backlog|okr|kpi|crm)\b/.test(signals)) priorities.push("product_ownership");
+  if (/\b(data|analytics|dashboard|workflow|backoffice|data products|football|match analysis|visualization|visualisation|dense en donnees)\b/.test(signals)) priorities.push("data_workflows");
+  if (/\b(user research|research|interviews|tests utilisateurs|usability)\b/.test(signals)) priorities.push("research");
+  if (/\b(design system|guidelines|component|components)\b/.test(signals)) priorities.push("design_system");
+  if (/\b(mobile|ios|android|native app|human interface guidelines|material design)\b/.test(signals)) priorities.push("mobile");
+  return uniqueItems(priorities).slice(0, 4) as ProofPriority[];
+}
+
+function bulletMatchesPriority(sb: ScoredBullet, priority: ProofPriority): boolean {
+  const evidenceText = `${sb.bullet.text} ${sb.experience.description || ""} ${(sb.bullet.tags || []).join(" ")}`;
+  switch (priority) {
+    case "leadership":
+      return /\b(lead ux|lead designer|leadership|vision produit|vision design|strategie|strategy|alignement|structuration)\b/i.test(evidenceText);
+    case "people_management":
+      return /\b(team management|people management|management d equipe|manager|mentor|mentorat|coaching|hiring|recrutement|faire grandir)\b/i.test(evidenceText);
+    case "product_ownership":
+      return /\b(product strategy|vision produit|roadmap|priorisation|prioritization|backlog|okr|kpi|crm|product discovery|arbitrage produit)\b/i.test(evidenceText);
+    case "data_workflows":
+      return /\b(data|analytics|dashboard|workflow|backoffice|audit|analyse|analysis|dense en donnees|decision|crm)\b/i.test(evidenceText);
+    case "research":
+      return /\b(interviews? utilisateurs?|user research|tests utilisateurs|usability|insights)\b/i.test(evidenceText);
+    case "design_system":
+      return /\b(design system|guidelines|components?|figma)\b/i.test(evidenceText);
+    case "mobile":
+      return /\b(mobile|ios|android|app iOS|app android)\b/i.test(evidenceText);
+    default:
+      return false;
+  }
+}
+
 function getBulletSelectionSignals(sb: ScoredBullet, job: ParsedJob): {
   directCriticalMatches: number;
   roleFrameMatches: number;
+  priorityMatches: number;
   specificityBoost: number;
   hasNumber: boolean;
   isGenericBridge: boolean;
@@ -842,10 +900,13 @@ function getBulletSelectionSignals(sb: ScoredBullet, job: ParsedJob): {
     tags,
     [...job.roleFrame.workObjects, ...job.roleFrame.deliverables, ...job.roleFrame.decisions],
   );
+  const selectionPriorities = detectSelectionPriorities(job);
+  const priorityMatches = selectionPriorities.filter(priority => bulletMatchesPriority(sb, priority)).length;
   const hasNumber = /\d/.test(sb.bullet.text);
   const isGenericBridge =
     directCriticalMatches === 0
     && roleFrameMatches === 0
+    && priorityMatches === 0
     && sb.matchedKeywords.length === 0
     && !hasNumber;
 
@@ -853,6 +914,7 @@ function getBulletSelectionSignals(sb: ScoredBullet, job: ParsedJob): {
     directCriticalMatches * 10
     + Math.min(4, sb.matchedKeywords.length) * 3
     + Math.min(3, roleFrameMatches) * 2
+    + priorityMatches * 5
     + (hasNumber ? 2 : 0);
 
   if ((job.positioning === "lead" || job.positioning === "manager") && sb.dimension === "leadership") {
@@ -866,6 +928,7 @@ function getBulletSelectionSignals(sb: ScoredBullet, job: ParsedJob): {
   return {
     directCriticalMatches,
     roleFrameMatches,
+    priorityMatches,
     specificityBoost,
     hasNumber,
     isGenericBridge,
@@ -873,7 +936,8 @@ function getBulletSelectionSignals(sb: ScoredBullet, job: ParsedJob): {
 }
 
 // â”€â”€â”€ Step 4: Select & Deduplicate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-export function selectBullets(scored: ScoredBullet[], allocs: BudgetAlloc[], job: ParsedJob): ScoredExperience[] {
+export function selectBullets(scored: ScoredBullet[], allocs: BudgetAlloc[], job: ParsedJob, options?: SelectBulletsOptions): ScoredExperience[] {
+  const strategy = options?.strategy || "faithful";
   const dimCounts = new Map<string, number>();
   // First pass: select per experience
   const result = allocs.map(alloc => {
@@ -882,7 +946,13 @@ export function selectBullets(scored: ScoredBullet[], allocs: BudgetAlloc[], job
       .sort((a, b) => {
         const aSignals = getBulletSelectionSignals(a, job);
         const bSignals = getBulletSelectionSignals(b, job);
-        return (b.totalScore + bSignals.specificityBoost) - (a.totalScore + aSignals.specificityBoost);
+        const aBoost = strategy === "optimized"
+          ? aSignals.specificityBoost + aSignals.priorityMatches * 6 - (aSignals.isGenericBridge ? 6 : 0)
+          : aSignals.specificityBoost;
+        const bBoost = strategy === "optimized"
+          ? bSignals.specificityBoost + bSignals.priorityMatches * 6 - (bSignals.isGenericBridge ? 6 : 0)
+          : bSignals.specificityBoost;
+        return (b.totalScore + bBoost) - (a.totalScore + aBoost);
       });
     const sel: ScoredBullet[] = []; let chars = 0;
     let genericBridgeCount = 0;
@@ -895,6 +965,10 @@ export function selectBullets(scored: ScoredBullet[], allocs: BudgetAlloc[], job
       if (alloc.importance === "minimal" && signals.isGenericBridge && sb.totalScore < 60) continue;
       if (genericBridgeCount >= 1 && signals.isGenericBridge && signals.specificityBoost < 4) continue;
       if (sel.length >= 2 && signals.directCriticalMatches === 0 && signals.roleFrameMatches === 0 && !signals.hasNumber && sb.totalScore < 65) continue;
+      if (strategy === "optimized") {
+        if (signals.isGenericBridge && signals.priorityMatches === 0 && sb.totalScore < 72) continue;
+        if (sel.length >= 1 && signals.directCriticalMatches === 0 && signals.priorityMatches === 0 && !signals.hasNumber && sb.totalScore < 70) continue;
+      }
       sel.push(sb); chars += sb.bullet.text.length;
       dimCounts.set(sb.dimension, dc + 1);
       if (signals.isGenericBridge) genericBridgeCount += 1;
@@ -902,6 +976,55 @@ export function selectBullets(scored: ScoredBullet[], allocs: BudgetAlloc[], job
     const avg = sel.length > 0 ? sel.reduce((s, b) => s + b.totalScore, 0) / sel.length : 0;
     return { experience: alloc.experience, score: avg, reason: alloc.importance === "critical" ? "Highly relevant" : alloc.importance === "minimal" ? "Timeline continuity" : "Relevant", matchedAspects: [...new Set(sel.flatMap(sb => sb.matchedKeywords))], selectedBullets: sel, charBudget: alloc.charBudget };
   });
+
+  if (strategy === "optimized") {
+    const priorities = detectSelectionPriorities(job);
+    const selectedIds = new Set(result.flatMap(se => se.selectedBullets.map(sb => sb.bullet.id)));
+    const selectedCoverage = new Set(
+      result.flatMap(se => se.selectedBullets.flatMap(sb => priorities.filter(priority => bulletMatchesPriority(sb, priority))))
+    );
+
+    for (const priority of priorities) {
+      if (selectedCoverage.has(priority)) continue;
+      const candidate = scored
+        .filter(sb => !selectedIds.has(sb.bullet.id) && bulletMatchesPriority(sb, priority))
+        .sort((a, b) => {
+          const aSignals = getBulletSelectionSignals(a, job);
+          const bSignals = getBulletSelectionSignals(b, job);
+          return (b.totalScore + bSignals.specificityBoost + bSignals.priorityMatches * 8)
+            - (a.totalScore + aSignals.specificityBoost + aSignals.priorityMatches * 8);
+        })[0];
+
+      if (!candidate) continue;
+
+      const target = result.find(se => se.experience.id === candidate.experience.id)
+        || result.find(se => se.selectedBullets.some(sb => getBulletSelectionSignals(sb, job).isGenericBridge));
+
+      if (!target) continue;
+
+      const currentChars = target.selectedBullets.reduce((sum, sb) => sum + sb.bullet.text.length, 0);
+      const weakest = target.selectedBullets
+        .map(sb => ({ sb, signals: getBulletSelectionSignals(sb, job) }))
+        .sort((a, b) => (a.sb.totalScore + a.signals.specificityBoost) - (b.sb.totalScore + b.signals.specificityBoost))[0];
+
+      if (target.selectedBullets.length === 0 || currentChars + candidate.bullet.text.length <= target.charBudget) {
+        target.selectedBullets.push(candidate);
+      } else if (
+        weakest
+        && (
+          weakest.signals.isGenericBridge
+          || (candidate.totalScore + getBulletSelectionSignals(candidate, job).specificityBoost + 8)
+            > (weakest.sb.totalScore + weakest.signals.specificityBoost + weakest.signals.priorityMatches * 6)
+        )
+      ) {
+        target.selectedBullets = target.selectedBullets.filter(sb => sb.bullet.id !== weakest.sb.bullet.id);
+        target.selectedBullets.push(candidate);
+      }
+
+      selectedIds.add(candidate.bullet.id);
+      selectedCoverage.add(priority);
+    }
+  }
 
   // Second pass: cross-experience narrative dedup (Jaccard > 0.45 = too similar)
   const seenTokens: Set<string>[] = [];
@@ -931,11 +1054,18 @@ export async function buildStructuredCV(job: ParsedJob, selExps: ScoredExperienc
     ic: "Emphasize: craft, delivery, impact, technical expertise.",
     manager: "Emphasize: people management, hiring, org design.",
   };
+  const proofHighlights = topExps
+    .flatMap(se => se.selectedBullets.slice(0, 2).map(sb => sb.bullet.text))
+    .slice(0, 5)
+    .join(" | ");
+  const modeGuide = mode === "optimized"
+    ? "Optimized-human mode: choose the most legitimate angle for this role, make the strongest proved fit obvious, and avoid generic summary fluff. Never claim management, team building, head scope, strategy ownership, or domain expertise unless the selected bullets prove it explicitly."
+    : "Faithful mode: stay very close to the source profile and keep the framing prudent.";
   if (topExps.length > 0) {
     try {
       const res = await openai.chat.completions.create({ model: MODEL, messages: [
-        { role: "system", content: `Write a 2-3 sentence CV summary. Max 45 words. No first person. ${posGuide[job.positioning]} ${job.language === "FR" ? "In French." : "In English."} IMPORTANT: Only reference companies listed in the experiences below. Do not invent metrics, achievements, or projects not explicitly mentioned in the provided context. Write in flowing prose only; do NOT use labels like "Competences:" or "Skills:" in the text.` },
-        { role: "user", content: `Target: "${job.title}" at "${job.company}" (${job.domain})\nPositioning: ${job.positioning}\n${extras?.profileSummary ? `Bio: ${extras.profileSummary}\n` : ""}Exps: ${topExps.map(se => `${se.experience.title} at ${se.experience.company}`).join(", ")}\nSkills: ${dedupSkills.slice(0,6).join(", ")}\nRequired: ${job.requiredSkills.slice(0,5).join(", ")}\nIntentions: ${job.intentions.slice(0,3).join("; ")}` },
+        { role: "system", content: `Write a 2-3 sentence CV summary. Max 45 words. No first person. ${posGuide[job.positioning]} ${modeGuide} ${job.language === "FR" ? "In French." : "In English."} IMPORTANT: Only reference companies listed in the experiences below. Do not invent metrics, achievements, or projects not explicitly mentioned in the provided context. Write in flowing prose only; do NOT use labels like "Competences:" or "Skills:" in the text.` },
+        { role: "user", content: `Target: "${job.title}" at "${job.company}" (${job.domain})\nMode: ${mode}\nPositioning: ${job.positioning}\n${extras?.profileSummary ? `Bio: ${extras.profileSummary}\n` : ""}Exps: ${topExps.map(se => `${se.experience.title} at ${se.experience.company}`).join(", ")}\nSkills: ${dedupSkills.slice(0,6).join(", ")}\nRequired: ${job.requiredSkills.slice(0,5).join(", ")}\nIntentions: ${job.intentions.slice(0,3).join("; ")}\nProof highlights: ${proofHighlights}` },
       ], temperature: 0 });
       summary = (res.choices[0].message.content || summary).trim();
     } catch (e: any) {
@@ -968,8 +1098,8 @@ export async function reformulateBullets(cv: StructuredCV, job: ParsedJob, opena
   const lang = job.language === "FR" ? "Reformule en francais." : "Reformulate in English.";
   try {
     const res = await openai.chat.completions.create({ model: MODEL, messages: [
-      { role: "system", content: `CV optimization. Reformulate bullets:\n1. Embed keywords naturally: ${job.criticalKeywords.join(", ")}\n2. Start with an action verb\n3. NO invention; only use information present in the bullet or its context\n4. Preserve proper nouns, brand names, and specific numbers exactly\n5. Do NOT change the nature of activities: "tests utilisateurs" is not "A/B testing", and "interviews" is not "surveys"\n6. If a bullet already starts with an action verb and is <=160 chars, return it unchanged\n7. Max 200 chars\n8. ${lang}\n9. ${job.positioning} role: ${job.positioning === "consultant" ? "emphasize accompagnement, structuration, impact on teams" : job.positioning === "lead" ? "emphasize vision, leadership" : "emphasize delivery, results"}` },
-      { role: "user", content: `Target: "${job.title}" at "${job.company}"\nKeywords: ${job.keywords.slice(0,10).join(", ")}\nIntentions: ${job.intentions.slice(0,3).join("; ")}\n\nBullets (with experience context when available):\n${list}\n\nReturn JSON: {"bullets": [{"index": 0, "text": "..."}]}` },
+      { role: "system", content: `CV optimization. Reformulate bullets:\n1. Optimize for recruiter clarity and role-specific proof, not keyword stuffing.\n2. Start with an action verb whenever possible.\n3. NO invention; only use information present in the bullet or its context.\n4. Preserve proper nouns, brand names, and specific numbers exactly.\n5. Do NOT change the nature of activities: "tests utilisateurs" is not "A/B testing", and "interviews" is not "surveys".\n6. If a bullet is already specific and convincing, only make small edits; if it is generic, make it sharper and more role-relevant.\n7. Max 200 chars.\n8. ${lang}\n9. ${job.positioning} role: ${job.positioning === "consultant" ? "emphasize accompagnement, structuration, impact on teams" : job.positioning === "lead" ? "emphasize scope, standards, coordination, but never fake people management" : "emphasize delivery, decisions, results"}.\n10. If the role is lead/head, do not claim team building, hiring, or management unless the source bullet proves it.\n11. Prefer clarity and density over adding more buzzwords.` },
+      { role: "user", content: `Target: "${job.title}" at "${job.company}"\nKeywords: ${job.keywords.slice(0,10).join(", ")}\nIntentions: ${job.intentions.slice(0,3).join("; ")}\nCritical keywords: ${job.criticalKeywords.slice(0,8).join(", ")}\n\nBullets (with experience context when available):\n${list}\n\nReturn JSON: {"bullets": [{"index": 0, "text": "..."}]}` },
     ], response_format: { type: "json_object" }, temperature: 0.2 });
     const r = JSON.parse(res.choices[0].message.content || "{}");
     for (const rb of (r.bullets || [])) { if (rb.index >= 0 && rb.index < all.length && rb.text?.length > 10) { cv.experiences[all[rb.index].ei].bullets[all[rb.index].bi] = rb.text; } }
@@ -1082,6 +1212,12 @@ export interface DiagnosticSummary {
 export type BadgeLevel = "probant" | "a_renforcer" | "fragile";
 
 export type GeneratedCvFitNiveau = "coherent" | "trop_junior" | "trop_senior" | "uncertain";
+export type HardWarningCode =
+  | "junior_scope_mismatch"
+  | "lead_scope_underproven"
+  | "pm_scope_underproven"
+  | "niche_domain_underproven"
+  | "text_integrity_issue";
 
 export interface GeneratedCvAssessment {
   pertinence: number;
@@ -1101,6 +1237,7 @@ export interface GeneratedCvAssessment {
   nextActions: string[];
   primaryCause: DiagnosisCause;
   secondaryCauses: DiagnosisCause[];
+  hardWarnings: HardWarningCode[];
 }
 
 export interface GeneratedCvPairEvaluation {
@@ -1110,7 +1247,7 @@ export interface GeneratedCvPairEvaluation {
   scoreModel: "generated_cv_v1" | "legacy_fallback";
 }
 
-export interface OptimizationReport { jobTitle: string; jobCompany: string; jobSeniority: string; jobDomain: string; detectedKeywords: { requiredSkills: string[]; preferredSkills: string[]; responsibilities: string[]; keywords: string[]; criticalKeywords: string[]; }; matchedSkills: string[]; missingSkills: string[]; selectedExperiences: { title: string; company: string; score: number; reason: string; matchedAspects: string[]; bulletCount: number; charBudget: number; }[]; rejectedExperiences: { title: string; company: string; score: number; reason: string }[]; selectedBullets: { text: string; experienceTitle: string; score: number; deterministicScore: number; llmScore: number; matchedKeywords: string[]; dimension: string; }[]; postRules: PostRuleResult; confidence: number; confidenceReasoning: string; fallbackUsed: boolean; detectedLanguage: "EN" | "FR"; positioning: string; intentions: string[]; tips: string[]; diagnosis: DiagnosticSummary; scoreBreakdown: { fitOffer: number; ats: number; atsOptimized: number; atsBoost: number; contextSupport: number; semantic: number; recruiterCredibility: RecruiterCredibility; domainMismatch?: string; cappedByKeywords: boolean; cappedByEvidence: boolean; pertinence: number; fitMetier: number; fitNiveauFactor: number; fitNiveau?: GeneratedCvFitNiveau; forcePreuve: number; credibiliteCv: number; evidenceGrounding: number; recruiterCredibilityScore: number; atsReadiness: number; overstatementRisk: number; badge: BadgeLevel; distanceDomain: DistanceDomain; scoreModel?: "generated_cv_v1" | "legacy_fallback" | "profile_frame_v3"; debugOverlaps?: { workObjects: number; deliverables: number; decisions: number }; }; }
+export interface OptimizationReport { jobTitle: string; jobCompany: string; jobSeniority: string; jobDomain: string; detectedKeywords: { requiredSkills: string[]; preferredSkills: string[]; responsibilities: string[]; keywords: string[]; criticalKeywords: string[]; }; matchedSkills: string[]; missingSkills: string[]; selectedExperiences: { title: string; company: string; score: number; reason: string; matchedAspects: string[]; bulletCount: number; charBudget: number; }[]; rejectedExperiences: { title: string; company: string; score: number; reason: string }[]; selectedBullets: { text: string; experienceTitle: string; score: number; deterministicScore: number; llmScore: number; matchedKeywords: string[]; dimension: string; }[]; postRules: PostRuleResult; confidence: number; confidenceReasoning: string; fallbackUsed: boolean; detectedLanguage: "EN" | "FR"; positioning: string; intentions: string[]; tips: string[]; diagnosis: DiagnosticSummary; scoreBreakdown: { fitOffer: number; ats: number; atsOptimized: number; atsBoost: number; contextSupport: number; semantic: number; recruiterCredibility: RecruiterCredibility; domainMismatch?: string; cappedByKeywords: boolean; cappedByEvidence: boolean; pertinence: number; fitMetier: number; fitNiveauFactor: number; fitNiveau?: GeneratedCvFitNiveau; forcePreuve: number; credibiliteCv: number; evidenceGrounding: number; recruiterCredibilityScore: number; atsReadiness: number; overstatementRisk: number; badge: BadgeLevel; distanceDomain: DistanceDomain; hardWarnings?: HardWarningCode[]; textIntegrityScore?: number; optimizationDecision?: "faithful_only" | "optimized_selected" | "optimized_rejected"; optimizationNotes?: string[]; variantStrategy?: "faithful" | "optimized_humain"; scoreModel?: "generated_cv_v1" | "legacy_fallback" | "profile_frame_v3"; debugOverlaps?: { workObjects: number; deliverables: number; decisions: number }; }; }
 
 function topItems(items: string[], count: number): string[] {
   const tally = new Map<string, number>();
@@ -1434,6 +1571,7 @@ function applyAssessmentGuardrails(report: OptimizationReport, assessment: Gener
     whatMissing: [...assessment.whatMissing],
     nextActions: [...assessment.nextActions],
     secondaryCauses: [...assessment.secondaryCauses],
+    hardWarnings: [...(assessment.hardWarnings || [])],
   };
   const evidenceCorpus = buildReportEvidenceCorpus(report);
 
@@ -1445,9 +1583,10 @@ function applyAssessmentGuardrails(report: OptimizationReport, assessment: Gener
       : leadGroups < 2;
 
     if (leadScopeThin) {
-      adjusted.recruiterCredibilityScore = Math.min(adjusted.recruiterCredibilityScore, requiresPeopleManagement(report) ? 72 : 76);
+      adjusted.fitMetier = Math.min(adjusted.fitMetier, requiresPeopleManagement(report) ? 74 : 78);
+      adjusted.recruiterCredibilityScore = Math.min(adjusted.recruiterCredibilityScore, requiresPeopleManagement(report) ? 68 : 72);
       adjusted.credibiliteCv = adjusted.recruiterCredibilityScore;
-      adjusted.overstatementRisk = Math.max(adjusted.overstatementRisk, requiresPeopleManagement(report) ? 48 : 42);
+      adjusted.overstatementRisk = Math.max(adjusted.overstatementRisk, requiresPeopleManagement(report) ? 58 : 50);
       if (adjusted.fitNiveau === "coherent") adjusted.fitNiveau = "uncertain";
     }
   }
@@ -1455,11 +1594,11 @@ function applyAssessmentGuardrails(report: OptimizationReport, assessment: Gener
   if (requiresProductManagementScope(report)) {
     const pmGroups = countPatternGroups(evidenceCorpus, PRODUCT_MANAGEMENT_EVIDENCE_GROUPS);
     if (pmGroups < 2) {
-      adjusted.fitMetier = Math.min(adjusted.fitMetier, 45);
+      adjusted.fitMetier = Math.min(adjusted.fitMetier, 35);
       adjusted.distanceDomain = "different";
-      adjusted.recruiterCredibilityScore = Math.min(adjusted.recruiterCredibilityScore, 60);
+      adjusted.recruiterCredibilityScore = Math.min(adjusted.recruiterCredibilityScore, 52);
       adjusted.credibiliteCv = adjusted.recruiterCredibilityScore;
-      adjusted.overstatementRisk = Math.max(adjusted.overstatementRisk, 70);
+      adjusted.overstatementRisk = Math.max(adjusted.overstatementRisk, 78);
       if (adjusted.fitNiveau === "coherent") adjusted.fitNiveau = "uncertain";
     }
   }
@@ -1474,9 +1613,24 @@ function recruiterCredibilityFromScore(score: number): RecruiterCredibility {
   return "faible";
 }
 
+function fitNiveauLegitimacyScore(level: GeneratedCvFitNiveau): number {
+  switch (level) {
+    case "coherent":
+      return 100;
+    case "uncertain":
+      return 68;
+    case "trop_senior":
+      return 38;
+    case "trop_junior":
+      return 28;
+    default:
+      return 60;
+  }
+}
+
 function capPertinenceByDistance(score: number, distanceDomain: DistanceDomain): number {
-  if (distanceDomain === "different") return Math.min(score, 35);
-  if (distanceDomain === "adjacent") return Math.min(score, 78);
+  if (distanceDomain === "different") return Math.min(score, 25);
+  if (distanceDomain === "adjacent") return Math.min(score, 72);
   return score;
 }
 
@@ -1493,12 +1647,64 @@ function overstatementPenalty(params: {
   return penalty;
 }
 
+function inferNicheDomainRequirement(report: OptimizationReport): boolean {
+  const text = normalizeEvidenceText([
+    report.jobTitle,
+    report.jobDomain,
+    ...(report.detectedKeywords.requiredSkills || []),
+    ...(report.detectedKeywords.responsibilities || []),
+    ...(report.detectedKeywords.criticalKeywords || []),
+  ].join(" "));
+
+  return /\b(football|gaming|game|policy|policies|compliance|cyber|security|data products|data visualization|visualisation|analytics)\b/.test(text);
+}
+
+function textIntegrityScore(text: string): number {
+  const penalty = mojibakePenaltyScore(text);
+  return clampPercent(100 - penalty * 14, 100);
+}
+
+function buildHardWarnings(report: OptimizationReport, assessment: GeneratedCvAssessment, renderedCvText?: string): HardWarningCode[] {
+  const warnings: HardWarningCode[] = [];
+  const senioritySignals = normalizeEvidenceText([
+    report.jobTitle,
+    report.jobSeniority,
+    ...(report.detectedKeywords.responsibilities || []),
+  ].join(" "));
+  const juniorLikeRole = /\b(junior|stage|intern|internship|alternance|apprentice|entry level)\b/.test(senioritySignals);
+  const nicheUnderproven =
+    inferNicheDomainRequirement(report)
+    && assessment.distanceDomain === "same"
+    && assessment.evidenceGrounding < 78
+    && report.postRules.evidenceKeywordsMissing.length >= 2;
+
+  if (juniorLikeRole && assessment.fitNiveau === "trop_senior") warnings.push("junior_scope_mismatch");
+  if (requiresLeadScope(report) && assessment.fitNiveau === "uncertain") warnings.push("lead_scope_underproven");
+  if (requiresProductManagementScope(report) && assessment.distanceDomain === "different") warnings.push("pm_scope_underproven");
+  if (nicheUnderproven) warnings.push("niche_domain_underproven");
+  if (renderedCvText && textIntegrityScore(renderedCvText) < 92) warnings.push("text_integrity_issue");
+
+  return uniqueItems(warnings) as HardWarningCode[];
+}
+
+function capPertinenceByWarnings(score: number, warnings: HardWarningCode[]): number {
+  let capped = score;
+  if (warnings.includes("junior_scope_mismatch")) capped = Math.min(capped, 48);
+  if (warnings.includes("lead_scope_underproven")) capped = Math.min(capped, 76);
+  if (warnings.includes("pm_scope_underproven")) capped = Math.min(capped, 22);
+  if (warnings.includes("niche_domain_underproven")) capped = Math.min(capped, 72);
+  if (warnings.includes("text_integrity_issue")) capped = Math.min(capped, 84);
+  return capped;
+}
+
 function computeGeneratedPertinence(assessment: GeneratedCvAssessment): number {
+  const scopeFitScore = fitNiveauLegitimacyScore(assessment.fitNiveau);
   const base =
-    assessment.fitMetier * 0.34
-    + assessment.recruiterCredibilityScore * 0.31
-    + assessment.evidenceGrounding * 0.25
-    + assessment.atsReadiness * 0.1;
+    assessment.fitMetier * 0.42
+    + scopeFitScore * 0.28
+    + assessment.evidenceGrounding * 0.22
+    + assessment.recruiterCredibilityScore * 0.06
+    + assessment.atsReadiness * 0.02;
 
   let score = base - overstatementPenalty({
     overstatementRisk: assessment.overstatementRisk,
@@ -1506,22 +1712,22 @@ function computeGeneratedPertinence(assessment: GeneratedCvAssessment): number {
     evidenceGrounding: assessment.evidenceGrounding,
   });
 
-  if (assessment.fitNiveau === "trop_junior") score -= 12;
-  else if (assessment.fitNiveau === "trop_senior") score -= 8;
-  else if (assessment.fitNiveau === "uncertain") score -= 4;
+  if (assessment.fitNiveau === "trop_junior") score -= 15;
+  else if (assessment.fitNiveau === "trop_senior") score -= 10;
+  else if (assessment.fitNiveau === "uncertain") score -= 5;
 
   if (assessment.distanceDomain === "adjacent" && assessment.recruiterCredibilityScore < 65 && assessment.evidenceGrounding < 60) {
-    score -= 4;
+    score -= 6;
   }
 
   if (
     assessment.distanceDomain === "same"
-    && assessment.fitMetier >= 78
-    && assessment.recruiterCredibilityScore >= 75
-    && assessment.evidenceGrounding >= 70
-    && assessment.overstatementRisk <= 35
+    && assessment.fitMetier >= 82
+    && assessment.recruiterCredibilityScore >= 80
+    && assessment.evidenceGrounding >= 78
+    && assessment.overstatementRisk <= 25
   ) {
-    score += 3;
+    score += 2;
   }
 
   return clampPercent(capPertinenceByDistance(score, assessment.distanceDomain));
@@ -1564,9 +1770,13 @@ function finalizeGeneratedCvAssessment(assessment: GeneratedCvAssessment): Gener
     overstatementRisk,
     forcePreuve: evidenceGrounding,
     credibiliteCv: recruiterCredibilityScore,
+    hardWarnings: uniqueItems((assessment.hardWarnings || []).filter(Boolean)) as HardWarningCode[],
   };
 
-  const pertinence = computeGeneratedPertinence(normalized);
+  const pertinence = capPertinenceByWarnings(
+    computeGeneratedPertinence(normalized),
+    normalized.hardWarnings || [],
+  );
 
   let primaryDiagnosis: PrimaryDiagnosis;
   let primaryCause: DiagnosisCause;
@@ -1654,11 +1864,19 @@ function finalizeGeneratedCvAssessment(assessment: GeneratedCvAssessment): Gener
 }
 
 function badgeFromGeneratedAssessment(assessment: GeneratedCvAssessment): BadgeLevel {
+  const warnings = assessment.hardWarnings || [];
+  if (
+    warnings.includes("text_integrity_issue")
+    || warnings.includes("pm_scope_underproven")
+  ) {
+    return "fragile";
+  }
   if (
     assessment.recruiterCredibilityScore >= 80
     && assessment.evidenceGrounding >= 75
     && assessment.overstatementRisk <= 35
     && assessment.distanceDomain !== "different"
+    && warnings.length === 0
   ) {
     return "probant";
   }
@@ -1667,6 +1885,7 @@ function badgeFromGeneratedAssessment(assessment: GeneratedCvAssessment): BadgeL
     || assessment.recruiterCredibilityScore < 55
     || assessment.evidenceGrounding < 50
     || assessment.distanceDomain === "different"
+    || warnings.includes("junior_scope_mismatch")
   ) {
     return "fragile";
   }
@@ -1720,16 +1939,59 @@ function assessmentFromLegacyReport(report: OptimizationReport): GeneratedCvAsse
     nextActions: report.diagnosis.nextActions.slice(0, 3),
     primaryCause: report.diagnosis.primaryCause,
     secondaryCauses: report.diagnosis.secondaryCauses.slice(0, 3),
+    hardWarnings: report.scoreBreakdown.hardWarnings || [],
   });
 }
 
-function applyGeneratedCvAssessment(report: OptimizationReport, assessment: GeneratedCvAssessment, scoreModel: GeneratedCvPairEvaluation["scoreModel"]): OptimizationReport {
+function applyGeneratedCvAssessment(
+  report: OptimizationReport,
+  assessment: GeneratedCvAssessment,
+  scoreModel: GeneratedCvPairEvaluation["scoreModel"],
+  renderedCvText?: string,
+): OptimizationReport {
   const guarded = applyAssessmentGuardrails(report, assessment);
-  const finalized = finalizeGeneratedCvAssessment(guarded);
+  const hardWarnings = buildHardWarnings(report, guarded, renderedCvText);
+  const finalized = finalizeGeneratedCvAssessment({
+    ...guarded,
+    hardWarnings,
+  });
   const badge = badgeFromGeneratedAssessment(finalized);
   const recruiterCredibility = recruiterCredibilityFromScore(finalized.recruiterCredibilityScore);
-  const recommendedAction = finalized.nextActions[0]
+  const warningMessages = uniqueItems([
+    hardWarnings.includes("junior_scope_mismatch")
+      ? "Le poste vise un scope junior ou stage: ta candidature peut paraitre surdimensionnee malgre la proximite metier."
+      : "",
+    hardWarnings.includes("lead_scope_underproven")
+      ? "Le coeur du role parait proche, mais le scope lead ou head reste encore peu prouve dans les experiences retenues."
+      : "",
+    hardWarnings.includes("pm_scope_underproven")
+      ? "Le poste attend un vrai scope Product Management / CRM qui n'est pas assez ancre dans tes preuves actuelles."
+      : "",
+    hardWarnings.includes("niche_domain_underproven")
+      ? "Le role est proche, mais le domaine reste specialise et les preuves specifiques restent encore partielles."
+      : "",
+    hardWarnings.includes("text_integrity_issue")
+      ? "Le document final contient encore des artefacts d'encodage: il faut le corriger avant envoi."
+      : "",
+  ].filter(Boolean));
+  const nextActions = uniqueItems([
+    ...warningMessages.map(message =>
+      message.includes("encodage")
+        ? "Corrige le texte corrompu ou relance le run: un document avec artefacts d'encodage ne doit pas etre envoye."
+        : message.includes("junior")
+          ? "Attention au scope: ce poste parait trop junior ou stage par rapport a ton niveau actuel."
+          : message.includes("Product Management")
+            ? "Ne l'envoie pas comme role PM / CRM sans vraies preuves de priorisation, roadmap et ownership."
+            : message.includes("scope lead")
+              ? "Recadre le document sur un role senior IC ou clarifie mieux des preuves explicites de leadership reel."
+              : "Renforce une ou deux preuves metier tres specifiques avant d'envoyer.",
+    ),
+    ...finalized.nextActions,
+  ]).slice(0, 3);
+  const whatMissing = uniqueItems([...warningMessages, ...finalized.whatMissing]).slice(0, 3);
+  const recommendedAction = nextActions[0]
     || recommendedActionForCause(finalized.primaryCause, report.diagnosis.recommendedAction || "Renforce le document genere avant d'envoyer.");
+  const integrityScore = renderedCvText ? textIntegrityScore(renderedCvText) : undefined;
 
   return {
     ...report,
@@ -1739,8 +2001,8 @@ function applyGeneratedCvAssessment(report: OptimizationReport, assessment: Gene
       primaryDiagnosis: finalized.primaryDiagnosis,
       verdict: finalized.verdict || report.diagnosis.verdict,
       whatMatches: finalized.whatMatches,
-      whatMissing: finalized.whatMissing,
-      nextActions: finalized.nextActions,
+      whatMissing,
+      nextActions,
       primaryCause: finalized.primaryCause,
       secondaryCauses: finalized.secondaryCauses,
       recommendedAction,
@@ -1762,6 +2024,8 @@ function applyGeneratedCvAssessment(report: OptimizationReport, assessment: Gene
       overstatementRisk: finalized.overstatementRisk,
       badge,
       distanceDomain: finalized.distanceDomain,
+      hardWarnings,
+      textIntegrityScore: integrityScore,
       recruiterCredibility,
       scoreModel,
     },
@@ -1825,20 +2089,25 @@ function normalizeGeneratedCvAssessment(raw: any, fallback: GeneratedCvAssessmen
           .filter((cause: DiagnosisCause, index: number, arr: DiagnosisCause[]) => arr.indexOf(cause) === index)
           .slice(0, 3)
       : fallback.secondaryCauses,
+    hardWarnings: Array.isArray(raw?.hardWarnings)
+      ? raw.hardWarnings.filter((warning: any): warning is HardWarningCode => typeof warning === "string")
+      : (fallback.hardWarnings || []),
   };
 }
 
 async function evaluateGeneratedCvVariants(params: {
   job: ParsedJob;
-  selExps: ScoredExperience[];
+  faithfulSelExps: ScoredExperience[];
   faithfulCv: StructuredCV;
   faithfulFallback: GeneratedCvAssessment;
+  optimizedSelExps?: ScoredExperience[];
   optimizedCv?: StructuredCV;
   optimizedFallback?: GeneratedCvAssessment;
   openai: OpenAI;
 }): Promise<GeneratedCvPairEvaluation> {
-  const { job, selExps, faithfulCv, faithfulFallback, optimizedCv, optimizedFallback, openai } = params;
-  const sourceEvidence = buildSelectedEvidenceSummary(selExps);
+  const { job, faithfulSelExps, faithfulCv, faithfulFallback, optimizedSelExps, optimizedCv, optimizedFallback, openai } = params;
+  const faithfulSourceEvidence = buildSelectedEvidenceSummary(faithfulSelExps);
+  const optimizedSourceEvidence = buildSelectedEvidenceSummary(optimizedSelExps || faithfulSelExps);
   const faithfulText = renderCVText(faithfulCv, job);
   const optimizedText = optimizedCv ? renderCVText(optimizedCv, job) : "";
 
@@ -1856,7 +2125,7 @@ async function evaluateGeneratedCvVariants(params: {
         {
           role: "user",
           content: [
-            "Evaluate these CV variants built from the same source evidence.",
+            "Evaluate these CV variants built from source evidence selected by the engine.",
             "",
             "Scoring rules:",
             "- pertinence (0-100): quick triage score. Should this generated CV be considered worth sending for this offer?",
@@ -1884,14 +2153,14 @@ async function evaluateGeneratedCvVariants(params: {
             "JOB",
             buildJobAssessmentSummary(job),
             "",
-            "SOURCE EVIDENCE USED BY THE ENGINE",
-            sourceEvidence || "No selected evidence",
+            "FAITHFUL SOURCE EVIDENCE USED BY THE ENGINE",
+            faithfulSourceEvidence || "No selected evidence",
             "",
             "FAITHFUL CV",
             faithfulText,
             "",
             optimizedCv
-              ? `OPTIMIZED CV\n${optimizedText}`
+              ? `OPTIMIZED SOURCE EVIDENCE USED BY THE ENGINE\n${optimizedSourceEvidence || "No selected evidence"}\n\nOPTIMIZED CV\n${optimizedText}`
               : "OPTIMIZED CV\nnull",
           ].join("\n"),
         },
@@ -2533,57 +2802,113 @@ export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Pro
   const parsedJob = await parseJobDescription(sanitizedInput.jobText, openai);
   const scored = await hybridScoreAllBullets(parsedJob, sanitizedInput.allExperiences, sanitizedInput.allBullets, openai);
   const allocs = allocateCharBudget(sanitizedInput.allExperiences, scored, bodyChars);
-  const selExps = selectBullets(scored, allocs, parsedJob);
-  const baseCv = await buildStructuredCV(parsedJob, selExps, sanitizedInput.allSkills, "original", openai, { profileName: sanitizedInput.profile?.name, profileTitle: sanitizedInput.profile?.title, profileSummary: sanitizedInput.profile?.summary || undefined, formations: sanitizedInput.formations, languages: sanitizedInput.languages });
+  const faithfulSelExps = selectBullets(scored, allocs, parsedJob, { strategy: "faithful" });
+  const baseCv = await buildStructuredCV(parsedJob, faithfulSelExps, sanitizedInput.allSkills, "original", openai, { profileName: sanitizedInput.profile?.name, profileTitle: sanitizedInput.profile?.title, profileSummary: sanitizedInput.profile?.summary || undefined, formations: sanitizedInput.formations, languages: sanitizedInput.languages });
   if (baseCv.summary && baseCv.summary.length > introChars) { baseCv.summary = baseCv.summary.slice(0, introChars).replace(/[,;]?\s*\S*$/, "").trim(); }
 
   const baselineCv = cloneStructuredCV(baseCv);
   const baselinePostRules = applyPostRules(baselineCv, parsedJob);
-  const baselineRawReport = generateOptimizationReport(parsedJob, selExps, sanitizedInput.allSkills, baselinePostRules, baselineCv);
+  const baselineRawReport = generateOptimizationReport(parsedJob, faithfulSelExps, sanitizedInput.allSkills, baselinePostRules, baselineCv);
   const baselineFallbackAssessment = assessmentFromLegacyReport(baselineRawReport);
+  const baselineText = renderCVText(baselineCv, parsedJob);
+  const initialAppliedReport = applyGeneratedCvAssessment(baselineRawReport, baselineFallbackAssessment, "legacy_fallback", baselineText);
+  const initialOptimizationDecision: NonNullable<OptimizationReport["scoreBreakdown"]["optimizationDecision"]> = isFidele ? "faithful_only" : "optimized_rejected";
 
   let finalCv = baselineCv;
-  let finalReport = applyGeneratedCvAssessment(baselineRawReport, baselineFallbackAssessment, "legacy_fallback");
+  let finalSelExps = faithfulSelExps;
+  let finalReport: OptimizationReport = {
+    ...initialAppliedReport,
+    scoreBreakdown: {
+      ...initialAppliedReport.scoreBreakdown,
+      optimizationDecision: initialOptimizationDecision,
+      optimizationNotes: isFidele
+        ? ["Mode fidele: le moteur conserve la version la plus prudente et la plus ancree."]
+        : ["Optimisation non evaluee: version fidele conservee par defaut."],
+      variantStrategy: "faithful",
+    },
+  };
 
   if (!isFidele) {
-    const candidateCv = await reformulateBullets(cloneStructuredCV(baseCv), parsedJob, openai);
+    const optimizedSelExps = selectBullets(scored, allocs, parsedJob, { strategy: "optimized" });
+    const optimizedBaseCv = await buildStructuredCV(parsedJob, optimizedSelExps, sanitizedInput.allSkills, "optimized", openai, {
+      profileName: sanitizedInput.profile?.name,
+      profileTitle: sanitizedInput.profile?.title,
+      profileSummary: sanitizedInput.profile?.summary || undefined,
+      formations: sanitizedInput.formations,
+      languages: sanitizedInput.languages,
+    });
+    if (optimizedBaseCv.summary && optimizedBaseCv.summary.length > introChars) {
+      optimizedBaseCv.summary = optimizedBaseCv.summary.slice(0, introChars).replace(/[,;]?\s*\S*$/, "").trim();
+    }
+
+    const candidateCv = await reformulateBullets(cloneStructuredCV(optimizedBaseCv), parsedJob, openai);
     const candidateReportCv = cloneStructuredCV(candidateCv);
     const candidatePostRules = applyPostRules(candidateReportCv, parsedJob);
-    const candidateRawReport = generateOptimizationReport(parsedJob, selExps, sanitizedInput.allSkills, candidatePostRules, candidateReportCv);
+    const candidateRawReport = generateOptimizationReport(parsedJob, optimizedSelExps, sanitizedInput.allSkills, candidatePostRules, candidateReportCv);
     const candidateFallbackAssessment = assessmentFromLegacyReport(candidateRawReport);
+    const candidateText = renderCVText(candidateReportCv, parsedJob);
 
     const evaluation = await evaluateGeneratedCvVariants({
       job: parsedJob,
-      selExps,
+      faithfulSelExps,
       faithfulCv: baselineCv,
       faithfulFallback: baselineFallbackAssessment,
+      optimizedSelExps,
       optimizedCv: candidateReportCv,
       optimizedFallback: candidateFallbackAssessment,
       openai,
     });
 
-    const baselineReport = applyGeneratedCvAssessment(baselineRawReport, evaluation.faithful, evaluation.scoreModel);
-    const candidateReport = applyGeneratedCvAssessment(candidateRawReport, evaluation.optimized || candidateFallbackAssessment, evaluation.scoreModel);
+    const baselineReport = applyGeneratedCvAssessment(baselineRawReport, evaluation.faithful, evaluation.scoreModel, baselineText);
+    const candidateReport = applyGeneratedCvAssessment(candidateRawReport, evaluation.optimized || candidateFallbackAssessment, evaluation.scoreModel, candidateText);
     const baselineAtsFinal = baselineReport.scoreBreakdown.atsOptimized ?? baselineReport.scoreBreakdown.ats;
     const candidateAtsFinal = candidateReport.scoreBreakdown.atsOptimized ?? candidateReport.scoreBreakdown.ats;
     const baselineRisk = baselineReport.scoreBreakdown.overstatementRisk;
     const candidateRisk = candidateReport.scoreBreakdown.overstatementRisk;
+    const baselineIntegrity = baselineReport.scoreBreakdown.textIntegrityScore ?? 100;
+    const candidateIntegrity = candidateReport.scoreBreakdown.textIntegrityScore ?? 100;
     const candidateIsNonRegressive =
       candidateReport.scoreBreakdown.pertinence >= baselineReport.scoreBreakdown.pertinence
       && candidateReport.scoreBreakdown.credibiliteCv >= baselineReport.scoreBreakdown.credibiliteCv
       && candidateAtsFinal >= baselineAtsFinal
-      && candidateRisk <= baselineRisk + 5;
+      && candidateRisk <= baselineRisk + 5
+      && candidateIntegrity >= baselineIntegrity;
     const candidateAddsValue =
       candidateReport.scoreBreakdown.pertinence > baselineReport.scoreBreakdown.pertinence
       || candidateReport.scoreBreakdown.credibiliteCv > baselineReport.scoreBreakdown.credibiliteCv
       || candidateAtsFinal > baselineAtsFinal
-      || candidateRisk < baselineRisk;
+      || candidateRisk < baselineRisk
+      || candidateReport.scoreBreakdown.textIntegrityScore !== baselineReport.scoreBreakdown.textIntegrityScore;
+    const sharedNotes = evaluation.notes || [];
 
     if (candidateIsNonRegressive && candidateAddsValue) {
       finalCv = candidateReportCv;
-      finalReport = candidateReport;
+      finalSelExps = optimizedSelExps;
+      finalReport = {
+        ...candidateReport,
+        scoreBreakdown: {
+          ...candidateReport.scoreBreakdown,
+          optimizationDecision: "optimized_selected" as const,
+          optimizationNotes: uniqueItems([
+            ...sharedNotes,
+            "Version optimisee retenue: selection de preuves et formulation plus convaincantes sans regression visible.",
+          ]),
+          variantStrategy: "optimized_humain" as const,
+        },
+      };
     } else {
-      finalReport = baselineReport;
+      finalReport = {
+        ...baselineReport,
+        scoreBreakdown: {
+          ...baselineReport.scoreBreakdown,
+          optimizationDecision: "optimized_rejected" as const,
+          optimizationNotes: uniqueItems([
+            ...sharedNotes,
+            "Version optimisee rejetee: elle n'apporte pas assez de gain net ou introduit une regression de credibilite.",
+          ]),
+          variantStrategy: "faithful" as const,
+        },
+      };
       log("reformulate rejected (generated-cv guard)", {
         baselinePertinence: baselineReport.scoreBreakdown.pertinence,
         candidatePertinence: candidateReport.scoreBreakdown.pertinence,
@@ -2593,6 +2918,8 @@ export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Pro
         candidateRisk,
         baselineAtsFinal,
         candidateAtsFinal,
+        baselineIntegrity,
+        candidateIntegrity,
         scoreModel: evaluation.scoreModel,
         notes: evaluation.notes,
       });
@@ -2600,15 +2927,33 @@ export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Pro
   } else {
     const evaluation = await evaluateGeneratedCvVariants({
       job: parsedJob,
-      selExps,
+      faithfulSelExps,
       faithfulCv: baselineCv,
       faithfulFallback: baselineFallbackAssessment,
       openai,
     });
-    finalReport = applyGeneratedCvAssessment(baselineRawReport, evaluation.faithful, evaluation.scoreModel);
+    const faithfulReport = applyGeneratedCvAssessment(baselineRawReport, evaluation.faithful, evaluation.scoreModel, baselineText);
+    finalReport = {
+      ...faithfulReport,
+      scoreBreakdown: {
+        ...faithfulReport.scoreBreakdown,
+        optimizationDecision: "faithful_only",
+        optimizationNotes: uniqueItems([
+          ...(evaluation.notes || []),
+          "Mode fidele: aucune re-selection agressive ni reformulation d'optimisation appliquee.",
+        ]),
+        variantStrategy: "faithful",
+      },
+    };
   }
 
-  const cvText = renderCVText(finalCv, parsedJob);
+  const cvText = finalCv === baselineCv ? baselineText : renderCVText(finalCv, parsedJob);
   log(`Pipeline Done - pertinence=${finalReport.scoreBreakdown.pertinence}% badge=${finalReport.scoreBreakdown.badge} | ${parsedJob.positioning} | ${cvText.length} chars`);
-  return { cvText, structuredCV: finalCv, report: finalReport, selectedExperienceIds: selExps.filter(se => se.selectedBullets.length > 0).map(se => se.experience.id), selectedBulletIds: selExps.flatMap(se => se.selectedBullets.map(sb => sb.bullet.id)) };
+  return {
+    cvText,
+    structuredCV: finalCv,
+    report: finalReport,
+    selectedExperienceIds: finalSelExps.filter(se => se.selectedBullets.length > 0).map(se => se.experience.id),
+    selectedBulletIds: finalSelExps.flatMap(se => se.selectedBullets.map(sb => sb.bullet.id)),
+  };
 }

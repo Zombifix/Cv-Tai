@@ -208,6 +208,12 @@ const MODE_META: Record<string, { label: string; icon: React.ReactNode; color: s
 
 type BadgeLevel = "probant" | "a_renforcer" | "fragile";
 type GeneratedCvFitNiveau = "coherent" | "trop_junior" | "trop_senior" | "uncertain";
+type HardWarningCode =
+  | "junior_scope_mismatch"
+  | "lead_scope_underproven"
+  | "pm_scope_underproven"
+  | "niche_domain_underproven"
+  | "text_integrity_issue";
 
 type ReportScoreBreakdown = {
   fitOffer?: number;
@@ -232,6 +238,11 @@ type ReportScoreBreakdown = {
   overstatementRisk?: number;
   badge?: BadgeLevel;
   distanceDomain?: "same" | "adjacent" | "different";
+  hardWarnings?: HardWarningCode[];
+  textIntegrityScore?: number;
+  optimizationDecision?: "faithful_only" | "optimized_selected" | "optimized_rejected";
+  optimizationNotes?: string[];
+  variantStrategy?: "faithful" | "optimized_humain";
   scoreModel?: "generated_cv_v1" | "legacy_fallback" | "profile_frame_v3";
   debugOverlaps?: { workObjects: number; deliverables: number; decisions: number };
 };
@@ -335,6 +346,69 @@ function getFitNiveauLabel(level?: GeneratedCvFitNiveau) {
       return "Poste plus senior";
     case "uncertain":
       return "Niveau a confirmer";
+    default:
+      return null;
+  }
+}
+
+function getHardWarningMeta(code: HardWarningCode) {
+  switch (code) {
+    case "junior_scope_mismatch":
+      return {
+        label: "Poste junior ou stage",
+        description: "Ton profil parait plus senior que le scope reel de l'offre.",
+        className: "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-300 dark:border-red-700",
+      };
+    case "lead_scope_underproven":
+      return {
+        label: "Scope lead peu prouve",
+        description: "Le metier est proche, mais le leadership reel reste encore peu ancre dans tes preuves.",
+        className: "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700",
+      };
+    case "pm_scope_underproven":
+      return {
+        label: "Scope PM / CRM peu prouve",
+        description: "Le poste attend un vrai scope product management que le profil ne prouve pas assez.",
+        className: "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-300 dark:border-red-700",
+      };
+    case "niche_domain_underproven":
+      return {
+        label: "Domaine niche partiellement prouve",
+        description: "Le role reste plausible, mais les preuves tres specifiques du domaine sont encore limites.",
+        className: "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700",
+      };
+    case "text_integrity_issue":
+      return {
+        label: "Texte corrompu",
+        description: "Des artefacts d'encodage reduisent fortement la credibilite du document.",
+        className: "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-300 dark:border-red-700",
+      };
+    default:
+      return {
+        label: code,
+        description: "",
+        className: "bg-muted text-muted-foreground border-border/60",
+      };
+  }
+}
+
+function getOptimizationDecisionMeta(decision?: ReportScoreBreakdown["optimizationDecision"]) {
+  switch (decision) {
+    case "faithful_only":
+      return {
+        label: "Version fidele servie",
+        className: "bg-muted text-muted-foreground border-border/60",
+      };
+    case "optimized_selected":
+      return {
+        label: "Optimise humain retenu",
+        className: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700",
+      };
+    case "optimized_rejected":
+      return {
+        label: "Optimise rejete",
+        className: "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700",
+      };
     default:
       return null;
   }
@@ -1017,10 +1091,31 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
   const secondaryCauses = (diagnosis?.secondaryCauses || []).map(cause => getCauseLabel(cause));
   const recommendedAction = repairMojibake(diagnosis?.recommendedAction || "");
   const overstatementRisk = scoreBreakdown?.overstatementRisk;
+  const hardWarnings = scoreBreakdown?.hardWarnings || [];
+  const optimizationMeta = getOptimizationDecisionMeta(scoreBreakdown?.optimizationDecision);
+  const optimizationNotes = (scoreBreakdown?.optimizationNotes || []).map(note => repairMojibake(note));
+  const textIntegrity = scoreBreakdown?.textIntegrityScore;
 
   return (
     <Card className="border-border/60 shadow-none" data-testid="section-match-diagnosis">
       <CardContent className="p-4 space-y-4">
+        {hardWarnings.length > 0 && (
+          <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Warnings prioritaires</p>
+            <div className="space-y-2">
+              {hardWarnings.map((warning, index) => {
+                const meta = getHardWarningMeta(warning);
+                return (
+                  <div key={`${warning}-${index}`} className={`rounded-lg border px-2.5 py-2 ${meta.className}`}>
+                    <p className="text-[11px] font-semibold">{meta.label}</p>
+                    {meta.description && <p className="text-[11px] leading-relaxed mt-0.5 opacity-90">{meta.description}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {(scoreBreakdown?.domainMismatch || scoreBreakdown?.distanceDomain === "different") && (
           <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40">
             <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
@@ -1052,6 +1147,11 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
               <p className="text-[11px] text-foreground font-medium mt-0.5">{primaryDiagnosis}</p>
             )}
             <div className="flex items-center gap-3 mt-2 flex-wrap">
+              {optimizationMeta && (
+                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${optimizationMeta.className}`}>
+                  {optimizationMeta.label}
+                </span>
+              )}
               <p className="text-[11px] text-muted-foreground">
                 Credibilite: <span className="font-semibold text-foreground">{scoreBreakdown?.recruiterCredibilityScore ?? scoreBreakdown?.credibiliteCv ?? "n/a"}%</span>
               </p>
@@ -1063,6 +1163,11 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
               <p className="text-[11px] text-muted-foreground">
                 ATS final: <span className="font-semibold text-foreground">{scoreBreakdown?.atsOptimized ?? scoreBreakdown?.ats ?? "n/a"}%</span>
               </p>
+              {textIntegrity !== undefined ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Integrite texte: <span className="font-semibold text-foreground">{textIntegrity}%</span>
+                </p>
+              ) : null}
               {(distanceLabel || fitNiveauLabel) ? (
                 <p className="text-[11px] text-muted-foreground">
                   {[distanceLabel, fitNiveauLabel].filter(Boolean).join(" • ")}
@@ -1076,6 +1181,15 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
         </div>
 
         <p className="text-[12px] text-foreground/80 leading-relaxed">{verdict}</p>
+
+        {optimizationNotes.length > 0 && (
+          <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 space-y-1.5">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Decision moteur</p>
+            {optimizationNotes.slice(0, 2).map((note, index) => (
+              <p key={index} className="text-[11px] text-foreground/80 leading-relaxed">{note}</p>
+            ))}
+          </div>
+        )}
 
         <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 space-y-1.5">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Cause principale</p>
@@ -1176,6 +1290,12 @@ function UsedJobPosting({
   const rawDisplay = trimBlock(rawText) || "Aucun texte d'annonce sauvegarde pour ce run.";
   const textDisplay = cleanedText || rawDisplay;
   const wasCleaned = Boolean(cleanedText) && cleanedText !== trimBlock(rawText);
+  const mergedRequirements = Array.from(
+    new Set([
+      ...(parsedJob?.criticalKeywords || []).map(item => repairMojibake(item).trim()),
+      ...(parsedJob?.requiredSkills || []).map(item => repairMojibake(item).trim()),
+    ].filter(Boolean)),
+  );
 
   return (
     <div className="bg-white dark:bg-zinc-950 px-8 py-10 md:px-14 md:py-12 min-h-[300px]" data-testid="section-used-job-posting">
@@ -1281,36 +1401,26 @@ function UsedJobPosting({
               </div>
             )}
 
-            <div className="flex gap-6 flex-wrap">
-              {parsedJob!.criticalKeywords.length > 0 && (
-                <div className="flex-1 min-w-[130px]">
-                  <p className="text-[10px] font-extrabold text-muted-foreground tracking-[0.12em] uppercase mb-2">
-                    Compétences clés
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {parsedJob!.criticalKeywords.map((k, i) => (
-                      <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
-                        {k}
+            {mergedRequirements.length > 0 && (
+              <div>
+                <p className="text-[10px] font-extrabold text-muted-foreground tracking-[0.12em] uppercase mb-2">
+                  Exigences de l'offre
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {mergedRequirements.map((item, index) => {
+                    const isCritical = (parsedJob!.criticalKeywords || []).includes(item);
+                    return (
+                      <span
+                        key={`${item}-${index}`}
+                        className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${isCritical ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}
+                      >
+                        {item}
                       </span>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </div>
-              )}
-              {parsedJob!.requiredSkills.length > 0 && (
-                <div className="flex-1 min-w-[130px]">
-                  <p className="text-[10px] font-extrabold text-muted-foreground tracking-[0.12em] uppercase mb-2">
-                    Compétences requises
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {parsedJob!.requiredSkills.map((k, i) => (
-                      <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
-                        {k}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {parsedJob!.intentions.length > 0 && (
               <div>
@@ -1584,6 +1694,11 @@ function buildAnalysisPayload({
       overstatementRisk: report?.scoreBreakdown?.overstatementRisk ?? null,
       badge: trimBlock(report?.scoreBreakdown?.badge) || "n/a",
       distanceDomain: trimBlock(report?.scoreBreakdown?.distanceDomain) || null,
+      hardWarnings: compactList(report?.scoreBreakdown?.hardWarnings, 8),
+      textIntegrityScore: report?.scoreBreakdown?.textIntegrityScore ?? null,
+      optimizationDecision: trimBlock(report?.scoreBreakdown?.optimizationDecision) || null,
+      optimizationNotes: compactList(report?.scoreBreakdown?.optimizationNotes, 4),
+      variantStrategy: trimBlock(report?.scoreBreakdown?.variantStrategy) || null,
       scoreModel: trimBlock(report?.scoreBreakdown?.scoreModel) || null,
       primaryDiagnosis: trimBlock(report?.diagnosis?.primaryDiagnosis) || "n/a",
       verdict: trimBlock(report?.diagnosis?.verdict || report?.confidenceReasoning) || "n/a",
