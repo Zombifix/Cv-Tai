@@ -41,7 +41,7 @@ export function useLogin() {
 
 export function useRegister() {
   const qc = useQueryClient();
-  return useMutation<AuthUser, Error, { email: string; password: string }>({
+  return useMutation<AuthUser, Error, { email: string; password: string; inviteCode?: string }>({
     mutationFn: (body) =>
       fetchJson("/api/auth/register", {
         method: "POST",

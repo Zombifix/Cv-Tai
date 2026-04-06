@@ -11,6 +11,7 @@ export default function AuthPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [, setLocation] = useLocation();
   const { data: user } = useCurrentUser();
@@ -26,11 +27,21 @@ export default function AuthPage() {
     }
   }, [user, setLocation]);
 
+  const passwordValid = mode === "register" ? /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(password) : true;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (mode === "register" && !passwordValid) {
+      setError("Le mot de passe doit contenir au moins 8 caracteres, 1 majuscule, 1 minuscule et 1 chiffre.");
+      return;
+    }
     try {
-      await mutation.mutateAsync({ email, password });
+      if (mode === "register") {
+        await register.mutateAsync({ email, password, ...(inviteCode ? { inviteCode } : {}) });
+      } else {
+        await login.mutateAsync({ email, password });
+      }
     } catch (err) {
       setError((err as Error).message);
     }
@@ -79,13 +90,30 @@ export default function AuthPage() {
                 <Input
                   id="password"
                   type="password"
-                  placeholder={mode === "register" ? "Min 8 caracteres" : ""}
+                  placeholder={mode === "register" ? "Min 8 car., 1 maj, 1 min, 1 chiffre" : ""}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   required
                   autoComplete={mode === "login" ? "current-password" : "new-password"}
                 />
+                {mode === "register" && password.length > 0 && !passwordValid && (
+                  <p className="text-xs text-muted-foreground">1 majuscule, 1 minuscule, 1 chiffre, 8 caracteres min.</p>
+                )}
               </div>
+
+              {mode === "register" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="inviteCode">Code d'invitation</Label>
+                  <Input
+                    id="inviteCode"
+                    type="text"
+                    placeholder="Fourni par l'admin"
+                    value={inviteCode}
+                    onChange={e => setInviteCode(e.target.value)}
+                    autoComplete="off"
+                  />
+                </div>
+              )}
 
               {error && (
                 <p className="text-sm text-destructive">{error}</p>

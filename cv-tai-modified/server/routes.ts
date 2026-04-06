@@ -44,6 +44,46 @@ const BLOCKED_DOMAINS = [
   "apec.fr", "francetravail.fr", "pole-emploi.fr", "hellowork.com", "cadremploi.fr",
 ];
 
+// ── Phase 1: In-memory scrape cache (TTL 5 min) ──
+const SCRAPE_CACHE_TTL_MS = 5 * 60 * 1000;
+const scrapeCache = new Map<string, { text: string; metadata: JobInputMetadata; timestamp: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of scrapeCache) {
+    if (now - entry.timestamp > SCRAPE_CACHE_TTL_MS) scrapeCache.delete(key);
+  }
+}, 10 * 60 * 1000);
+
+// ── Phase 4: Soft-block adaptatif ──
+const SOFT_BLOCK_THRESHOLD = 3;
+const SOFT_BLOCK_WINDOW_MS = 24 * 60 * 60 * 1000;
+const softBlockMap = new Map<string, { failCount: number; lastFailure: number }>();
+
+function isSoftBlocked(hostname: string): boolean {
+  const entry = softBlockMap.get(hostname);
+  if (!entry) return false;
+  if (Date.now() - entry.lastFailure > SOFT_BLOCK_WINDOW_MS) {
+    softBlockMap.delete(hostname);
+    return false;
+  }
+  return entry.failCount >= SOFT_BLOCK_THRESHOLD;
+}
+
+function recordSoftBlock(hostname: string): void {
+  const entry = softBlockMap.get(hostname);
+  const now = Date.now();
+  if (entry && now - entry.lastFailure <= SOFT_BLOCK_WINDOW_MS) {
+    entry.failCount++;
+    entry.lastFailure = now;
+  } else {
+    softBlockMap.set(hostname, { failCount: 1, lastFailure: now });
+  }
+  const updated = softBlockMap.get(hostname)!;
+  if (updated.failCount >= SOFT_BLOCK_THRESHOLD) {
+    console.log(`[SCRAPE] Soft-blocked domain: ${hostname} (${updated.failCount} failures in 24h)`);
+  }
+}
+
 type JobInputMetadata = {
   sourceType: "url" | "text";
   normalizedUrl?: string;
@@ -69,6 +109,91 @@ function getScrapeFailureMessage(url?: string, blocked?: boolean): string {
   return isLinkedIn
     ? "Je n'ai pas pu lire l'annonce LinkedIn. Colle le texte de l'annonce pour continuer."
     : "Impossible de recuperer le contenu de cette URL. Colle le texte de l'annonce pour continuer.";
+}
+
+// ── Phase 2: Fetch with retry ──
+async function fetchWithRetry(
+  url: string,
+  opts: RequestInit & { signal?: AbortSignal },
+  { maxRetries = 1, baseDelay = 1500 } = {},
+): Promise<globalThis.Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const timeout = attempt === 0 ? 15_000 : 20_000;
+      const res = await fetch(url, { ...opts, signal: AbortSignal.timeout(timeout) });
+      if (res.ok || (res.status >= 400 && res.status < 500)) return res;
+      // 5xx → retry
+      lastError = new Error(`HTTP ${res.status}`);
+    } catch (e) {
+      lastError = e;
+    }
+    if (attempt < maxRetries) {
+      await new Promise(r => setTimeout(r, baseDelay * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
+// ── Phase 7: Direct fetch fallback + JSON-LD extraction ──
+function extractJsonLdJobPosting(html: string): string | null {
+  const scriptRegex = /<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = scriptRegex.exec(html)) !== null) {
+    try {
+      const data = JSON.parse(match[1]);
+      const candidates = Array.isArray(data) ? data : [data];
+      for (const item of candidates) {
+        const obj = item?.["@graph"] ? (item["@graph"] as any[]).find((g: any) => g["@type"] === "JobPosting") : item;
+        if (!obj || obj["@type"] !== "JobPosting") continue;
+        const parts: string[] = [];
+        if (obj.title) parts.push(`# ${obj.title}`);
+        if (obj.hiringOrganization?.name) parts.push(`Company: ${obj.hiringOrganization.name}`);
+        if (obj.description) parts.push(stripHtmlTags(obj.description));
+        if (obj.responsibilities) parts.push(`\nResponsibilities:\n${stripHtmlTags(obj.responsibilities)}`);
+        if (obj.qualifications) parts.push(`\nQualifications:\n${stripHtmlTags(obj.qualifications)}`);
+        if (obj.experienceRequirements) parts.push(`\nExperience:\n${typeof obj.experienceRequirements === "string" ? obj.experienceRequirements : JSON.stringify(obj.experienceRequirements)}`);
+        if (obj.skills) parts.push(`\nSkills:\n${typeof obj.skills === "string" ? obj.skills : JSON.stringify(obj.skills)}`);
+        if (parts.length >= 2) return parts.join("\n\n");
+      }
+    } catch { /* invalid JSON-LD, skip */ }
+  }
+  return null;
+}
+
+function stripHtmlTags(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/?(p|div|li|ul|ol|h[1-6])[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ").replace(/&#\d+;/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+async function directFetchFallback(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "Accept": "text/html,application/xhtml+xml",
+        "User-Agent": "Mozilla/5.0 (compatible; CVTailor/1.0)",
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    // Try JSON-LD first (structured, clean)
+    const jsonLdText = extractJsonLdJobPosting(html);
+    if (jsonLdText && jsonLdText.length >= 200) return jsonLdText;
+
+    // Fallback: strip HTML tags
+    const plainText = stripHtmlTags(html);
+    return plainText.length >= 200 ? plainText : null;
+  } catch {
+    return null;
+  }
 }
 
 function suspiciousEncodingCount(text: string): number {
@@ -97,70 +222,6 @@ type JobTextQualityAssessment = {
   warning?: string;
   note?: string;
 };
-
-function assessJobTextQualityLegacy(text: string) {
-  const lower = text.toLowerCase();
-  const lines = text.split("\n").map(line => line.trim()).filter(Boolean);
-  const JOB_SIGNALS = [
-    "mission", "responsabilit", "profil", "requis", "experience", "competence",
-    "description du poste", "vous serez", "vous aurez", "votre role", "about the role",
-    "responsibilities", "requirements", "qualifications", "you will", "we are looking",
-    "poste", "missions", "activites", "objectifs", "perimetre",
-  ];
-  const PERK_SIGNALS = [
-    "alan", "swile", "titre-restaurant", "ticket restaurant", "ticket-restaurant",
-    "full remote", "teletravail", "mutuelle", "stock option", "rtt ",
-    "seminaire", "onboarding", "avantage", "benefits", "package salarial",
-    "bien-etre", "flexi", "conges", "prime",
-  ];
-  // Candidate application form signals — must be checked BEFORE the early-return guard
-  const FORM_SIGNALS = [
-    "postuler", "candidater", "soumettre ma candidature", "submit application",
-    "votre cv", "upload cv", "upload your cv", "telecharger votre cv",
-    "formulaire de candidature", "application form", "apply now",
-    "deja postule", "already applied", "je postule",
-    "etape 1", "step 1 of", "step 1:",
-    "prenom *", "nom *", "email *", "telephone *",
-    "type de contrat souhait", "lettre de motivation", "disponibilit",
-    "pieces jointes", "attach", "browse files",
-  ];
-  const jobScore = JOB_SIGNALS.filter(s => lower.includes(s)).length;
-  const perkScore = PERK_SIGNALS.filter(s => lower.includes(s)).length;
-  const formScore = FORM_SIGNALS.filter(s => lower.includes(s)).length;
-  const uniqueLineRatio = lines.length > 0
-    ? new Set(lines.map(line => line.toLowerCase())).size / lines.length
-    : 1;
-  const noiseScore = [
-    "cookie",
-    "cookies",
-    "axeptio",
-    "gestion des cookies",
-    "se connecter",
-    "postuler",
-    "sauvegarder",
-    "partager",
-    "non merci",
-  ].filter(signal => lower.includes(signal)).length;
-  const repeatedContent = lines.length >= 8 && uniqueLineRatio < 0.75;
-
-  // Application form detection — checked before all other guards
-  if (formScore >= 3) {
-    return { ok: false, warning: "Le lien pointe vers un formulaire de candidature, pas vers l'annonce. Reviens sur la page de l'offre et copie le texte de la description du poste." };
-  }
-  if (formScore >= 2 && jobScore <= 2) {
-    return { ok: false, warning: "Le contenu recupere ressemble a un formulaire de candidature plutot qu'a une description de poste. Colle directement le texte de l'annonce." };
-  }
-
-  // Guard: long enough text with job signals → ok (startup-style short posts still pass)
-  if (text.length > 600 && jobScore >= 2) return { ok: true };
-  if (jobScore === 0 && perkScore >= 3) {
-    return { ok: false, warning: "Le contenu recupere semble incomplet (avantages uniquement, sans description du poste). Colle le texte complet de l'annonce pour continuer." };
-  }
-  if (jobScore <= 1 && perkScore > 0 && perkScore >= jobScore * 2) {
-    return { ok: false, warning: "L'annonce recuperee semble partielle. Colle le texte integral de l'annonce pour un scoring fiable." };
-  }
-  return { ok: true };
-}
 
 function assessJobTextQuality(text: string): JobTextQualityAssessment {
   const lower = text.toLowerCase();
@@ -298,6 +359,26 @@ const JOB_TEXT_NOISE_PATTERNS = [
   /^voir plus$/i,
   /^envie d'en savoir plus \?$/i,
   /^questions et reponses sur l'offre$/i,
+  // Phase 6: EN navigation noise
+  /^sign in$/i,
+  /^log in$/i,
+  /^apply$/i,
+  /^save$/i,
+  /^share$/i,
+  /^report this job$/i,
+  /^show more$/i,
+  /^show less$/i,
+  // Phase 6: EN cookie/privacy
+  /^cookie settings$/i,
+  /^privacy policy$/i,
+  /^cookie policy$/i,
+  /^manage preferences$/i,
+  // Phase 6: generic nav
+  /^home$/i,
+  /^jobs$/i,
+  /^companies$/i,
+  /^resources$/i,
+  /^about us$/i,
 ];
 
 function sanitizeJobText(rawText: string): string {
@@ -316,6 +397,19 @@ function sanitizeJobText(rawText: string): string {
     "job description",
     "about the job",
     "the position",
+    // Phase 6: additional FR markers
+    "a propos du poste",
+    "votre mission",
+    "vos missions",
+    "contexte du poste",
+    "presentation du poste",
+    // Phase 6: additional EN markers
+    "about the role",
+    "the role",
+    "what you'll do",
+    "your mission",
+    "role overview",
+    "position overview",
   ];
 
   const startIndex = lines.findIndex(line =>
@@ -357,33 +451,71 @@ async function resolveJobInput(params: { url?: string; text?: string; extraConte
   }
 
   if (!effectiveJobText && normalizedUrl) {
-    try {
-      const hostname = new URL(normalizedUrl).hostname.toLowerCase();
-      if (BLOCKED_DOMAINS.some(d => hostname.includes(d))) {
-        metadata.scrapeStatus = "blocked";
-        metadata.scrapeMessage = getScrapeFailureMessage(normalizedUrl, true);
-        return { ok: false, effectiveJobText: "", metadata, errorMessage: metadata.scrapeMessage };
-      }
-    } catch {}
+    // Phase 1: Check cache first
+    const cached = scrapeCache.get(normalizedUrl);
+    if (cached && Date.now() - cached.timestamp < SCRAPE_CACHE_TTL_MS) {
+      console.log(`[SCRAPE] Cache hit for ${normalizedUrl}`);
+      effectiveJobText = cached.text;
+      Object.assign(metadata, cached.metadata);
+    } else {
+      let hostname = "";
+      try {
+        hostname = new URL(normalizedUrl).hostname.toLowerCase();
+        // Hard-block check
+        if (BLOCKED_DOMAINS.some(d => hostname.includes(d))) {
+          metadata.scrapeStatus = "blocked";
+          metadata.scrapeMessage = getScrapeFailureMessage(normalizedUrl, true);
+          return { ok: false, effectiveJobText: "", metadata, errorMessage: metadata.scrapeMessage };
+        }
+        // Phase 4: Soft-block check
+        if (isSoftBlocked(hostname)) {
+          console.log(`[SCRAPE] Soft-blocked: ${hostname}`);
+          metadata.scrapeStatus = "blocked";
+          metadata.scrapeMessage = getScrapeFailureMessage(normalizedUrl, true);
+          return { ok: false, effectiveJobText: "", metadata, errorMessage: metadata.scrapeMessage };
+        }
+      } catch {}
 
-    try {
-      const jinaRes = await fetch(`https://r.jina.ai/${normalizedUrl}`, {
-        headers: { "Accept": "text/plain", "X-Return-Format": "text" },
-        signal: AbortSignal.timeout(15000),
-      });
-      if (jinaRes.ok) {
-        effectiveJobText = sanitizeJobText(await jinaRes.text());
-        metadata.scrapeStatus = "success";
-        metadata.scrapeMessage = normalizedUrl.includes("linkedin.com")
-          ? "Annonce recuperee automatiquement depuis LinkedIn."
-          : "Annonce recuperee automatiquement depuis l'URL.";
-      } else {
-        metadata.scrapeStatus = "failed";
-        metadata.scrapeMessage = getScrapeFailureMessage(normalizedUrl, false);
+      // Phase 2: Jina fetch with retry
+      let jinaFailed = false;
+      try {
+        const jinaRes = await fetchWithRetry(
+          `https://r.jina.ai/${normalizedUrl}`,
+          { headers: { "Accept": "text/plain", "X-Return-Format": "text" } },
+          { maxRetries: 1, baseDelay: 1500 },
+        );
+        if (jinaRes.ok) {
+          effectiveJobText = sanitizeJobText(await jinaRes.text());
+          metadata.scrapeStatus = "success";
+          metadata.scrapeMessage = normalizedUrl.includes("linkedin.com")
+            ? "Annonce recuperee automatiquement depuis LinkedIn."
+            : "Annonce recuperee automatiquement depuis l'URL.";
+        } else {
+          jinaFailed = true;
+        }
+      } catch {
+        jinaFailed = true;
       }
-    } catch {
-      metadata.scrapeStatus = "failed";
-      metadata.scrapeMessage = getScrapeFailureMessage(normalizedUrl, false);
+
+      // Phase 7: Direct fetch fallback if Jina failed
+      if (jinaFailed && (!effectiveJobText || effectiveJobText.length < 150)) {
+        console.log(`[SCRAPE] Jina failed for ${normalizedUrl}, trying direct fetch fallback`);
+        const fallbackText = await directFetchFallback(normalizedUrl);
+        if (fallbackText) {
+          effectiveJobText = sanitizeJobText(fallbackText);
+          metadata.scrapeStatus = "success";
+          metadata.scrapeMessage = "Annonce recuperee via fallback direct.";
+          console.log(`[SCRAPE] Direct fetch fallback succeeded (${effectiveJobText.length} chars)`);
+        } else {
+          metadata.scrapeStatus = "failed";
+          metadata.scrapeMessage = getScrapeFailureMessage(normalizedUrl, false);
+        }
+      }
+
+      // Phase 1: Cache successful scrapes
+      if (effectiveJobText && effectiveJobText.length >= 150) {
+        scrapeCache.set(normalizedUrl, { text: effectiveJobText, metadata: { ...metadata }, timestamp: Date.now() });
+      }
     }
   }
 
@@ -396,6 +528,10 @@ async function resolveJobInput(params: { url?: string; text?: string; extraConte
   }
 
   if (isBlockedScrapeText(effectiveJobText)) {
+    // Phase 4: Record soft-block
+    if (normalizedUrl) {
+      try { recordSoftBlock(new URL(normalizedUrl).hostname.toLowerCase()); } catch {}
+    }
     metadata.scrapeStatus = "blocked";
     metadata.scrapeMessage = getScrapeFailureMessage(normalizedUrl, true);
     return { ok: false, effectiveJobText: "", metadata, errorMessage: metadata.scrapeMessage };
@@ -433,13 +569,65 @@ export async function registerRoutes(
 ): Promise<Server> {
 
 
+  // ── AUTH RATE LIMITING (in-memory, zero dependency) ────────────────────────
+  const authRateLimits = new Map<string, { count: number; windowStart: number }>();
+  const RATE_LIMITS = {
+    login:    { max: 5, windowMs: 15 * 60 * 1000 },   // 5 per 15 min
+    register: { max: 3, windowMs: 60 * 60 * 1000 },   // 3 per 60 min
+  } as const;
+
+  function checkRateLimit(ip: string, action: "login" | "register"): boolean {
+    const key = `${action}:${ip}`;
+    const limit = RATE_LIMITS[action];
+    const now = Date.now();
+    const entry = authRateLimits.get(key);
+    if (!entry || now - entry.windowStart > limit.windowMs) {
+      authRateLimits.set(key, { count: 1, windowStart: now });
+      return true; // allowed
+    }
+    entry.count++;
+    return entry.count <= limit.max;
+  }
+
+  function resetRateLimit(ip: string, action: "login" | "register"): void {
+    authRateLimits.delete(`${action}:${ip}`);
+  }
+
+  // Cleanup stale entries every 30 min
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of authRateLimits) {
+      const action = key.startsWith("login:") ? "login" : "register";
+      if (now - entry.windowStart > RATE_LIMITS[action].windowMs) authRateLimits.delete(key);
+    }
+  }, 30 * 60 * 1000);
+
   // ── AUTH ROUTES (public) ──────────────────────────────────────────────────
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password } = req.body;
+      const ip = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkRateLimit(ip, "register")) {
+        return res.status(429).json({ error: "Trop de tentatives d'inscription. Reessaie dans une heure." });
+      }
+
+      const { email, password, inviteCode } = req.body;
+
+      // Invite code gate (if INVITE_CODE env var is set)
+      const requiredCode = process.env.INVITE_CODE;
+      if (requiredCode && inviteCode !== requiredCode) {
+        return res.status(403).json({ error: "Code d'invitation invalide ou manquant." });
+      }
+
       if (!email || !password || password.length < 8) {
         return res.status(400).json({ error: "Email et mot de passe (min 8 caracteres) requis." });
       }
+
+      // Password complexity: 1 uppercase, 1 lowercase, 1 digit
+      const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+      if (!passwordRegex.test(password)) {
+        return res.status(400).json({ error: "Le mot de passe doit contenir au moins 1 majuscule, 1 minuscule et 1 chiffre." });
+      }
+
       const existing = await getUserByEmail(email);
       if (existing) return res.status(409).json({ error: "Un compte existe deja avec cet email." });
       const user = await createUser(email, password);
@@ -453,19 +641,34 @@ export async function registerRoutes(
   });
 
   app.post("/api/auth/login", (req, res, next) => {
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    if (!checkRateLimit(ip, "login")) {
+      return res.status(429).json({ error: "Trop de tentatives de connexion. Reessaie dans 15 minutes." });
+    }
+
     passport.authenticate("local", (err: unknown, user: Express.User | false, info: { message?: string } | undefined) => {
       if (err) return next(err);
       if (!user) return res.status(401).json({ error: info?.message || "Identifiants incorrects." });
-      req.login(user, (loginErr) => {
-        if (loginErr) return next(loginErr);
-        const u = user as { id: number; email: string };
-        res.json({ id: u.id, email: u.email });
+
+      // Session regeneration to prevent session fixation
+      req.session.regenerate((regenErr) => {
+        if (regenErr) return next(regenErr);
+        req.login(user, (loginErr) => {
+          if (loginErr) return next(loginErr);
+          resetRateLimit(ip, "login");
+          const u = user as { id: number; email: string };
+          res.json({ id: u.id, email: u.email });
+        });
       });
     })(req, res, next);
   });
 
   app.post("/api/auth/logout", (req, res) => {
-    req.logout(() => res.json({ ok: true }));
+    req.logout(() => {
+      req.session.destroy(() => {
+        res.clearCookie("connect.sid").json({ ok: true });
+      });
+    });
   });
 
   app.get("/api/auth/me", (req, res) => {

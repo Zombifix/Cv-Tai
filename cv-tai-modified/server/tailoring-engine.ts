@@ -11,7 +11,31 @@ function log(step: string, data?: any) {
 
 export function normalizeLinkedInUrl(rawUrl: string): string {
   if (!rawUrl) return rawUrl;
-  try { const url = new URL(rawUrl); if (!url.hostname.includes("linkedin.com")) return rawUrl; const j = url.searchParams.get("currentJobId"); if (j) return `https://www.linkedin.com/jobs/view/${j}`; return rawUrl; } catch { return rawUrl; }
+  try {
+    const url = new URL(rawUrl);
+    if (!url.hostname.includes("linkedin.com")) return rawUrl;
+
+    // Extract job ID from currentJobId query param (collections, search pages)
+    const currentJobId = url.searchParams.get("currentJobId");
+    if (currentJobId && /^\d+$/.test(currentJobId)) {
+      return `https://www.linkedin.com/jobs/view/${currentJobId}`;
+    }
+
+    // Extract job ID from path: /jobs/view/some-title-1234567890/ or /jobs/view/1234567890/
+    const pathMatch = url.pathname.match(/\/jobs\/view\/(?:.*?[-/])?(\d{5,})(?:\/|$)/);
+    if (pathMatch) {
+      return `https://www.linkedin.com/jobs/view/${pathMatch[1]}`;
+    }
+
+    // Strip tracking params but keep the rest
+    const trackingParams = ["refId", "trackingId", "trk", "midToken", "midSig", "trkEmail", "connectionOf", "lipi"];
+    for (const param of trackingParams) url.searchParams.delete(param);
+    // Normalize subdomain to www
+    url.hostname = "www.linkedin.com";
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
 }
 
 export interface LLMHealthResult { provider: string; model: string; baseUrl: string; apiKeyPresent: boolean; success: boolean; rawText: string; responseTimeMs: number; error?: string; }

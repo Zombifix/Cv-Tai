@@ -33,6 +33,12 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
+// Guard: SESSION_SECRET must be set in production
+if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) {
+  console.error("[FATAL] SESSION_SECRET is not set. Refusing to start in production with a default secret.");
+  process.exit(1);
+}
+
 const PgStore = connectPgSimple(session);
 app.use(session({
   store: new PgStore({ pool, tableName: "session", createTableIfMissing: false }),
