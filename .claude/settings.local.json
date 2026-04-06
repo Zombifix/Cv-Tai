@@ -3,7 +3,8 @@
     "allow": [
       "Bash(git -C /c/Users/theop/OneDrive/Documents/GitHub/Cv-Tai add cv-tai-modified/server/tailoring-engine.ts)",
       "Bash(git -C:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:aoIVkLIGoUUnjKuBDuvDtjuJbSJxJkpT@switchback.proxy.rlwy.net:33973/railway\" npx drizzle-kit push)"
     ]
   }
 }

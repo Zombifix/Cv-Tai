@@ -31,21 +31,20 @@ async function main() {
   const adminEmail = process.env.ADMIN_EMAIL;
   const adminPassword = process.env.ADMIN_PASSWORD;
 
-  if (!adminEmail || !adminPassword) {
-    console.error("❌ ADMIN_EMAIL and ADMIN_PASSWORD env vars are required.");
-    console.error("   Example: ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=secret npx tsx server/migrate-add-userId.ts");
-    process.exit(1);
-  }
-
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // --- 1. Create admin user if none exists ---
-    const existingUsers = await client.query("SELECT id FROM users LIMIT 1");
+    // --- 1. Find or create admin user ---
+    const existingUsers = await client.query("SELECT id, email FROM users ORDER BY id LIMIT 1");
     let adminUserId: number;
 
     if (existingUsers.rows.length === 0) {
+      if (!adminEmail || !adminPassword) {
+        console.error("❌ No users found. Provide ADMIN_EMAIL and ADMIN_PASSWORD to create the first account.");
+        console.error("   Example: ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=secret npx tsx server/migrate-add-userId.ts");
+        process.exit(1);
+      }
       console.log(`Creating admin user: ${adminEmail}`);
       const hash = await hashPassword(adminPassword);
       const result = await client.query(
@@ -56,7 +55,7 @@ async function main() {
       console.log(`✅ Admin user created with id=${adminUserId}`);
     } else {
       adminUserId = existingUsers.rows[0].id;
-      console.log(`ℹ️  Existing user found with id=${adminUserId} — using as owner of existing data`);
+      console.log(`ℹ️  User found: ${existingUsers.rows[0].email} (id=${adminUserId}) — existing data will be attributed to this account`);
     }
 
     // --- 2. Tables that need user_id ---
