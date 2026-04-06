@@ -5,7 +5,8 @@
       "Bash(git -C:*)",
       "Bash(npm run:*)",
       "Bash(DATABASE_URL=\"postgresql://postgres:aoIVkLIGoUUnjKuBDuvDtjuJbSJxJkpT@switchback.proxy.rlwy.net:33973/railway\" npx drizzle-kit push)",
-      "Bash(DATABASE_URL=\"postgresql://postgres:aoIVkLIGoUUnjKuBDuvDtjuJbSJxJkpT@switchback.proxy.rlwy.net:33973/railway\" npx tsx server/seed-test-user.ts)"
+      "Bash(DATABASE_URL=\"postgresql://postgres:aoIVkLIGoUUnjKuBDuvDtjuJbSJxJkpT@switchback.proxy.rlwy.net:33973/railway\" npx tsx server/seed-test-user.ts)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:aoIVkLIGoUUnjKuBDuvDtjuJbSJxJkpT@switchback.proxy.rlwy.net:33973/railway\" npx tsx server/fix-passwords.ts)"
     ]
   }
 }
