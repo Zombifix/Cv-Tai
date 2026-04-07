@@ -1073,10 +1073,10 @@ export async function buildStructuredCV(job: ParsedJob, selExps: ScoredExperienc
   let summary = extras?.profileSummary || "";
   const topExps = selExps.filter(se => se.selectedBullets.length > 0).slice(0, 3);
   const posGuide: Record<string, string> = {
-    consultant: "Emphasize: conseil, accompagnement, structuration des pratiques, montee en maturite design.",
-    lead: "Emphasize: vision, leadership, team building, design strategy.",
-    ic: "Emphasize: craft, delivery, impact, technical expertise.",
-    manager: "Emphasize: people management, hiring, org design.",
+    consultant: "Emphasize: conseil, accompagnement, structuration des pratiques, montee en maturite design. NEVER claim: team management, hiring, product ownership, or technical leadership unless the bullets prove it.",
+    lead: "Emphasize: vision, leadership, design strategy, scope coordination. NEVER claim: people management, hiring, org design, or C-level influence unless the bullets prove it.",
+    ic: "Emphasize: craft, delivery, impact, technical expertise. NEVER claim: team management, strategy ownership, org design, or hiring unless the bullets prove it.",
+    manager: "Emphasize: people management, hiring, team growth, org design. NEVER claim: hands-on craft delivery or technical architecture unless the bullets prove it.",
   };
   const proofHighlights = topExps
     .flatMap(se => se.selectedBullets.slice(0, 2).map(sb => sb.bullet.text))
@@ -1088,7 +1088,14 @@ export async function buildStructuredCV(job: ParsedJob, selExps: ScoredExperienc
   if (topExps.length > 0) {
     try {
       const res = await openai.chat.completions.create({ model: MODEL, messages: [
-        { role: "system", content: `Write a 2-3 sentence CV summary. Max 45 words. No first person. ${posGuide[job.positioning]} ${modeGuide} ${job.language === "FR" ? "In French." : "In English."} IMPORTANT: Only reference companies listed in the experiences below. Do not invent metrics, achievements, or projects not explicitly mentioned in the provided context. Write in flowing prose only; do NOT use labels like "Competences:" or "Skills:" in the text.` },
+        { role: "system", content: `Write a 2-3 sentence CV summary. Max 45 words, max 300 characters. No first person. ${posGuide[job.positioning]} ${modeGuide} ${job.language === "FR" ? "In French." : "In English."}
+GROUNDING RULES:
+- Only reference companies listed in the experiences below.
+- Do not invent metrics, achievements, or projects not explicitly mentioned in the provided context.
+- Only mention an expertise area (e.g. "design system", "user research", "data") if at least 2 of the proof highlights below demonstrate it concretely.
+- Do not claim years of experience in a domain unless the experiences below span that duration.
+- Write in flowing prose only; do NOT use labels like "Competences:" or "Skills:" in the text.
+- Prefer specific, provable claims over generic positioning statements.` },
         { role: "user", content: `Target: "${job.title}" at "${job.company}" (${job.domain})\nMode: ${mode}\nPositioning: ${job.positioning}\n${extras?.profileSummary ? `Bio: ${extras.profileSummary}\n` : ""}Exps: ${topExps.map(se => `${se.experience.title} at ${se.experience.company}`).join(", ")}\nSkills: ${dedupSkills.slice(0,6).join(", ")}\nRequired: ${job.requiredSkills.slice(0,5).join(", ")}\nIntentions: ${job.intentions.slice(0,3).join("; ")}\nProof highlights: ${proofHighlights}` },
       ], temperature: 0 });
       summary = (res.choices[0].message.content || summary).trim();
@@ -1114,19 +1121,131 @@ export async function buildStructuredCV(job: ParsedJob, selExps: ScoredExperienc
   });
 }
 
-// â”€â”€â”€ Step 6: Reformulate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Step 6: Reformulate (with few-shots, preservation check, per-bullet fallback) â"€â"€â"€
+
+const REFORMULATION_FEWSHOTS: Record<string, string> = {
+  consultant: `
+EXAMPLES (consultant positioning):
+Source: "Realise des audits UX sur 3 produits B2B"
+Good: "Conduit 3 audits UX sur des produits B2B et structure les recommandations pour les equipes produit"
+Bad: "Dirige la strategie UX de l'entreprise sur l'ensemble du portefeuille B2B" (scope invention)
+
+Source: "Accompagne les equipes design dans la mise en place de methodes de recherche"
+Good: "Accompagne 2 equipes design dans l'adoption de methodes de recherche utilisateur structurees"
+Bad: "Transforme la culture de recherche de l'organisation" (overstatement)`,
+
+  lead: `
+EXAMPLES (lead positioning):
+Source: "Defini les guidelines du design system avec l'equipe front"
+Good: "Structure les guidelines du design system en coordination avec l'equipe front-end"
+Bad: "Manage une equipe de 5 designers pour deployer le design system" (invents team management)
+
+Source: "Pilote la refonte du parcours onboarding"
+Good: "Pilote la refonte du parcours onboarding, alignant les objectifs produit et les contraintes techniques"
+Bad: "Definit la vision strategique de l'onboarding pour l'ensemble de la plateforme" (scope inflation)`,
+
+  ic: `
+EXAMPLES (IC positioning):
+Source: "Cree des maquettes pour le module de facturation"
+Good: "Conçoit les maquettes du module de facturation, de la recherche initiale aux specs finales"
+Bad: "Prend en charge l'experience utilisateur complete du departement finance" (scope invention)
+
+Source: "Fait des tests utilisateurs sur le checkout"
+Good: "Conduit des tests utilisateurs sur le checkout et identifie 3 points de friction critiques"
+Bad: "Met en place une strategie de recherche utilisateur pour optimiser le funnel de conversion" (overstatement)`,
+
+  manager: `
+EXAMPLES (manager positioning):
+Source: "Recrute 2 designers et organise les rituels d'equipe"
+Good: "Recrute et integre 2 designers produit, met en place les rituels de critique et de priorisation"
+Bad: "Construit et dirige une organisation design de 10 personnes" (invents scale)
+
+Source: "Fait les entretiens annuels et le suivi de montee en competences"
+Good: "Assure le suivi individuel et la montee en competences de l'equipe via des entretiens structures"
+Bad: "Definit la politique RH et la grille de competences design de l'entreprise" (scope inflation)`,
+};
+
+function extractPreservationEntities(text: string): { numbers: string[]; properNouns: string[]; tools: string[] } {
+  const numbers = (text.match(/\d[\d,.]*%?/g) || []).map(n => n.trim());
+  const knownTools = [
+    "figma", "sketch", "miro", "notion", "jira", "confluence", "hotjar", "mixpanel",
+    "amplitude", "maze", "usertesting", "airtable", "invision", "zeplin", "abstract",
+    "principle", "framer", "webflow", "react", "vue", "angular", "storybook",
+    "contentful", "wordpress", "shopify", "salesforce", "hubspot", "intercom",
+    "dovetail", "lookback", "productboard", "pendo", "fullstory", "contentsquare",
+  ];
+  const textLow = text.toLowerCase();
+  const tools = knownTools.filter(tool => textLow.includes(tool));
+  const properNouns = (text.match(/\b[A-Z][a-zà-ÿ]+(?:\s[A-Z][a-zà-ÿ]+)*/g) || [])
+    .filter(noun => noun.length >= 3 && !["Le", "La", "Les", "Un", "Une", "Des", "Du", "De", "Au", "The", "And", "For", "With"].includes(noun));
+  return { numbers, properNouns, tools };
+}
+
+function reformulationPreservesEntities(original: string, reformulated: string): boolean {
+  const orig = extractPreservationEntities(original);
+  const reformLow = reformulated.toLowerCase();
+  for (const num of orig.numbers) {
+    if (!reformulated.includes(num)) return false;
+  }
+  for (const tool of orig.tools) {
+    if (!reformLow.includes(tool)) return false;
+  }
+  return true;
+}
+
+function reformulationIsTooDistant(original: string, reformulated: string): boolean {
+  const origTokens = tokenizeNormalized(original);
+  const refTokens = tokenizeNormalized(reformulated);
+  const similarity = jaccardSimilarity(origTokens, refTokens);
+  // If less than 20% overlap, the reformulation has drifted too far from the original
+  return similarity < 0.20;
+}
+
 export async function reformulateBullets(cv: StructuredCV, job: ParsedJob, openai: OpenAI): Promise<StructuredCV> {
   const all = cv.experiences.flatMap((exp, ei) => exp.bullets.map((b, bi) => ({ ei, bi, text: b, ctx: `${exp.title} @ ${exp.company}`, desc: exp.description ? exp.description.slice(0, 150) : "" })));
   if (all.length === 0) return cv;
   const list = all.map((b, i) => `[${i}] (${b.ctx}${b.desc ? ` | context: ${b.desc}` : ""}): ${b.text}`).join("\n");
   const lang = job.language === "FR" ? "Reformule en francais." : "Reformulate in English.";
+  const fewshots = REFORMULATION_FEWSHOTS[job.positioning] || REFORMULATION_FEWSHOTS.ic;
   try {
     const res = await openai.chat.completions.create({ model: MODEL, messages: [
-      { role: "system", content: `CV optimization. Reformulate bullets:\n1. Optimize for recruiter clarity and role-specific proof, not keyword stuffing.\n2. Start with an action verb whenever possible.\n3. NO invention; only use information present in the bullet or its context.\n4. Preserve proper nouns, brand names, and specific numbers exactly.\n5. Do NOT change the nature of activities: "tests utilisateurs" is not "A/B testing", and "interviews" is not "surveys".\n6. If a bullet is already specific and convincing, only make small edits; if it is generic, make it sharper and more role-relevant.\n7. Max 200 chars.\n8. ${lang}\n9. ${job.positioning} role: ${job.positioning === "consultant" ? "emphasize accompagnement, structuration, impact on teams" : job.positioning === "lead" ? "emphasize scope, standards, coordination, but never fake people management" : "emphasize delivery, decisions, results"}.\n10. If the role is lead/head, do not claim team building, hiring, or management unless the source bullet proves it.\n11. Prefer clarity and density over adding more buzzwords.` },
+      { role: "system", content: `CV optimization. Reformulate bullets:
+1. Optimize for recruiter clarity and role-specific proof, not keyword stuffing.
+2. Start with an action verb whenever possible.
+3. NO invention; only use information present in the bullet or its context.
+4. Preserve proper nouns, brand names, and specific numbers exactly — changing or dropping a number is FORBIDDEN.
+5. Do NOT change the nature of activities: "tests utilisateurs" is not "A/B testing", and "interviews" is not "surveys".
+6. If a bullet is already specific and convincing, only make small edits; if it is generic, make it sharper and more role-relevant.
+7. Max 200 chars.
+8. ${lang}
+9. ${job.positioning} role: ${job.positioning === "consultant" ? "emphasize accompagnement, structuration, impact on teams" : job.positioning === "lead" ? "emphasize scope, standards, coordination, but never fake people management" : job.positioning === "manager" ? "emphasize people management, hiring, coaching, team growth" : "emphasize delivery, decisions, results"}.
+10. If the role is lead/head, do not claim team building, hiring, or management unless the source bullet proves it.
+11. Prefer clarity and density over adding more buzzwords.
+12. NEVER inflate scope: do not upgrade "2 products" to "the entire platform", or "1 team" to "cross-functional teams", or "contributed to" to "led".
+${fewshots}` },
       { role: "user", content: `Target: "${job.title}" at "${job.company}"\nKeywords: ${job.keywords.slice(0,10).join(", ")}\nIntentions: ${job.intentions.slice(0,3).join("; ")}\nCritical keywords: ${job.criticalKeywords.slice(0,8).join(", ")}\n\nBullets (with experience context when available):\n${list}\n\nReturn JSON: {"bullets": [{"index": 0, "text": "..."}]}` },
     ], response_format: { type: "json_object" }, temperature: 0.2 });
     const r = JSON.parse(res.choices[0].message.content || "{}");
-    for (const rb of (r.bullets || [])) { if (rb.index >= 0 && rb.index < all.length && rb.text?.length > 10) { cv.experiences[all[rb.index].ei].bullets[all[rb.index].bi] = rb.text; } }
+    let accepted = 0;
+    let rejected = 0;
+    for (const rb of (r.bullets || [])) {
+      if (rb.index < 0 || rb.index >= all.length || !rb.text || rb.text.length <= 10) continue;
+      const original = all[rb.index].text;
+      const reformulated = rb.text;
+      if (!reformulationPreservesEntities(original, reformulated)) {
+        log("reformulate REJECTED (entities lost)", { index: rb.index, original: original.slice(0, 80), reformulated: reformulated.slice(0, 80) });
+        rejected++;
+        continue;
+      }
+      if (reformulationIsTooDistant(original, reformulated)) {
+        log("reformulate REJECTED (too distant)", { index: rb.index, original: original.slice(0, 80), reformulated: reformulated.slice(0, 80) });
+        rejected++;
+        continue;
+      }
+      cv.experiences[all[rb.index].ei].bullets[all[rb.index].bi] = reformulated;
+      accepted++;
+    }
+    log("reformulate DONE", { accepted, rejected, total: all.length });
   } catch (e: any) { log("reformulate FAILED", e.message); }
   return sanitizeStructuredCV(cv);
 }
