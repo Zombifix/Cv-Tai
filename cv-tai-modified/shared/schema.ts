@@ -115,6 +115,7 @@ export const runs = pgTable("runs", {
   selectedBulletIds: uuid("selected_bullet_ids").array(),
   outputCvText: text("output_cv_text"),
   outputReportJson: jsonb("output_report_json"),
+  tracking: jsonb("tracking"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

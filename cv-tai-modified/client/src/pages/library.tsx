@@ -398,6 +398,9 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
       });
       const data = await res.json();
+      if (data.llmError) {
+        toast({ title: "IA indisponible", description: "L'extraction des axes a echoue. Continue manuellement.", variant: "destructive" });
+      }
       const suggested = (data.axes || []).map((a: any) => a.text || a).filter(Boolean);
       setAxes(suggested);
       setStep(suggested.length > 0 ? "axes" : "edit");
@@ -425,6 +428,9 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
         body: JSON.stringify({ text: editText.trim() }), credentials: "include",
       });
       const data = await res.json();
+      if (data.llmError) {
+        toast({ title: "IA indisponible", description: "Le tagging automatique a echoue. Tu peux tagger manuellement.", variant: "destructive" });
+      }
       setEditTags(data.tags || editTags);
       setEditEval(data.evaluation || null);
       setEditReasons(data.reasons || null);

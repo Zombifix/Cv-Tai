@@ -1960,17 +1960,29 @@ const STATUS_OPTIONS: { value: AppTracking["status"]; label: string; activeClass
   { value: "rejected",  label: "Refus",      activeClass: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-300 dark:border-red-700" },
 ];
 
-function ApplicationTrackerSafe({ runId }: { runId: string }) {
-  const storageKey = `app-tracking-${runId}`;
+function ApplicationTrackerSafe({ runId, initialTracking }: { runId: string; initialTracking?: AppTracking | null }) {
   const [tracking, setTracking] = useState<AppTracking>(() => {
-    try { return JSON.parse(localStorage.getItem(storageKey) || "null") ?? TRACKING_DEFAULT; }
-    catch { return TRACKING_DEFAULT; }
+    // Prefer DB value, then localStorage migration, then default
+    if (initialTracking && initialTracking.applied) return initialTracking;
+    try {
+      const local = JSON.parse(localStorage.getItem(`app-tracking-${runId}`) || "null");
+      if (local && local.applied) return local;
+    } catch {}
+    return TRACKING_DEFAULT;
   });
 
   const save = (updates: Partial<AppTracking>) => {
     const next = { ...tracking, ...updates };
     setTracking(next);
-    localStorage.setItem(storageKey, JSON.stringify(next));
+    // Persist to DB (fire-and-forget)
+    fetch(`/api/runs/${runId}/tracking`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tracking: next }),
+      credentials: "include",
+    }).catch(() => {});
+    // Keep localStorage as fallback
+    localStorage.setItem(`app-tracking-${runId}`, JSON.stringify(next));
   };
 
   const today = new Date().toISOString().split("T")[0];
@@ -2417,7 +2429,7 @@ export default function Result() {
             />
 
             {/* Application Tracker */}
-            <ApplicationTrackerSafe runId={run.id} />
+            <ApplicationTrackerSafe runId={run.id} initialTracking={(run as any).tracking as AppTracking | null} />
 
           </div>
         </div>

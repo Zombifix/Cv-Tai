@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "wouter";
 import { Layout } from "@/components/layout";
 import { useRuns } from "@/hooks/use-tailor";
@@ -7,6 +8,8 @@ import {
   AlertCircle,
   ArrowRight,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   FileText,
   RefreshCw,
@@ -18,16 +21,18 @@ import {
   Zap,
 } from "lucide-react";
 
-function getTracking(runId: string) {
+function getTracking(run: any) {
+  // Prefer DB tracking, fallback to localStorage
+  if (run.tracking && typeof run.tracking === "object") return run.tracking;
   try {
-    return JSON.parse(localStorage.getItem(`app-tracking-${runId}`) || "null");
+    return JSON.parse(localStorage.getItem(`app-tracking-${run.id}`) || "null");
   } catch {
     return null;
   }
 }
 
-function getTrackingMeta(runId: string) {
-  const tracking = getTracking(runId);
+function getTrackingMeta(run: any) {
+  const tracking = getTracking(run);
   if (!tracking?.applied) return null;
   if (tracking.status === "interview") {
     return {
@@ -101,8 +106,11 @@ function formatDate(iso: string) {
   }
 }
 
+const PAGE_SIZE = 10;
+
 export default function History() {
   const { data: runs, isLoading, error } = useRuns();
+  const [page, setPage] = useState(0);
 
   const runsWithScore =
     runs?.filter((run: any) => {
@@ -120,8 +128,8 @@ export default function History() {
         )
       : null;
 
-  const appliedCount = runs?.filter((run: any) => getTracking(run.id)?.applied).length ?? 0;
-  const interviewCount = runs?.filter((run: any) => getTracking(run.id)?.status === "interview").length ?? 0;
+  const appliedCount = runs?.filter((run: any) => getTracking(run)?.applied).length ?? 0;
+  const interviewCount = runs?.filter((run: any) => getTracking(run)?.status === "interview").length ?? 0;
 
   return (
     <Layout>
@@ -213,7 +221,10 @@ export default function History() {
           </Card>
         )}
 
-        {!isLoading && runs && runs.length > 0 && (
+        {!isLoading && runs && runs.length > 0 && (() => {
+          const totalPages = Math.ceil(runs.length / PAGE_SIZE);
+          const pagedRuns = runs.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+          return (
           <section className="space-y-3">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -223,10 +234,10 @@ export default function History() {
             </div>
 
             <div className="space-y-3">
-              {runs.map((run: any, i: number) => {
+              {pagedRuns.map((run: any, i: number) => {
                 const report = run.outputReportJson as any;
                 const modeMeta = MODE_META[run.mode as keyof typeof MODE_META] || MODE_META.polished;
-                const trackingMeta = getTrackingMeta(run.id);
+                const trackingMeta = getTrackingMeta(run);
                 const displayScore = report?.scoreBreakdown?.pertinence ?? report?.confidence;
                 const scoreLabel = report?.scoreBreakdown?.fitMetier != null ? "Pertinence" : "Fit offre";
                 const badgeMeta = getBadgeMeta(report?.scoreBreakdown?.badge);
@@ -334,8 +345,35 @@ export default function History() {
                 );
               })}
             </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl"
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" /> Precedent
+                </Button>
+                <span className="text-sm text-muted-foreground tabular-nums">
+                  {page + 1} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl"
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                >
+                  Suivant <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            )}
           </section>
-        )}
+          );
+        })()}
       </div>
     </Layout>
   );

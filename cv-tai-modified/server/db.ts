@@ -107,6 +107,11 @@ export async function ensureTables() {
         CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
       );
       CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
+      ALTER TABLE runs ADD COLUMN IF NOT EXISTS tracking JSONB;
+      CREATE INDEX IF NOT EXISTS "IDX_experiences_user_id" ON experiences ("user_id");
+      CREATE INDEX IF NOT EXISTS "IDX_bullets_experience_id" ON bullets ("experience_id");
+      CREATE INDEX IF NOT EXISTS "IDX_runs_user_id_created" ON runs ("user_id", "created_at" DESC);
+      CREATE INDEX IF NOT EXISTS "IDX_job_posts_user_id" ON job_posts ("user_id");
     `).catch((e) => console.log("[DB] Some ALTER/CREATE already done:", e.message));
   } catch (err: any) {
     // If vector extension fails, create tables without the embedding column
@@ -172,6 +177,11 @@ export async function ensureTables() {
         CREATE TABLE IF NOT EXISTS users (id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
         CREATE TABLE IF NOT EXISTS "session" ("sid" varchar NOT NULL COLLATE "default", "sess" json NOT NULL, "expire" timestamp(6) NOT NULL, CONSTRAINT "session_pkey" PRIMARY KEY ("sid"));
         CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
+        ALTER TABLE runs ADD COLUMN IF NOT EXISTS tracking JSONB;
+        CREATE INDEX IF NOT EXISTS "IDX_experiences_user_id" ON experiences ("user_id");
+        CREATE INDEX IF NOT EXISTS "IDX_bullets_experience_id" ON bullets ("experience_id");
+        CREATE INDEX IF NOT EXISTS "IDX_runs_user_id_created" ON runs ("user_id", "created_at" DESC);
+        CREATE INDEX IF NOT EXISTS "IDX_job_posts_user_id" ON job_posts ("user_id");
       `).catch(() => {});
     } else {
       console.error("[DB] Failed to create tables:", err.message);

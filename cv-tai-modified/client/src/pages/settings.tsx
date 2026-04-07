@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Settings as SettingsIcon, Trash2, RefreshCw, Brain, AlertTriangle } from "lucide-react";
+import { Settings as SettingsIcon, Trash2, RefreshCw, Brain, AlertTriangle, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Settings() {
@@ -13,6 +13,27 @@ export default function Settings() {
   const [resetOpen, setResetOpen] = useState(false);
   const [resetConfirm, setResetConfirm] = useState("");
   const [resetting, setResetting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch("/api/settings/export", { credentials: "include" });
+      if (!res.ok) throw new Error("Echec de l'export");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `cv-tai-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "Export termine", description: "Le fichier JSON a ete telecharge." });
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const handleReset = async () => {
     if (resetConfirm !== "SUPPRIMER") return;
@@ -72,6 +93,25 @@ export default function Settings() {
                 La cle API est configuree dans les variables d'environnement Railway.
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* ── Export ── */}
+        <Card>
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Download className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Exporter mes donnees</h3>
+                <p className="text-sm text-muted-foreground">Telecharge toutes tes donnees (profil, experiences, bullets, skills, formations, langues, historique) au format JSON.</p>
+              </div>
+            </div>
+            <Button variant="outline" onClick={handleExport} disabled={exporting}>
+              {exporting ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Download className="w-4 h-4 mr-1" />}
+              Telecharger mes donnees
+            </Button>
           </CardContent>
         </Card>
 

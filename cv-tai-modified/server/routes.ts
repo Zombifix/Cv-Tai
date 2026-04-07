@@ -6,8 +6,8 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import OpenAI from "openai";
 import { db } from "./db";
-import { bullets } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { bullets, runs } from "@shared/schema";
+import { eq, and, sql } from "drizzle-orm";
 import {
   normalizeLinkedInUrl,
   checkLLMHealth,
@@ -1196,6 +1196,42 @@ Reponds UNIQUEMENT en JSON :
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // SETTINGS â€” reset all data
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ── SETTINGS — export user data ──
+  app.get("/api/settings/export", requireAuth, async (req, res) => {
+    try {
+      const userId = uid(req);
+      const [userProfile, userExperiences, userSkills, userFormations, userLanguages, userRuns] = await Promise.all([
+        storage.getProfile(userId),
+        storage.getExperiences(userId),
+        storage.getSkills(userId),
+        storage.getFormations(userId),
+        storage.getLanguages(userId),
+        storage.getRuns(userId),
+      ]);
+      const experiencesWithBullets = await Promise.all(
+        userExperiences.map(async (exp) => ({
+          ...exp,
+          bullets: await storage.getBulletsByExperience(userId, exp.id),
+        })),
+      );
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        profile: userProfile || null,
+        experiences: experiencesWithBullets,
+        skills: userSkills,
+        formations: userFormations,
+        languages: userLanguages,
+        runs: userRuns,
+      };
+      res.setHeader("Content-Disposition", `attachment; filename="cv-tai-export-${new Date().toISOString().slice(0, 10)}.json"`);
+      res.setHeader("Content-Type", "application/json");
+      res.json(exportData);
+    } catch (err: any) {
+      console.error("[SETTINGS] Export failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/settings/reset", async (req, res) => {
     try {
       const userId = uid(req);
@@ -1228,6 +1264,22 @@ Reponds UNIQUEMENT en JSON :
   app.get("/api/runs", async (req, res) => {
     const allRuns = await storage.getRuns(uid(req));
     res.json(allRuns);
+  });
+
+  // ── TRACKING — persist application tracking to DB ──
+  app.patch("/api/runs/:id/tracking", async (req, res) => {
+    try {
+      const userId = uid(req);
+      const { tracking } = req.body;
+      if (!tracking || typeof tracking !== "object") {
+        return res.status(400).json({ error: "tracking object required" });
+      }
+      await db.update(runs).set({ tracking }).where(and(eq(runs.id, req.params.id), eq(runs.userId, userId)));
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[TRACKING] Error:", err.message);
+      res.status(500).json({ error: "Erreur serveur." });
+    }
   });
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -1278,7 +1330,7 @@ Reponds en JSON : {"axes": [{"text": "description courte de l'axe", "source": "d
       res.json({ axes: (result.axes || []).slice(0, 5) });
     } catch (err: any) {
       console.error("[AXES] Error:", err.message);
-      res.json({ axes: [] });
+      res.json({ axes: [], llmError: true });
     }
   });
 
@@ -1359,7 +1411,7 @@ Reponds UNIQUEMENT en JSON valide :
       res.json(result);
     } catch (err: any) {
       console.error("[GAPS] Error:", err.message);
-      res.json({ gaps: [] });
+      res.json({ gaps: [], llmError: true });
     }
   });
 
@@ -1433,7 +1485,7 @@ JSON uniquement :
       });
     } catch (err: any) {
       console.error("[TAG-EVAL] Error:", err.message);
-      res.json({ tags: ["general"], evaluation: null, suggestion: null });
+      res.json({ tags: ["general"], evaluation: null, suggestion: null, llmError: true });
     }
   });
 
