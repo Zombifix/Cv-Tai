@@ -13,10 +13,36 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Plus, Building, Calendar, Pencil, RefreshCw, Briefcase, Zap, Upload, Sparkles, Check, X, GraduationCap, Globe, ChevronDown } from "lucide-react";
+import { Plus, Building, Calendar, Pencil, RefreshCw, Briefcase, Zap, Upload, Sparkles, Check, X, GraduationCap, Globe, ChevronDown, HelpCircle, Target, SkipForward } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Experience, Bullet } from "@shared/schema";
+
+/* ══════════════════════════════════════════════════════════════════
+   DEEP-LINK CONTEXT — read URL params from result page
+   ══════════════════════════════════════════════════════════════════ */
+interface EnrichmentContext {
+  experienceId?: string;
+  missingKeywords?: string[];
+  jobTitle?: string;
+}
+
+function useEnrichmentContext(): EnrichmentContext {
+  const [ctx, setCtx] = useState<EnrichmentContext>({});
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const experienceId = params.get("experienceId") || undefined;
+    const missingRaw = params.get("missing") || "";
+    const missingKeywords = missingRaw ? missingRaw.split(",").map(s => s.trim()).filter(Boolean) : undefined;
+    const jobTitle = params.get("jobTitle") || undefined;
+    if (experienceId || missingKeywords?.length) {
+      setCtx({ experienceId, missingKeywords, jobTitle });
+      // Clean URL without reload
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+  return ctx;
+}
 
 /* ══════════════════════════════════════════════════════════════════
    TYPES
@@ -60,6 +86,7 @@ function useProfile() {
    MAIN PAGE — Single page, no tabs
    ══════════════════════════════════════════════════════════════════ */
 export default function Library() {
+  const enrichmentContext = useEnrichmentContext();
   const { profile, save: saveProfile, loaded: profileLoaded } = useProfile();
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileDraft, setProfileDraft] = useState({ name: "", title: "", summary: "" });
@@ -115,7 +142,7 @@ export default function Library() {
         </Card>
 
         {/* ── EXPERIENCES ── */}
-        <ExperiencesSection />
+        <ExperiencesSection enrichmentContext={enrichmentContext} />
 
         {/* ── SKILLS ── */}
         <SkillsSection />
@@ -137,13 +164,16 @@ export default function Library() {
 /* ══════════════════════════════════════════════════════════════════
    EXPERIENCES SECTION — Accordion + Enrichment Sheet
    ══════════════════════════════════════════════════════════════════ */
-function ExperiencesSection() {
+function ExperiencesSection({ enrichmentContext }: { enrichmentContext?: EnrichmentContext }) {
   const { data: experiences, isLoading } = useExperiences();
   const [editOpen, setEditOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editingExp, setEditingExp] = useState<any>(null);
   const [enrichingExpId, setEnrichingExpId] = useState<string | null>(null);
   const [editBulletId, setEditBulletId] = useState<string | null>(null);
+  const [enrichmentMissing, setEnrichmentMissing] = useState<string[] | undefined>(undefined);
+  const [enrichmentJobTitle, setEnrichmentJobTitle] = useState<string | undefined>(undefined);
+  const [autoOpened, setAutoOpened] = useState(false);
 
   // Stable sort: compute once, don't re-sort on edits
   const sortedExperiences = useMemo(() => {
@@ -155,6 +185,18 @@ function ExperiencesSection() {
     });
   }, [experiences?.map(e => e.id).join(",")]);
 
+  // Auto-open enrichment panel when arriving from result page with context
+  useEffect(() => {
+    if (autoOpened || !experiences?.length || !enrichmentContext?.experienceId) return;
+    const target = experiences.find(e => e.id === enrichmentContext.experienceId);
+    if (target) {
+      setEnrichingExpId(target.id);
+      setEnrichmentMissing(enrichmentContext.missingKeywords);
+      setEnrichmentJobTitle(enrichmentContext.jobTitle);
+      setAutoOpened(true);
+    }
+  }, [experiences, enrichmentContext, autoOpened]);
+
   if (isLoading) return <div className="h-40 flex items-center justify-center text-muted-foreground"><RefreshCw className="w-6 h-6 animate-spin" /></div>;
 
   const enrichingExp = experiences?.find(e => e.id === enrichingExpId) || null;
@@ -162,10 +204,30 @@ function ExperiencesSection() {
   const handleOpenPanel = (expId: string, bulletId?: string) => {
     setEnrichingExpId(expId);
     setEditBulletId(bulletId || null);
+    // Clear job context when opening manually
+    setEnrichmentMissing(undefined);
+    setEnrichmentJobTitle(undefined);
   };
 
   return (
     <div className="space-y-6">
+      {/* Contextual banner when arriving from result page */}
+      {enrichmentContext?.jobTitle && enrichmentContext?.missingKeywords?.length ? (
+        <div className="rounded-lg border border-amber-200/60 dark:border-amber-800/40 bg-amber-50/40 dark:bg-amber-950/20 p-4">
+          <div className="flex items-start gap-3">
+            <Target className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                Enrichir pour : {enrichmentContext.jobTitle}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Ajoute des bullets sur : {enrichmentContext.missingKeywords.join(", ")}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold flex items-center gap-2">
           <Briefcase className="w-5 h-5 text-primary" /> Experiences
@@ -203,9 +265,16 @@ function ExperiencesSection() {
         </Accordion>
       )}
 
-      <Sheet open={!!enrichingExp} onOpenChange={(val) => { if (!val) { setEnrichingExpId(null); setEditBulletId(null); } }}>
+      <Sheet open={!!enrichingExp} onOpenChange={(val) => { if (!val) { setEnrichingExpId(null); setEditBulletId(null); setEnrichmentMissing(undefined); setEnrichmentJobTitle(undefined); } }}>
         <SheetContent className="w-full sm:max-w-lg p-0 flex flex-col">
-          {enrichingExp && <EnrichmentPanel experience={enrichingExp} initialBulletId={editBulletId} />}
+          {enrichingExp && (
+            <EnrichmentPanel
+              experience={enrichingExp}
+              initialBulletId={editBulletId}
+              missingKeywords={enrichmentMissing}
+              jobTitle={enrichmentJobTitle}
+            />
+          )}
         </SheetContent>
       </Sheet>
     </div>
@@ -335,7 +404,12 @@ function ExperienceAccordionItem({ experience, onEdit, onOpenPanel }: {
 /* ══════════════════════════════════════════════════════════════════
    ENRICHMENT PANEL — list / edit / axes — polished UI
    ══════════════════════════════════════════════════════════════════ */
-function EnrichmentPanel({ experience, initialBulletId }: { experience: Experience; initialBulletId?: string | null }) {
+function EnrichmentPanel({ experience, initialBulletId, missingKeywords, jobTitle }: {
+  experience: Experience;
+  initialBulletId?: string | null;
+  missingKeywords?: string[];
+  jobTitle?: string;
+}) {
   const { data: bullets } = useBullets(experience.id);
   const createBullet = useCreateBullet();
   const updateBullet = useUpdateBullet();
@@ -348,9 +422,11 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
   const bulletCount = bullets?.length || 0;
   const remaining = MAX_BULLETS - bulletCount;
 
-  type Step = "loading" | "axes" | "list" | "edit";
+  type Step = "loading" | "axes" | "gaps" | "list" | "edit";
   const [step, setStep] = useState<Step>("loading");
   const [axes, setAxes] = useState<string[]>([]);
+  const [gaps, setGaps] = useState<Gap[]>([]);
+  const [gapsFetched, setGapsFetched] = useState(false);
 
   const [editId, setEditId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
@@ -359,6 +435,7 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
   const [editEval, setEditEval] = useState<Record<string, boolean> | null>(null);
   const [editReasons, setEditReasons] = useState<Record<string, string> | null>(null);
   const [editSuggestion, setEditSuggestion] = useState<string | null>(null);
+  const [editPrompt, setEditPrompt] = useState<string | null>(null); // question from detect-gaps
   const [processing, setProcessing] = useState(false);
   const [allTags, setAllTags] = useState<string[]>([]);
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -384,6 +461,11 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
       const b = bullets.find((x: any) => x.id === initialBulletId);
       if (b) { openEdit(b.id, b.text, b.tags || []); return; }
     }
+    // When arriving from result page with job context, show gaps directly
+    if (missingKeywords?.length && bulletCount > 0) {
+      fetchGaps();
+      return;
+    }
     if (bulletCount > 0) {
       setStep("list");
     } else {
@@ -407,13 +489,36 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
     } catch { setStep("edit"); }
   };
 
-  const openEdit = (id: string | null, text: string, tags: string[]) => {
+  const fetchGaps = async () => {
+    if (gapsFetched) { setStep("gaps"); return; }
+    setStep("loading");
+    try {
+      const res = await fetch(`/api/experiences/${experience.id}/detect-gaps`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+      });
+      const data = await res.json();
+      if (data.llmError) {
+        toast({ title: "IA indisponible", description: "La detection des lacunes a echoue.", variant: "destructive" });
+        setStep(bulletCount > 0 ? "list" : "edit");
+        return;
+      }
+      const detected = (data.gaps || []).filter((g: Gap) => g.question);
+      setGaps(detected);
+      setGapsFetched(true);
+      setStep(detected.length > 0 ? "gaps" : bulletCount > 0 ? "list" : "edit");
+    } catch {
+      setStep(bulletCount > 0 ? "list" : "edit");
+    }
+  };
+
+  const openEdit = (id: string | null, text: string, tags: string[], prompt?: string) => {
     setEditId(id);
     setEditText(text);
     setEditTags(tags);
     setEditEval(null);
     setEditReasons(null);
     setEditSuggestion(null);
+    setEditPrompt(prompt || null);
     setNewTagText("");
     setStep("edit");
     setTimeout(() => textRef.current?.focus(), 100);
@@ -535,6 +640,45 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
         </div>
       )}
 
+      {/* ── GAPS (detect-gaps questions) ── */}
+      {step === "gaps" && (
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          <div>
+            <div className="flex items-center gap-2">
+              <HelpCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+              <p className="text-sm font-medium">Quoi renforcer ?</p>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {missingKeywords?.length
+                ? `Pour "${jobTitle || "ce poste"}" : ces aspects manquent dans tes bullets.`
+                : "Reponds a une question pour ajouter un bullet plus concret."}
+            </p>
+          </div>
+
+          {/* Missing keywords banner from job context (Phase 3) */}
+          {missingKeywords && missingKeywords.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 p-3 rounded-lg border border-amber-200/60 dark:border-amber-800/40 bg-amber-50/30 dark:bg-amber-950/10">
+              <span className="text-[11px] text-muted-foreground mr-1">Manquant :</span>
+              {missingKeywords.map((kw, i) => (
+                <span key={i} className="text-[11px] px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 font-medium">{kw}</span>
+              ))}
+            </div>
+          )}
+
+          <div className="space-y-2.5">
+            {gaps.map((gap) => (
+              <button key={gap.id} onClick={() => openEdit(null, "", [], gap.question)} disabled={remaining <= 0}
+                className="w-full text-left p-4 rounded-lg border border-border bg-background hover:border-primary/50 hover:bg-primary/5 transition-all disabled:opacity-50">
+                <div className="flex items-start gap-3">
+                  <span className="text-xs px-2 py-0.5 rounded-md bg-muted text-muted-foreground font-medium capitalize shrink-0 mt-0.5">{gap.dimension}</span>
+                  <p className="text-sm leading-relaxed">{gap.question}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── LIST ── */}
       {step === "list" && (
         <div className="flex-1 overflow-y-auto p-6 space-y-3">
@@ -578,6 +722,14 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
       {/* ── EDIT ── */}
       {step === "edit" && (
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Prompt from detect-gaps question */}
+          {editPrompt && (
+            <div className="flex items-start gap-3 p-3 rounded-lg border border-blue-200/60 dark:border-blue-800/40 bg-blue-50/30 dark:bg-blue-950/15">
+              <HelpCircle className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-blue-800 dark:text-blue-300 leading-relaxed">{editPrompt}</p>
+            </div>
+          )}
+
           {/* Textarea */}
           <div>
             <div className="flex justify-between items-center mb-3">
@@ -664,15 +816,39 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
       <div className="border-t border-border/50 bg-muted/20 p-5 space-y-2.5 shrink-0">
 
         {step === "axes" && (
-          <button onClick={() => openEdit(null, "", [])}
-            className="w-full text-sm p-3 rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-all text-center">
-            + Ecrire un bullet librement
-          </button>
+          <>
+            <button onClick={() => openEdit(null, "", [])}
+              className="w-full text-sm p-3 rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-all text-center">
+              + Ecrire un bullet librement
+            </button>
+            {bulletCount > 0 && (
+              <Button variant="outline" onClick={fetchGaps} className="w-full h-10">
+                <HelpCircle className="w-4 h-4 mr-2" /> Quoi renforcer ?
+              </Button>
+            )}
+          </>
+        )}
+
+        {step === "gaps" && (
+          <>
+            <button onClick={() => openEdit(null, "", [])}
+              className="w-full text-sm p-3 rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-all text-center">
+              + Ecrire un bullet librement
+            </button>
+            <Button variant="outline" onClick={() => setStep(bulletCount > 0 ? "list" : axes.length > 0 ? "axes" : "edit")} className="w-full h-10">
+              Retour
+            </Button>
+          </>
         )}
 
         {step === "list" && remaining > 0 && (
           <Button onClick={() => openEdit(null, "", [])} className="w-full h-10">
             <Plus className="w-4 h-4 mr-2" /> Ajouter un bullet ({remaining} restant{remaining > 1 ? "s" : ""})
+          </Button>
+        )}
+        {step === "list" && bulletCount > 0 && (
+          <Button variant="outline" onClick={fetchGaps} className="w-full h-10">
+            <HelpCircle className="w-4 h-4 mr-2" /> Quoi renforcer ?
           </Button>
         )}
         {step === "list" && remaining > 0 && axes.length > bulletCount && (
@@ -702,7 +878,7 @@ function EnrichmentPanel({ experience, initialBulletId }: { experience: Experien
                   <RefreshCw className="w-4 h-4" />
                 </Button>
               )}
-              <Button variant="outline" onClick={() => setStep(bulletCount > 0 ? "list" : axes.length > 0 ? "axes" : "list")} className="h-10">
+              <Button variant="outline" onClick={() => setStep(bulletCount > 0 ? "list" : gaps.length > 0 ? "gaps" : axes.length > 0 ? "axes" : "list")} className="h-10">
                 Retour
               </Button>
             </div>

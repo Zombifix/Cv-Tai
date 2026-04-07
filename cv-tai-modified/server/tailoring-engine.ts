@@ -990,7 +990,11 @@ export function selectBullets(scored: ScoredBullet[], allocs: BudgetAlloc[], job
       if (genericBridgeCount >= 1 && signals.isGenericBridge && signals.specificityBoost < 4) continue;
       if (sel.length >= 2 && signals.directCriticalMatches === 0 && signals.roleFrameMatches === 0 && !signals.hasNumber && sb.totalScore < 65) continue;
       if (strategy === "optimized") {
+        // 72: in optimized mode a generic bridge bullet (no direct match, no priority)
+        // needs a minimum quality floor — below this it adds noise rather than signal.
         if (signals.isGenericBridge && signals.priorityMatches === 0 && sb.totalScore < 72) continue;
+        // 70: after the first selected bullet, weak bullets with no keyword signal
+        // and no numbers are filtered out to keep the optimized selection tight.
         if (sel.length >= 1 && signals.directCriticalMatches === 0 && signals.priorityMatches === 0 && !signals.hasNumber && sb.totalScore < 70) continue;
       }
       sel.push(sb); chars += sb.bullet.text.length;
@@ -1035,6 +1039,9 @@ export function selectBullets(scored: ScoredBullet[], allocs: BudgetAlloc[], job
         target.selectedBullets.push(candidate);
       } else if (
         weakest
+        // Minimum absolute quality floor: a priority-gap candidate must score at least
+        // 30 to be worth displacing any existing bullet (avoids injecting garbage).
+        && candidate.totalScore >= 30
         && (
           weakest.signals.isGenericBridge
           || (candidate.totalScore + getBulletSelectionSignals(candidate, job).specificityBoost + 8)
@@ -2173,7 +2180,13 @@ function applyGeneratedCvAssessment(
     ...guarded,
     hardWarnings,
   });
-  const badge = badgeFromGeneratedAssessment(finalized);
+  const rawBadge = badgeFromGeneratedAssessment(finalized);
+  // V2 (legacy_fallback) safety cap: never award "probant" when the LLM evaluator
+  // was unavailable. The heuristic mapping ("forte"->82) is approximate and cannot
+  // ground-check the actual generated document the way V3 can.
+  const badge: BadgeLevel = scoreModel === "legacy_fallback" && rawBadge === "probant"
+    ? "a_renforcer"
+    : rawBadge;
   const recruiterCredibility = recruiterCredibilityFromScore(finalized.recruiterCredibilityScore);
   const warningMessages = uniqueItems([
     hardWarnings.includes("junior_scope_mismatch")
@@ -3026,6 +3039,10 @@ export async function runTailorPipeline(input: TailorInput, openai: OpenAI): Pro
 
   const baselineCv = cloneStructuredCV(baseCv);
   const baselinePostRules = applyPostRules(baselineCv, parsedJob);
+  // V2 = structural scaffold: deterministic report, diagnostic text, ATS metrics.
+  // Its scores are used as the fallback starting point if V3 (LLM eval) fails.
+  // V3 = source of truth: evaluateGeneratedCvVariants judges the actual generated
+  // document against its source evidence and overrides V2 scores via applyGeneratedCvAssessment.
   const baselineRawReport = generateOptimizationReport(parsedJob, faithfulSelExps, sanitizedInput.allSkills, baselinePostRules, baselineCv);
   const baselineFallbackAssessment = assessmentFromLegacyReport(baselineRawReport);
   const baselineText = renderCVText(baselineCv, parsedJob);
