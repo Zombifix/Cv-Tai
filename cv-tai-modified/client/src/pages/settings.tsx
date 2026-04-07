@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Settings as SettingsIcon, Trash2, RefreshCw, Brain, AlertTriangle, Download } from "lucide-react";
+import { Settings as SettingsIcon, Trash2, RefreshCw, Brain, AlertTriangle, Download, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Settings() {
@@ -14,6 +14,9 @@ export default function Settings() {
   const [resetConfirm, setResetConfirm] = useState("");
   const [resetting, setResetting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importConfirmOpen, setImportConfirmOpen] = useState(false);
+  const [importData, setImportData] = useState<any>(null);
 
   const handleExport = async () => {
     setExporting(true);
@@ -32,6 +35,53 @@ export default function Settings() {
       toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleImportFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string);
+        if (!parsed.experiences && !parsed.profile) {
+          toast({ title: "Fichier invalide", description: "Ce fichier ne ressemble pas a un export cv-tai.", variant: "destructive" });
+          return;
+        }
+        setImportData(parsed);
+        setImportConfirmOpen(true);
+      } catch {
+        toast({ title: "Erreur", description: "Impossible de lire ce fichier JSON.", variant: "destructive" });
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleImportConfirm = async () => {
+    if (!importData) return;
+    setImporting(true);
+    try {
+      const res = await fetch("/api/settings/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(importData),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Echec de l'import");
+      }
+      const data = await res.json();
+      toast({ title: "Import termine", description: `${data.experiences} experience(s), ${data.bullets} bullet(s), ${data.skills} competence(s) restaure(s).` });
+      setImportConfirmOpen(false);
+      setImportData(null);
+      window.location.href = "/library";
+    } catch (err) {
+      toast({ title: "Erreur", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -114,6 +164,69 @@ export default function Settings() {
             </Button>
           </CardContent>
         </Card>
+
+        {/* ── Import ── */}
+        <Card>
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Upload className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Restaurer depuis un export</h3>
+                <p className="text-sm text-muted-foreground">Reimporte un fichier JSON cv-tai. Remplace les experiences, bullets, competences, formations et langues existantes.</p>
+              </div>
+            </div>
+            <label htmlFor="import-file-input">
+              <Button variant="outline" asChild disabled={importing}>
+                <span>
+                  {importing ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Upload className="w-4 h-4 mr-1" />}
+                  Importer un fichier JSON
+                </span>
+              </Button>
+            </label>
+            <input
+              id="import-file-input"
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={handleImportFileSelect}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Import Confirmation Dialog */}
+        <Dialog open={importConfirmOpen} onOpenChange={(val) => { if (!val) { setImportConfirmOpen(false); setImportData(null); } }}>
+          <DialogContent className="sm:max-w-[420px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Upload className="w-5 h-5" /> Confirmer l'import
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-4 text-sm">
+              {importData && (
+                <div className="p-3 bg-muted/30 rounded-lg border border-border/50 space-y-1 text-xs font-mono">
+                  <p>Profil : {importData.profile?.name || "—"}</p>
+                  <p>Experiences : {importData.experiences?.length ?? 0}</p>
+                  <p>Competences : {importData.skills?.length ?? 0}</p>
+                  <p>Formations : {importData.formations?.length ?? 0}</p>
+                  <p>Langues : {importData.languages?.length ?? 0}</p>
+                  <p className="text-muted-foreground">Exporte le : {importData.exportedAt ? new Date(importData.exportedAt).toLocaleDateString("fr-FR") : "—"}</p>
+                </div>
+              )}
+              <p className="text-muted-foreground">
+                Tes experiences, bullets et competences actuelles seront <strong>remplacees</strong> par celles du fichier. L'historique de tailoring est conserve.
+              </p>
+            </div>
+            <DialogFooter className="flex gap-2">
+              <Button variant="outline" onClick={() => { setImportConfirmOpen(false); setImportData(null); }}>Annuler</Button>
+              <Button onClick={handleImportConfirm} disabled={importing}>
+                {importing ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Upload className="w-4 h-4 mr-1" />}
+                Confirmer l'import
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* ── Danger Zone ── */}
         <Card className="border-destructive/30">

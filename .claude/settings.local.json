@@ -10,7 +10,8 @@
       "Bash(xxd)",
       "Bash(npx tsc:*)",
       "Bash(python3 -c \":*)",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "Bash(node -e \"const fs=require\\(''fs''\\); const d=JSON.parse\\(fs.readFileSync\\(''C:/Users/theop/Downloads/cv-tai-export-2026-04-07.json'',''utf-8''\\)\\); console.log\\(JSON.stringify\\(Object.keys\\(d\\)\\)\\); console.log\\(''profile:'', JSON.stringify\\(d.profile\\)\\); console.log\\(''skills count:'', d.skills?.length\\); console.log\\(''experiences count:'', d.experiences?.length\\); console.log\\(''formations:'', JSON.stringify\\(d.formations\\)\\); console.log\\(''languages:'', JSON.stringify\\(d.languages\\)\\); const exp0=d.experiences?.[0]; if\\(exp0\\){console.log\\(''exp0 keys:'', JSON.stringify\\(Object.keys\\(exp0\\)\\)\\); console.log\\(''exp0 bullets count:'', exp0.bullets?.length\\);}\")"
     ]
   }
 }
