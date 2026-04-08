@@ -20,6 +20,7 @@ import {
 import {
   AlertTriangle,
   ArrowRight,
+  CheckCircle2,
   FileText,
   Info,
   Link as LinkIcon,
@@ -425,6 +426,35 @@ export default function Tailor() {
                   Pre-check prudent avant generation complete. Si l'optimisation n'apporte rien, le moteur garde silencieusement la version la plus solide.
                 </p>
               </section>
+
+              {checkMatch.data?.jobProfileAssessment && (() => {
+                const jpa = checkMatch.data.jobProfileAssessment;
+                const verdictMeta = {
+                  worth_applying: { label: "Dans ta zone", icon: "✓", className: "border-green-300/70 bg-green-50 dark:border-green-700/50 dark:bg-green-950/20", textColor: "text-green-700 dark:text-green-400" },
+                  possible_but_niche: { label: "Zone adjacente", icon: "~", className: "border-amber-300/70 bg-amber-50 dark:border-amber-700/50 dark:bg-amber-950/20", textColor: "text-amber-700 dark:text-amber-400" },
+                  likely_overreach: { label: "Hors zone habituelle", icon: "!", className: "border-red-300/70 bg-red-50 dark:border-red-700/50 dark:bg-red-950/20", textColor: "text-red-700 dark:text-red-400" },
+                }[jpa.verdict];
+                return (
+                  <section className={`rounded-[28px] border p-5 shadow-sm ${verdictMeta.className}`}>
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Ton profil vs l'offre</p>
+                      <span className={`text-xs font-bold ${verdictMeta.textColor}`}>{jpa.zoneScore}% couvert</span>
+                    </div>
+                    <p className={`text-sm font-semibold ${verdictMeta.textColor}`}>{verdictMeta.label}</p>
+                    {jpa.signals.length > 0 && (
+                      <ul className="mt-2 space-y-1">
+                        {jpa.signals.map((signal, i) => (
+                          <li key={i} className="flex items-start gap-1.5 text-[11px] text-muted-foreground leading-relaxed">
+                            <span className="mt-0.5 flex-shrink-0">{verdictMeta.icon}</span>
+                            {signal}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="mt-2 text-[10px] text-muted-foreground">Signal indicatif — le jugement final reste le CV genere.</p>
+                  </section>
+                );
+              })()}
 
               <section className="rounded-[28px] border border-border/70 bg-card/75 p-5 shadow-sm">
                 <div className="space-y-1">

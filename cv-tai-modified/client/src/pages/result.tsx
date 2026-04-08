@@ -414,6 +414,33 @@ function getOptimizationDecisionMeta(decision?: ReportScoreBreakdown["optimizati
   }
 }
 
+function computeLetterGrade(scoreBreakdown?: ReportScoreBreakdown, confidence?: number): { grade: string; label: string; className: string } | null {
+  const score = scoreBreakdown?.pertinence ?? scoreBreakdown?.fitOffer ?? confidence;
+  if (score == null) return null;
+  const hasHardWarnings = (scoreBreakdown?.hardWarnings?.length ?? 0) > 0;
+  const overstatement = scoreBreakdown?.overstatementRisk ?? 0;
+  const fitNiveau = scoreBreakdown?.fitNiveau;
+  const domain = scoreBreakdown?.distanceDomain;
+  const levelMismatch = fitNiveau === "trop_junior" || fitNiveau === "trop_senior";
+
+  if (hasHardWarnings || overstatement > 80) {
+    return { grade: "F", label: "Hors zone", className: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-300 dark:border-red-700" };
+  }
+  if (score >= 80 && !levelMismatch && domain !== "different") {
+    return { grade: "A", label: "Excellent", className: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700" };
+  }
+  if (score >= 60 && !levelMismatch) {
+    return { grade: "B", label: "Bon fit", className: "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700" };
+  }
+  if (score >= 40 || domain === "adjacent") {
+    return { grade: "C", label: "Partiel", className: "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700" };
+  }
+  if (score >= 20) {
+    return { grade: "D", label: "Faible", className: "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-700" };
+  }
+  return { grade: "F", label: "Hors zone", className: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-300 dark:border-red-700" };
+}
+
 function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { confidence: number; reasoning?: string; fallbackUsed?: boolean; scoreBreakdown?: ReportScoreBreakdown }) {
   const size = 56;
   const strokeWidth = 5;
@@ -433,6 +460,7 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
   const evidenceGrounding = scoreBreakdown?.evidenceGrounding ?? scoreBreakdown?.forcePreuve;
   const recruiterCredibilityScore = scoreBreakdown?.recruiterCredibilityScore ?? scoreBreakdown?.credibiliteCv;
   const overstatementRisk = scoreBreakdown?.overstatementRisk;
+  const letterGrade = computeLetterGrade(scoreBreakdown, confidence);
 
   return (
     <Card className="border-border/60 shadow-none" data-testid="section-match-score">
@@ -461,8 +489,13 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
             </div>
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <p className={`text-sm font-bold ${fitMeta.textColor}`} data-testid="text-match-score-label">{fitMeta.label}</p>
+              {letterGrade && (
+                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${letterGrade.className}`} title={letterGrade.label}>
+                  {letterGrade.grade}
+                </span>
+              )}
               {scoreBreakdown?.badge && (
                 <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badgeMeta.className}`}>
                   {badgeMeta.label}
@@ -741,6 +774,7 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
   const evidenceGrounding = scoreBreakdown?.evidenceGrounding ?? scoreBreakdown?.forcePreuve;
   const recruiterCredibilityScore = scoreBreakdown?.recruiterCredibilityScore ?? scoreBreakdown?.credibiliteCv;
   const overstatementRisk = scoreBreakdown?.overstatementRisk;
+  const letterGrade = computeLetterGrade(scoreBreakdown, report?.confidence);
 
   return (
     <div className="rounded-xl border border-border/60" data-testid="section-details">
@@ -812,7 +846,12 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
                   </div>
                   <div className="space-y-1">
                     <p className="text-[10px] text-muted-foreground font-medium">Badge document</p>
-                    <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {letterGrade && (
+                        <span className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-bold ${letterGrade.className}`} title={letterGrade.label}>
+                          {letterGrade.grade} — {letterGrade.label}
+                        </span>
+                      )}
                       <span className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-semibold ${badgeMeta.className}`}>
                         {badgeMeta.label}
                       </span>
@@ -1186,6 +1225,7 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
   const optimizationMeta = getOptimizationDecisionMeta(scoreBreakdown?.optimizationDecision);
   const optimizationNotes = (scoreBreakdown?.optimizationNotes || []).map(note => repairMojibake(note));
   const textIntegrity = scoreBreakdown?.textIntegrityScore;
+  const letterGrade = computeLetterGrade(scoreBreakdown, score);
 
   return (
     <Card className="border-border/60 shadow-none" data-testid="section-match-diagnosis">
@@ -1224,6 +1264,11 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <p className={`text-sm font-bold ${fitMeta.textColor}`}>{fitMeta.label}</p>
+              {letterGrade && (
+                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${letterGrade.className}`} title={letterGrade.label}>
+                  {letterGrade.grade}
+                </span>
+              )}
               {scoreBreakdown?.badge ? (
                 <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badgeMeta.className}`}>
                   {badgeMeta.label}

@@ -68,6 +68,12 @@ export function useCheckMatch() {
           scrapeMessage?: string;
           scrapeStatus?: "success" | "blocked" | "failed" | "not_attempted";
         };
+        jobProfileAssessment?: {
+          zoneScore: number;
+          positioningMatch: "aligned" | "adjacent" | "stretch";
+          verdict: "worth_applying" | "possible_but_niche" | "likely_overreach";
+          signals: string[];
+        };
       }>;
     },
   });

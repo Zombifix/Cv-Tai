@@ -2782,6 +2782,136 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
 }
 
 // â”€â”€â”€ Dry Run Check (steps 1-4 only, no CV generation, no DB save) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+export interface JobProfileAssessment {
+  zoneScore: number;               // 0-100: % of job requirements covered by profile tags/skills
+  positioningMatch: "aligned" | "adjacent" | "stretch";
+  verdict: "worth_applying" | "possible_but_niche" | "likely_overreach";
+  signals: string[];               // 2-3 human-readable signals
+}
+
+function buildJobProfileAssessment(
+  parsedJob: ParsedJob,
+  allBullets: Bullet[],
+  allSkills: Skill[],
+  allExperiences: Experience[],
+): JobProfileAssessment {
+  // Collect all tags from bullets + skill names → the user's "vocabulary"
+  const profileTags = new Set<string>();
+  for (const bullet of allBullets) {
+    for (const tag of bullet.tags || []) {
+      profileTags.add(tag.toLowerCase().trim());
+    }
+    // Also add significant words from bullet text for richer coverage
+    const words = bullet.text.toLowerCase().split(/\s+/);
+    for (const w of words) {
+      if (w.length >= 5) profileTags.add(w);
+    }
+  }
+  for (const skill of allSkills) {
+    profileTags.add(skill.name.toLowerCase().trim());
+  }
+  for (const exp of allExperiences) {
+    const titleWords = exp.title.toLowerCase().split(/\s+/);
+    for (const w of titleWords) {
+      if (w.length >= 4) profileTags.add(w);
+    }
+    if (exp.description) {
+      const descWords = exp.description.toLowerCase().split(/\s+/);
+      for (const w of descWords) {
+        if (w.length >= 5) profileTags.add(w);
+      }
+    }
+  }
+
+  // Score: how many job requirements appear in profile tags
+  const jobRequirements = [
+    ...parsedJob.criticalKeywords,
+    ...parsedJob.requiredSkills,
+  ];
+  const allJobKeywords = [
+    ...parsedJob.criticalKeywords,
+    ...parsedJob.requiredSkills,
+    ...parsedJob.keywords.slice(0, 10),
+  ];
+
+  let covered = 0;
+  const coveredTerms: string[] = [];
+  const missingTerms: string[] = [];
+
+  for (const kw of jobRequirements) {
+    const kwNorm = kw.toLowerCase().trim();
+    const found =
+      profileTags.has(kwNorm) ||
+      [...profileTags].some(tag => tag.includes(kwNorm) || kwNorm.includes(tag)) ||
+      textHasKeyword([...profileTags].join(" "), kw);
+    if (found) {
+      covered++;
+      coveredTerms.push(kw);
+    } else {
+      missingTerms.push(kw);
+    }
+  }
+
+  const zoneScore = jobRequirements.length > 0
+    ? Math.round((covered / jobRequirements.length) * 100)
+    : 50;
+
+  // Positioning match: compare job positioning with profile seniority + title signals
+  const profileSeniority = inferProfileSeniority(allExperiences);
+  const jobPositioning = parsedJob.positioning;
+  const jobSeniorityStr = parsedJob.seniority?.toLowerCase() || "";
+  const isJobJunior = /stage|intern|junior|alternance/.test(jobSeniorityStr);
+  const isJobDirector = /director|directeur|vp|head of|c-level/.test(jobSeniorityStr);
+
+  let positioningMatch: JobProfileAssessment["positioningMatch"];
+  if (isJobJunior && (profileSeniority === "senior")) {
+    positioningMatch = "stretch"; // over-qualified
+  } else if (isJobDirector && profileSeniority === "junior") {
+    positioningMatch = "stretch"; // under-qualified
+  } else if (jobPositioning === "manager" && profileSeniority === "junior") {
+    positioningMatch = "adjacent";
+  } else if (zoneScore >= 50) {
+    positioningMatch = "aligned";
+  } else if (zoneScore >= 25) {
+    positioningMatch = "adjacent";
+  } else {
+    positioningMatch = "stretch";
+  }
+
+  // Verdict
+  let verdict: JobProfileAssessment["verdict"];
+  if (zoneScore >= 50 && positioningMatch === "aligned") {
+    verdict = "worth_applying";
+  } else if (zoneScore >= 25 || positioningMatch === "adjacent") {
+    verdict = "possible_but_niche";
+  } else {
+    verdict = "likely_overreach";
+  }
+
+  // Build signals
+  const signals: string[] = [];
+  if (coveredTerms.length > 0) {
+    signals.push(`Termes reconnus dans ton profil : ${coveredTerms.slice(0, 3).join(", ")}`);
+  }
+  if (missingTerms.length > 0) {
+    signals.push(`Termes absents de ta bibliotheque : ${missingTerms.slice(0, 3).join(", ")}`);
+  }
+  if (positioningMatch === "stretch" && isJobJunior) {
+    signals.push("Poste junior ou stage : ton profil parait plus senior");
+  } else if (positioningMatch === "stretch" && isJobDirector) {
+    signals.push("Poste directorial : ton scope actuel est en-dessous");
+  } else if (positioningMatch === "adjacent") {
+    signals.push("Metier adjacent : certains aspects du poste sont nouveaux pour ton profil");
+  }
+
+  return {
+    zoneScore,
+    positioningMatch,
+    verdict,
+    signals: signals.slice(0, 3),
+  };
+}
+
 export interface DryRunResult {
   preliminaryConfidence: number;
   criticalKeywords: string[];
@@ -2792,6 +2922,7 @@ export interface DryRunResult {
   shouldWarn: boolean;
   warningMessage?: string;
   precheckMode: "fast" | "deep";
+  jobProfileAssessment?: JobProfileAssessment;
 }
 
 function getPrecheckViability(score: number): DryRunResult["viability"] {
@@ -2851,7 +2982,13 @@ export async function runDryRunCheck(input: Pick<TailorInput, "jobText" | "mode"
   const critKwHardCap = parsedJob.criticalKeywords.length >= 4 && kwCov < 25 ? 40 : 100;
   const preliminaryConfidence = Math.min(critKwHardCap, Math.min(100, rawConfidence));
   const precheckMeta = getPrecheckMeta(preliminaryConfidence);
-  log(`Dry Run Done â€” ${preliminaryConfidence}% | ${parsedJob.positioning}`);
+  const jobProfileAssessment = buildJobProfileAssessment(
+    parsedJob,
+    sanitizedInput.allBullets,
+    sanitizedInput.allSkills,
+    sanitizedInput.allExperiences,
+  );
+  log(`Dry Run Done - ${preliminaryConfidence}% | ${parsedJob.positioning} | zone:${jobProfileAssessment.zoneScore}%`);
   return {
     preliminaryConfidence,
     criticalKeywords: parsedJob.criticalKeywords,
@@ -2859,6 +2996,7 @@ export async function runDryRunCheck(input: Pick<TailorInput, "jobText" | "mode"
     jobTitle: parsedJob.title,
     ...precheckMeta,
     precheckMode: "deep",
+    jobProfileAssessment,
   };
 }
 
