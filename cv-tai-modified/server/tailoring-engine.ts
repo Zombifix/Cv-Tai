@@ -237,7 +237,7 @@ function mojibakePenaltyScore(value: string): number {
   return (
     (value.match(/Ã./g) || []).length * 3
     + (value.match(/Â./g) || []).length * 2
-    + (value.match(/â./g) || []).length * 3
+    + (value.match(/â[-¿]/g) || []).length * 3
     + (value.match(/ðŸ/g) || []).length * 4
     + (value.match(/�/g) || []).length * 4
     + (value.match(/[\u0000-\u0008\u000B-\u0012\u0014-\u001F\u007F]/g) || []).length * 4
@@ -561,6 +561,9 @@ export interface ParsedJob {
   intentions: string[];
   positioning: "consultant" | "lead" | "ic" | "manager";
   roleFrame: RoleFrame;
+  productMaturity: "live_product" | "concept_prototype" | "unknown";
+  complexityLevel: "simple_tools" | "moderate" | "complex_system" | "unknown";
+  ownershipLevel: "owner" | "contributor" | "support" | "unknown";
 }
 
 function sanitizeParsedJob(job: ParsedJob): ParsedJob {
@@ -647,7 +650,10 @@ export async function parseJobDescription(jobText: string, openai: OpenAI): Prom
   environments[] (2-5 business / technical contexts. Ex: "e-commerce", "banque", "DSI", "retail")
   scopeSignals[] (2-5 scope markers. Ex: "execution", "structuration", "conseil", "management")
 }
-Important: roleFrame must describe the REAL WORK in the body of the posting, not only the title. If the title is noisy but the body clearly points elsewhere, trust the body.` },
+Important: roleFrame must describe the REAL WORK in the body of the posting, not only the title. If the title is noisy but the body clearly points elsewhere, trust the body.
+- productMaturity: "concept_prototype" if the role works in an innovation lab, explores concepts, prototypes ideas, emerging tech, AI-driven concepts, with NO mention of live users, scale, production constraints, or shipping cadence; "live_product" if the role ships to real users, mentions an existing product, scale, metrics, or iterating on a live system; "unknown" if unclear.
+- complexityLevel: "simple_tools" if the product targets SMBs or individual users and the copy uses words like "simple", "simplify", "easy", "daily ops" WITHOUT multi-account/role/permission complexity; "complex_system" if the product involves multi-account, multi-role, permissions, enterprise workflows, B2B platform, internal ops at scale, or data-heavy admin interfaces; "moderate" otherwise; "unknown" if unclear.
+- ownershipLevel: "owner" if dominant verbs are lead, define, structure, redesign, own, drive, decide — real end-to-end accountability; "support" if dominant verbs are iterate, align, support, assist, contribute to, help maintain — no clear ownership signal; "contributor" otherwise; "unknown" if unclear.` },
       { role: "user", content: sanitizedJobText.slice(0, 6000) },
     ],
     response_format: { type: "json_object" },
@@ -662,6 +668,9 @@ Important: roleFrame must describe the REAL WORK in the body of the posting, not
     language: p.language === "FR" ? "FR" : "EN",
     intentions: p.intentions || [],
     positioning: (["consultant", "lead", "ic", "manager"].includes(p.positioning) ? p.positioning : "ic") as any,
+    productMaturity: (["live_product", "concept_prototype", "unknown"].includes(p.productMaturity) ? p.productMaturity : "unknown") as any,
+    complexityLevel: (["simple_tools", "moderate", "complex_system", "unknown"].includes(p.complexityLevel) ? p.complexityLevel : "unknown") as any,
+    ownershipLevel: (["owner", "contributor", "support", "unknown"].includes(p.ownershipLevel) ? p.ownershipLevel : "unknown") as any,
     roleFrame: {
       workObjects: uniqueItems(p.roleFrame?.workObjects || []),
       deliverables: uniqueItems(p.roleFrame?.deliverables || []),
@@ -1367,7 +1376,10 @@ export type HardWarningCode =
   | "lead_scope_underproven"
   | "pm_scope_underproven"
   | "niche_domain_underproven"
-  | "text_integrity_issue";
+  | "text_integrity_issue"
+  | "concept_factory_mismatch"
+  | "scope_too_simple"
+  | "scope_support_fragmented";
 
 export interface GeneratedCvAssessment {
   pertinence: number;
@@ -1397,7 +1409,7 @@ export interface GeneratedCvPairEvaluation {
   scoreModel: "generated_cv_v1" | "legacy_fallback";
 }
 
-export interface OptimizationReport { jobTitle: string; jobCompany: string; jobSeniority: string; jobDomain: string; detectedKeywords: { requiredSkills: string[]; preferredSkills: string[]; responsibilities: string[]; keywords: string[]; criticalKeywords: string[]; }; matchedSkills: string[]; missingSkills: string[]; selectedExperiences: { title: string; company: string; score: number; reason: string; matchedAspects: string[]; bulletCount: number; charBudget: number; }[]; rejectedExperiences: { title: string; company: string; score: number; reason: string }[]; selectedBullets: { text: string; experienceTitle: string; score: number; deterministicScore: number; llmScore: number; matchedKeywords: string[]; dimension: string; }[]; postRules: PostRuleResult; confidence: number; confidenceReasoning: string; fallbackUsed: boolean; detectedLanguage: "EN" | "FR"; positioning: string; intentions: string[]; tips: string[]; diagnosis: DiagnosticSummary; scoreBreakdown: { fitOffer: number; ats: number; atsOptimized: number; atsBoost: number; contextSupport: number; semantic: number; recruiterCredibility: RecruiterCredibility; domainMismatch?: string; cappedByKeywords: boolean; cappedByEvidence: boolean; pertinence: number; fitMetier: number; fitNiveauFactor: number; fitNiveau?: GeneratedCvFitNiveau; forcePreuve: number; credibiliteCv: number; evidenceGrounding: number; recruiterCredibilityScore: number; atsReadiness: number; overstatementRisk: number; badge: BadgeLevel; distanceDomain: DistanceDomain; hardWarnings?: HardWarningCode[]; textIntegrityScore?: number; optimizationDecision?: "faithful_only" | "optimized_selected" | "optimized_rejected"; optimizationNotes?: string[]; variantStrategy?: "faithful" | "optimized_humain"; scoreModel?: "generated_cv_v1" | "legacy_fallback" | "profile_frame_v3"; debugOverlaps?: { workObjects: number; deliverables: number; decisions: number }; }; }
+export interface OptimizationReport { jobTitle: string; jobCompany: string; jobSeniority: string; jobDomain: string; detectedKeywords: { requiredSkills: string[]; preferredSkills: string[]; responsibilities: string[]; keywords: string[]; criticalKeywords: string[]; }; matchedSkills: string[]; missingSkills: string[]; selectedExperiences: { title: string; company: string; score: number; reason: string; matchedAspects: string[]; bulletCount: number; charBudget: number; }[]; rejectedExperiences: { title: string; company: string; score: number; reason: string }[]; selectedBullets: { text: string; experienceTitle: string; score: number; deterministicScore: number; llmScore: number; matchedKeywords: string[]; dimension: string; }[]; postRules: PostRuleResult; confidence: number; confidenceReasoning: string; fallbackUsed: boolean; detectedLanguage: "EN" | "FR"; positioning: string; intentions: string[]; productMaturity: string; complexityLevel: string; ownershipLevel: string; tips: string[]; diagnosis: DiagnosticSummary; scoreBreakdown: { fitOffer: number; ats: number; atsOptimized: number; atsBoost: number; contextSupport: number; semantic: number; recruiterCredibility: RecruiterCredibility; domainMismatch?: string; cappedByKeywords: boolean; cappedByEvidence: boolean; pertinence: number; fitMetier: number; fitNiveauFactor: number; fitNiveau?: GeneratedCvFitNiveau; forcePreuve: number; credibiliteCv: number; evidenceGrounding: number; recruiterCredibilityScore: number; atsReadiness: number; overstatementRisk: number; badge: BadgeLevel; distanceDomain: DistanceDomain; hardWarnings?: HardWarningCode[]; textIntegrityScore?: number; optimizationDecision?: "faithful_only" | "optimized_selected" | "optimized_rejected"; optimizationNotes?: string[]; variantStrategy?: "faithful" | "optimized_humain"; scoreModel?: "generated_cv_v1" | "legacy_fallback" | "profile_frame_v3"; debugOverlaps?: { workObjects: number; deliverables: number; decisions: number }; }; }
 
 function topItems(items: string[], count: number): string[] {
   const tally = new Map<string, number>();
@@ -1654,7 +1666,7 @@ function generatedCvFitNiveauFactor(level: GeneratedCvFitNiveau): number {
     case "trop_senior":
       return 0.55;
     default:
-      return 0.75;
+      return 0.85;
   }
 }
 
@@ -1796,6 +1808,32 @@ function applyAssessmentGuardrails(report: OptimizationReport, assessment: Gener
     if (adjusted.fitNiveau === "coherent") adjusted.fitNiveau = "uncertain";
   }
 
+  // Concept factory: real-product designer → concept-only role
+  if (
+    report.productMaturity === "concept_prototype" &&
+    hasRealProductEvidence(report.selectedBullets, adjusted.evidenceGrounding)
+  ) {
+    adjusted.fitMetier = Math.min(adjusted.fitMetier, 70);
+    adjusted.overstatementRisk = Math.max(adjusted.overstatementRisk, 50);
+  }
+
+  // Scope too simple: complex-system designer → SMB/simple-tools role
+  if (
+    report.complexityLevel === "simple_tools" &&
+    hasComplexSystemEvidence(report.selectedBullets)
+  ) {
+    adjusted.fitMetier = Math.min(adjusted.fitMetier, 74);
+  }
+
+  // Support-only ownership: designer with ownership evidence → iteration-only role
+  const evidenceCorpusForOwnership = buildReportEvidenceCorpus(report);
+  if (
+    report.ownershipLevel === "support" &&
+    countPatternGroups(evidenceCorpusForOwnership, LEAD_SCOPE_EVIDENCE_GROUPS) >= 2
+  ) {
+    adjusted.overstatementRisk = Math.max(adjusted.overstatementRisk, 40);
+  }
+
   return adjusted;
 }
 
@@ -1811,7 +1849,7 @@ function fitNiveauLegitimacyScore(level: GeneratedCvFitNiveau): number {
     case "coherent":
       return 100;
     case "uncertain":
-      return 56;
+      return 70;
     case "trop_senior":
       return 30;
     case "trop_junior":
@@ -1869,6 +1907,30 @@ function buildAssessmentTextIntegrityCorpus(report: OptimizationReport, rendered
   ].join("\n");
 }
 
+function hasComplexSystemEvidence(bullets: OptimizationReport["selectedBullets"]): boolean {
+  const complexPatterns = [
+    /\bB2B\b/i, /\bmulti[-\s]?(account|role|user|team|brand|marque)\b/i,
+    /\bpermission\b/i, /\bworkflow\b/i, /\bentreprise\b/i, /\benterprise\b/i,
+    /\badmin(istration)?\b/i, /\bdashboard\b/i, /\bop[eé]ration\b/i,
+    /\bsyst[eè]me\b/i, /\bsystem\b/i, /\bplateforme\b/i, /\bplatform\b/i,
+    /\bbackoffice\b/i, /\bback[-\s]office\b/i,
+  ];
+  const allText = bullets.map(b => b.text).join(" ");
+  return complexPatterns.filter(p => p.test(allText)).length >= 2;
+}
+
+function hasRealProductEvidence(bullets: OptimizationReport["selectedBullets"], evidenceGrounding: number): boolean {
+  if (evidenceGrounding >= 80) return true;
+  const realPatterns = [
+    /\d+\s*[%kKmM]\b/, /\bboutiques?\b/i, /\bconversion\b/i,
+    /\bventes?\b/i, /\bperformance\b/i, /\bdeploy\b/i, /\bd[eé]ploie\b/i,
+    /\bproduction\b/i, /\butilisateurs?\b/i, /\busers?\b/i,
+    /\blive\b/i, /\bship\b/i, /\blivre\b/i,
+  ];
+  const allText = bullets.map(b => b.text).join(" ");
+  return realPatterns.filter(p => p.test(allText)).length >= 2;
+}
+
 function buildHardWarnings(report: OptimizationReport, assessment: GeneratedCvAssessment, renderedCvText?: string, jobText?: string): HardWarningCode[] {
   const warnings: HardWarningCode[] = [];
   const senioritySignals = normalizeEvidenceText([
@@ -1890,6 +1952,34 @@ function buildHardWarnings(report: OptimizationReport, assessment: GeneratedCvAs
   if (nicheUnderproven) warnings.push("niche_domain_underproven");
   if (integrityScore < 98) warnings.push("text_integrity_issue");
 
+  // Concept factory: only warn if CV has real-product evidence
+  // A concept-heavy profile applying to a concept lab is fine — no penalty
+  if (
+    report.productMaturity === "concept_prototype" &&
+    hasRealProductEvidence(report.selectedBullets, assessment.evidenceGrounding)
+  ) {
+    warnings.push("concept_factory_mismatch");
+  }
+
+  // Scope too simple: only warn if CV shows complex-system evidence
+  // SMB tools are a fine fit for someone with simple-tools background
+  if (
+    report.complexityLevel === "simple_tools" &&
+    hasComplexSystemEvidence(report.selectedBullets)
+  ) {
+    warnings.push("scope_too_simple");
+  }
+
+  // Support-only scope: only warn if CV shows ownership/lead evidence
+  // Iterating is fine for a contributor-level profile
+  const evidenceCorpusLocal = buildReportEvidenceCorpus(report);
+  if (
+    report.ownershipLevel === "support" &&
+    countPatternGroups(evidenceCorpusLocal, LEAD_SCOPE_EVIDENCE_GROUPS) >= 2
+  ) {
+    warnings.push("scope_support_fragmented");
+  }
+
   return uniqueItems(warnings) as HardWarningCode[];
 }
 
@@ -1900,6 +1990,9 @@ function capPertinenceByWarnings(score: number, warnings: HardWarningCode[]): nu
   if (warnings.includes("pm_scope_underproven")) capped = Math.min(capped, 22);
   if (warnings.includes("niche_domain_underproven")) capped = Math.min(capped, 66);
   if (warnings.includes("text_integrity_issue")) capped = Math.min(capped, 58);
+  if (warnings.includes("concept_factory_mismatch")) capped = Math.min(capped, 66);
+  if (warnings.includes("scope_too_simple")) capped = Math.min(capped, 70);
+  if (warnings.includes("scope_support_fragmented")) capped = Math.min(capped, 62);
   return capped;
 }
 
@@ -1919,7 +2012,7 @@ function computeGeneratedPertinence(assessment: GeneratedCvAssessment): number {
 
   if (assessment.fitNiveau === "trop_junior") score -= 18;
   else if (assessment.fitNiveau === "trop_senior") score -= 12;
-  else if (assessment.fitNiveau === "uncertain") score -= 8;
+  else if (assessment.fitNiveau === "uncertain") score -= 4;
 
   if (assessment.distanceDomain === "adjacent" && assessment.recruiterCredibilityScore < 65 && assessment.evidenceGrounding < 60) {
     score -= 6;
@@ -2016,6 +2109,18 @@ function finalizeGeneratedCvAssessment(assessment: GeneratedCvAssessment): Gener
     primaryDiagnosis = "Mismatch de metier";
     primaryCause = "adjacent_role";
     verdict = "Le role reste adjacent a ton coeur de metier: la transition parait possible, mais elle n'est pas naturelle a la lecture du document.";
+  } else if ((normalized.hardWarnings || []).includes("concept_factory_mismatch")) {
+    primaryDiagnosis = "Experience proche mais preuves trop faibles";
+    primaryCause = "proof_gap";
+    verdict = "Le role est exploratoire sans produit live ni contraintes reelles. Ton profil prouve un impact concret — ce perimetre l'efface.";
+  } else if ((normalized.hardWarnings || []).includes("scope_too_simple")) {
+    primaryDiagnosis = "Experience proche mais preuves trop faibles";
+    primaryCause = "proof_gap";
+    verdict = "Le metier colle, mais le scope du produit (outil simple / PME) reste en dessous de la complexite que ton profil prouve.";
+  } else if ((normalized.hardWarnings || []).includes("scope_support_fragmented")) {
+    primaryDiagnosis = "Experience proche mais preuves trop faibles";
+    primaryCause = "level_mismatch";
+    verdict = "Le metier parait proche, mais le role propose peu d'ownership reel. Ton profil montre plus que ce que ce scope permet.";
   } else if (normalized.fitNiveau === "uncertain" && normalized.fitMetier >= 70) {
     primaryDiagnosis = "Experience proche mais preuves trop faibles";
     primaryCause = "level_mismatch";
@@ -2778,7 +2883,7 @@ export function generateOptimizationReport(job: ParsedJob, selExps: ScoredExperi
     fitNiveau: fitAssessment?.fitNiveau ?? "n/a",
   });
 
-  return { jobTitle: job.title, jobCompany: job.company, jobSeniority: job.seniority, jobDomain: job.domain, detectedKeywords: { requiredSkills: job.requiredSkills, preferredSkills: job.preferredSkills, responsibilities: job.responsibilities, keywords: job.keywords, criticalKeywords: job.criticalKeywords }, matchedSkills: matched.map(s => s.name), missingSkills: missingSkills.slice(0, 10), selectedExperiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, score: Math.round(se.score), reason: se.reason, matchedAspects: se.matchedAspects, bulletCount: se.selectedBullets.length, charBudget: se.charBudget })), rejectedExperiences: [], selectedBullets: allBullets.map(sb => ({ text: sb.bullet.text, experienceTitle: sb.experience.title, score: sb.totalScore, deterministicScore: sb.deterministicScore, llmScore: sb.llmScore, matchedKeywords: sb.matchedKeywords, dimension: sb.dimension })), postRules, confidence, confidenceReasoning: verdict, fallbackUsed: total === 0, detectedLanguage: job.language, positioning: job.positioning, intentions: job.intentions, tips, diagnosis: { primaryDiagnosis, verdict, whatMatches: whatMatches.slice(0, 3), whatMissing: whatMissing.slice(0, 3), nextActions: nextActions.slice(0, 3), primaryCause, secondaryCauses, recommendedAction }, scoreBreakdown: { fitOffer, ats: atsEvidence, atsOptimized, atsBoost, contextSupport, semantic: semanticScore, recruiterCredibility, domainMismatch, cappedByKeywords, cappedByEvidence, pertinence: v2pertinence, fitMetier: v2fitMetier, fitNiveauFactor: v2fitNiveauFactor, fitNiveau: fitAssessment?.fitNiveau === "over_qualified" ? "trop_junior" : fitAssessment?.fitNiveau === "under_qualified" ? "trop_senior" : "uncertain", forcePreuve: v2forcePreuve, credibiliteCv: v2credibiliteCv, evidenceGrounding: v2forcePreuve, recruiterCredibilityScore: v2credibiliteCv, atsReadiness: atsOptimized, overstatementRisk: domainMismatch ? 70 : Math.max(15, Math.round(atsBoost * 1.2)), badge: v2badge, distanceDomain: v2distanceDomain, debugOverlaps: fitAssessment?.debugOverlaps } };
+  return { jobTitle: job.title, jobCompany: job.company, jobSeniority: job.seniority, jobDomain: job.domain, detectedKeywords: { requiredSkills: job.requiredSkills, preferredSkills: job.preferredSkills, responsibilities: job.responsibilities, keywords: job.keywords, criticalKeywords: job.criticalKeywords }, matchedSkills: matched.map(s => s.name), missingSkills: missingSkills.slice(0, 10), selectedExperiences: selExps.map(se => ({ title: se.experience.title, company: se.experience.company, score: Math.round(se.score), reason: se.reason, matchedAspects: se.matchedAspects, bulletCount: se.selectedBullets.length, charBudget: se.charBudget })), rejectedExperiences: [], selectedBullets: allBullets.map(sb => ({ text: sb.bullet.text, experienceTitle: sb.experience.title, score: sb.totalScore, deterministicScore: sb.deterministicScore, llmScore: sb.llmScore, matchedKeywords: sb.matchedKeywords, dimension: sb.dimension })), postRules, confidence, confidenceReasoning: verdict, fallbackUsed: total === 0, detectedLanguage: job.language, positioning: job.positioning, intentions: job.intentions, productMaturity: job.productMaturity, complexityLevel: job.complexityLevel, ownershipLevel: job.ownershipLevel, tips, diagnosis: { primaryDiagnosis, verdict, whatMatches: whatMatches.slice(0, 3), whatMissing: whatMissing.slice(0, 3), nextActions: nextActions.slice(0, 3), primaryCause, secondaryCauses, recommendedAction }, scoreBreakdown: { fitOffer, ats: atsEvidence, atsOptimized, atsBoost, contextSupport, semantic: semanticScore, recruiterCredibility, domainMismatch, cappedByKeywords, cappedByEvidence, pertinence: v2pertinence, fitMetier: v2fitMetier, fitNiveauFactor: v2fitNiveauFactor, fitNiveau: fitAssessment?.fitNiveau === "over_qualified" ? "trop_junior" : fitAssessment?.fitNiveau === "under_qualified" ? "trop_senior" : "uncertain", forcePreuve: v2forcePreuve, credibiliteCv: v2credibiliteCv, evidenceGrounding: v2forcePreuve, recruiterCredibilityScore: v2credibiliteCv, atsReadiness: atsOptimized, overstatementRisk: domainMismatch ? 70 : Math.max(15, Math.round(atsBoost * 1.2)), badge: v2badge, distanceDomain: v2distanceDomain, debugOverlaps: fitAssessment?.debugOverlaps } };
 }
 
 // â”€â”€â”€ Dry Run Check (steps 1-4 only, no CV generation, no DB save) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -3058,6 +3163,9 @@ export async function runFastDryRun(
     language: "FR",
     intentions: [],
     positioning: "ic",
+    productMaturity: "unknown",
+    complexityLevel: "unknown",
+    ownershipLevel: "unknown",
     roleFrame: {
       workObjects: [],
       deliverables: [],

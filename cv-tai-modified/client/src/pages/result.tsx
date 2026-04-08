@@ -406,7 +406,7 @@ function getOptimizationDecisionMeta(decision?: ReportScoreBreakdown["optimizati
       };
     case "optimized_rejected":
       return {
-        label: "Optimise rejete",
+        label: "CV fidele (optimisation rejetee)",
         className: "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700",
       };
     default:
