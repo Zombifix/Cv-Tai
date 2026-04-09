@@ -50,7 +50,7 @@ export default function AuthPage() {
       <div className="hidden lg:flex flex-col justify-between w-[44%] bg-gradient-to-br from-primary/8 via-background to-accent/6 border-r border-border/50 p-12">
         {/* Logo */}
         <div className="flex items-center gap-3">
-          <div className="bg-primary/12 text-primary p-2.5 rounded-2xl">
+          <div className="bg-primary/15 text-primary p-2.5 rounded-2xl">
             <FileText className="w-5 h-5" />
           </div>
           <span className="font-bold text-lg text-foreground">CV Tailor</span>
@@ -100,7 +100,7 @@ export default function AuthPage() {
         <div className="w-full max-w-[400px] space-y-8 animate-fade-up">
           {/* Mobile logo */}
           <div className="flex lg:hidden items-center gap-3 justify-center">
-            <div className="bg-primary/12 text-primary p-2.5 rounded-2xl">
+            <div className="bg-primary/15 text-primary p-2.5 rounded-2xl">
               <FileText className="w-5 h-5" />
             </div>
             <span className="font-bold text-lg">CV Tailor</span>

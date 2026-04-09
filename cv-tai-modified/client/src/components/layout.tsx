@@ -147,7 +147,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <SidebarTrigger className="text-muted-foreground hover:text-foreground transition-colors" />
             <div className="flex-1" />
             {/* Avatar */}
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary via-primary/80 to-accent border-2 border-background shadow-sm cursor-pointer hover:scale-105 transition-transform duration-150" />
+            <div className="w-8 h-8 rounded-full border-2 border-background shadow-sm cursor-pointer hover:scale-105 transition-transform duration-150" style={{ background: "linear-gradient(135deg, #f2a25c 0%, #fcdc71 100%)" }} />
           </header>
 
           {/* Page content */}
