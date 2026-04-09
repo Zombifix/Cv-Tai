@@ -13,10 +13,18 @@ import {
 import { Library, WandSparkles, FileText, Clock, Settings, LogOut } from "lucide-react";
 import { useLogout } from "@/hooks/use-auth";
 
+/*
+  Sidebar — Linear-grade
+  ──────────────────────
+  Clean surface, no borders, shadow for depth.
+  Active item: accent bg, full width.
+  No sub-descriptions — just icon + label.
+  Compact spacing, easy to scan.
+*/
 const navItems = [
-  { title: "Super CV", url: "/library", icon: Library, description: "Ta bibliothèque" },
-  { title: "Tailoring", url: "/tailor", icon: WandSparkles, description: "Générer un CV" },
-  { title: "Historique", url: "/history", icon: Clock, description: "Runs passés" },
+  { title: "Super CV",   url: "/library",  icon: Library },
+  { title: "Tailoring",  url: "/tailor",   icon: WandSparkles },
+  { title: "Historique", url: "/history",  icon: Clock },
 ];
 
 const bottomItems = [
@@ -28,53 +36,43 @@ export function AppSidebar() {
   const logout = useLogout();
 
   return (
-    <Sidebar variant="inset" className="border-r border-border/40">
-      <SidebarContent className="bg-sidebar flex flex-col gap-0">
+    <Sidebar variant="inset" className="border-none">
+      <SidebarContent className="bg-sidebar flex flex-col gap-0 shadow-[1px_0_0_0_hsl(38,14%,90%)]">
+
         {/* Logo */}
-        <div className="px-5 py-6">
+        <div className="px-4 pt-5 pb-4">
           <Link href="/library">
-            <div className="group flex items-center gap-3 cursor-pointer">
-              <div className="relative">
-                <div className="bg-primary/10 text-primary p-2.5 rounded-2xl transition-all duration-200 group-hover:bg-primary/15 group-hover:scale-105">
-                  <FileText className="w-5 h-5" />
-                </div>
+            <div className="group flex items-center gap-2.5 cursor-pointer">
+              <div
+                className="w-7 h-7 rounded-[8px] flex items-center justify-center flex-shrink-0"
+                style={{ background: "linear-gradient(135deg, #C97B30 0%, #E8A840 100%)" }}
+              >
+                <FileText className="w-3.5 h-3.5 text-white" />
               </div>
-              <div>
-                <div className="font-bold text-base text-foreground leading-none">CV Tailor</div>
-                <div className="text-[10px] text-muted-foreground font-medium mt-0.5 tracking-wide">Intelligence CV</div>
-              </div>
+              <span className="font-bold text-[0.9375rem] text-foreground tracking-[-0.01em]">CV Tailor</span>
             </div>
           </Link>
         </div>
 
-        {/* Divider */}
-        <div className="mx-4 h-px bg-border/50 mb-3" />
-
         {/* Main nav */}
-        <SidebarGroup className="px-3">
-          <div className="section-label px-3 mb-3">Navigation</div>
+        <SidebarGroup className="px-2 pt-1">
           <SidebarGroupContent>
-            <SidebarMenu className="space-y-1">
+            <SidebarMenu className="space-y-0.5">
               {navItems.map((item) => {
                 const isActive = location.startsWith(item.url);
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
                       <Link href={item.url}>
-                        <div className={`group flex items-center gap-3 px-3 py-2.5 rounded-2xl transition-all duration-200 cursor-pointer w-full
-                          ${isActive
-                            ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-sidebar-accent'
-                          }`}
-                        >
-                          <item.icon className={`w-4.5 h-4.5 flex-shrink-0 transition-transform duration-200 ${isActive ? '' : 'group-hover:scale-110'}`} style={{ width: '18px', height: '18px' }} />
-                          <div className="min-w-0">
-                            <div className={`text-sm font-semibold leading-none ${isActive ? 'text-primary-foreground' : ''}`}>{item.title}</div>
-                            <div className={`text-[10px] mt-0.5 leading-none ${isActive ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>{item.description}</div>
-                          </div>
-                          {isActive && (
-                            <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary-foreground/60" />
-                          )}
+                        <div className={[
+                          "flex items-center gap-2.5 px-3 py-2 rounded-[8px] cursor-pointer w-full",
+                          "text-sm font-medium transition-all duration-150",
+                          isActive
+                            ? "bg-primary text-primary-foreground"
+                            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground",
+                        ].join(" ")}>
+                          <item.icon className="w-4 h-4 flex-shrink-0" />
+                          <span>{item.title}</span>
                         </div>
                       </Link>
                     </SidebarMenuButton>
@@ -85,28 +83,27 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Spacer */}
         <div className="flex-1" />
 
         {/* Bottom nav */}
-        <div className="mx-4 h-px bg-border/50 mb-3" />
-        <SidebarGroup className="px-3 pb-4">
+        <SidebarGroup className="px-2 pb-4">
           <SidebarGroupContent>
-            <SidebarMenu className="space-y-1">
+            <SidebarMenu className="space-y-0.5">
               {bottomItems.map((item) => {
                 const isActive = location.startsWith(item.url);
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
                       <Link href={item.url}>
-                        <div className={`group flex items-center gap-3 px-3 py-2.5 rounded-2xl transition-all duration-200 cursor-pointer w-full
-                          ${isActive
-                            ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-sidebar-accent'
-                          }`}
-                        >
+                        <div className={[
+                          "flex items-center gap-2.5 px-3 py-2 rounded-[8px] cursor-pointer w-full",
+                          "text-sm font-medium transition-all duration-150",
+                          isActive
+                            ? "bg-primary text-primary-foreground"
+                            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground",
+                        ].join(" ")}>
                           <item.icon className="w-4 h-4 flex-shrink-0" />
-                          <span className="text-sm font-medium">{item.title}</span>
+                          <span>{item.title}</span>
                         </div>
                       </Link>
                     </SidebarMenuButton>
@@ -117,15 +114,16 @@ export function AppSidebar() {
               {/* Logout */}
               <SidebarMenuItem>
                 <SidebarMenuButton tooltip="Déconnexion" onClick={() => logout.mutate()}>
-                  <div className="group flex items-center gap-3 px-3 py-2.5 rounded-2xl text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-all duration-200 cursor-pointer w-full">
-                    <LogOut className="w-4 h-4 flex-shrink-0 transition-transform duration-200 group-hover:translate-x-0.5" />
-                    <span className="text-sm font-medium">Déconnexion</span>
+                  <div className="flex items-center gap-2.5 px-3 py-2 rounded-[8px] cursor-pointer w-full text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground transition-all duration-150">
+                    <LogOut className="w-4 h-4 flex-shrink-0" />
+                    <span>Déconnexion</span>
                   </div>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
       </SidebarContent>
     </Sidebar>
   );
@@ -133,8 +131,8 @@ export function AppSidebar() {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const style = {
-    "--sidebar-width": "17rem",
-    "--sidebar-width-icon": "4rem",
+    "--sidebar-width": "15rem",       /* 240px — compact, Linear-grade */
+    "--sidebar-width-icon": "3.5rem",
   } as React.CSSProperties;
 
   return (
@@ -142,18 +140,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen w-full bg-background">
         <AppSidebar />
         <div className="flex flex-col flex-1 w-full min-w-0">
-          {/* Top header */}
-          <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-border/40 bg-background/90 px-5 backdrop-blur-xl">
-            <SidebarTrigger className="text-muted-foreground hover:text-foreground transition-colors" />
+
+          {/* Topbar — minimal, sticky */}
+          <header className="sticky top-0 z-40 flex h-12 items-center gap-3 px-5 bg-background/95 backdrop-blur-sm" style={{ boxShadow: "0 1px 0 0 hsl(38 14% 88%)" }}>
+            <SidebarTrigger className="text-muted-foreground hover:text-foreground transition-colors w-8 h-8 rounded-[8px] hover:bg-muted" />
             <div className="flex-1" />
-            {/* Avatar */}
-            <div className="w-8 h-8 rounded-full border-2 border-background shadow-sm cursor-pointer hover:scale-105 transition-transform duration-150" style={{ background: "linear-gradient(135deg, #f2a25c 0%, #fcdc71 100%)" }} />
+            {/* User avatar */}
+            <button
+              className="w-7 h-7 rounded-full flex-shrink-0 transition-transform duration-150 hover:scale-105"
+              style={{ background: "linear-gradient(135deg, #C97B30 0%, #E8A840 100%)" }}
+            />
           </header>
 
           {/* Page content */}
-          <main className="flex-1 w-full p-5 md:p-8 lg:p-10 max-w-7xl mx-auto overflow-x-hidden">
+          <main className="flex-1 w-full px-6 py-8 md:px-10 md:py-10 max-w-7xl mx-auto overflow-x-hidden">
             {children}
           </main>
+
         </div>
       </div>
     </SidebarProvider>
