@@ -478,8 +478,8 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
   const letterGrade = computeLetterGrade(scoreBreakdown, confidence);
 
   return (
-    <div className="surface" data-testid="section-match-score">
-      <div className="p-4">
+    <Card className="border-border/60 shadow-none" data-testid="section-match-score">
+      <CardContent className="p-4">
         {/* Domain mismatch warning ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â prominent, above the ring */}
         {(scoreBreakdown?.domainMismatch || scoreBreakdown?.distanceDomain === "different") && (
           <div className="flex items-start gap-2 mb-3 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40">
@@ -612,8 +612,8 @@ function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { c
             {insightSentence}.
           </p>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -760,7 +760,7 @@ function LibraryHealthAccordion({ selectedBullets, selectedExperiences, totalBul
   const barColor = score >= 70 ? "bg-green-500" : score >= 40 ? "bg-amber-400" : "bg-red-500";
 
   return (
-    <div className="surface" data-testid="section-library-health">
+    <div className="rounded-xl border border-border/60" data-testid="section-library-health">
       <button
         onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
@@ -798,7 +798,7 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
   const letterGrade = computeLetterGrade(scoreBreakdown, report?.confidence);
 
   return (
-    <div className="surface" data-testid="section-details">
+    <div className="rounded-xl border border-border/60" data-testid="section-details">
       <button
         onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
@@ -1258,8 +1258,8 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
   const hasDetail = whatMatches.length > 0 || whatMissing.length > 0 || nextActions.length > 0 || !!primaryCause || optimizationNotes.length > 0;
 
   return (
-    <div className="surface" data-testid="section-match-diagnosis">
-      <div className="p-4 space-y-3">
+    <Card className="border-border/60 shadow-none" data-testid="section-match-diagnosis">
+      <CardContent className="p-4 space-y-3">
         {/* Score hero */}
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-center gap-1.5">
@@ -1395,8 +1395,8 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
             )}
           </div>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -2136,8 +2136,8 @@ function ApplicationTrackerSafe({ runId, initialTracking }: { runId: string; ini
   const today = new Date().toISOString().split("T")[0];
 
   return (
-    <div className="surface" data-testid="section-application-tracker">
-      <div className="p-4 space-y-3">
+    <Card className="border-border/60 shadow-none" data-testid="section-application-tracker">
+      <CardContent className="p-4 space-y-3">
         <h4 className="text-sm font-semibold flex items-center gap-2 text-foreground">
           <Send className="w-3.5 h-3.5 text-muted-foreground" /> Suivi de candidature
         </h4>
@@ -2202,8 +2202,8 @@ function ApplicationTrackerSafe({ runId, initialTracking }: { runId: string; ini
             </button>
           </div>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -2220,8 +2220,8 @@ function TabbedCoveragePanel({
   if (!hasKeywords && !hasSkills && !hasTips) return null;
 
   return (
-    <div className="surface" data-testid="section-coverage-panel">
-      <div className="p-0">
+    <Card className="border-border/60 shadow-none" data-testid="section-coverage-panel">
+      <CardContent className="p-0">
         <Tabs defaultValue={hasKeywords ? "keywords" : hasSkills ? "skills" : "conseils"}>
           <TabsList className="w-full rounded-none rounded-t-xl border-b border-border/60 bg-muted/30 h-9 gap-0 px-1">
             {hasKeywords && <TabsTrigger value="keywords" className="text-xs h-7 px-3 flex-1">Mots-clés</TabsTrigger>}
@@ -2244,8 +2244,8 @@ function TabbedCoveragePanel({
             </TabsContent>
           )}
         </Tabs>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -2394,12 +2394,12 @@ export default function Result() {
 
   return (
     <Layout>
-      <div className="flex flex-col gap-6 animate-fade-up">
+      <div className="flex flex-col gap-6 animate-in fade-in duration-400">
 
         {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ HEADER ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
         <div className="flex items-start gap-4 flex-wrap" data-testid="section-page-header">
           <Link href="/tailor">
-            <Button variant="outline" size="icon" className="rounded-2xl shadow-sm flex-shrink-0 mt-0.5 btn-press" data-testid="button-back">
+            <Button variant="outline" size="icon" className="rounded-xl shadow-sm flex-shrink-0 mt-0.5" data-testid="button-back">
               <ArrowLeft className="w-4 h-4" />
             </Button>
           </Link>
@@ -2456,14 +2456,14 @@ export default function Result() {
           <div className="relative hidden sm:block flex-shrink-0" data-testid="header-actions-menu">
             <Button
               variant="outline"
-              className="rounded-2xl shadow-sm px-3 btn-press"
+              className="rounded-xl shadow-sm px-3"
               onClick={() => setActionsOpen(v => !v)}
               aria-label="Actions"
             >
               <span className="text-base leading-none tracking-widest">···</span>
             </Button>
             {actionsOpen && (
-              <div className="absolute right-0 top-full mt-1 z-20 bg-background border border-border/60 rounded-[18px] shadow-lg py-1 min-w-[160px]" onMouseLeave={() => setActionsOpen(false)}>
+              <div className="absolute right-0 top-full mt-1 z-20 bg-background border border-border/60 rounded-xl shadow-lg py-1 min-w-[160px]" onMouseLeave={() => setActionsOpen(false)}>
                 <button
                   onClick={() => { handleCopy(); setActionsOpen(false); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors"
@@ -2487,7 +2487,7 @@ export default function Result() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
           {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ LEFT: CV Document ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
-          <div className="lg:col-span-2 flex flex-col gap-0 rounded-[24px] overflow-hidden border border-border/60 shadow-[0_4px_32px_rgba(0,0,0,0.06)] dark:shadow-[0_4px_32px_rgba(0,0,0,0.25)]" data-testid="section-cv-panel">
+          <div className="lg:col-span-2 flex flex-col gap-0 rounded-xl overflow-hidden border border-border/60 shadow-[0_2px_24px_rgba(0,0,0,0.07)] dark:shadow-[0_2px_24px_rgba(0,0,0,0.3)]" data-testid="section-cv-panel">
 
             {/* Panel toolbar */}
             <div className="flex items-center justify-between bg-muted/30 border-b px-4 py-2.5 gap-3">
@@ -2587,7 +2587,7 @@ export default function Result() {
             {/* Sticky copy CTA */}
             <Button
               onClick={handleCopy}
-              className="w-full rounded-2xl gap-2 shadow-lg shadow-primary/20 sticky top-4 z-10 btn-press"
+              className="w-full rounded-xl gap-2 shadow-sm shadow-primary/20 sticky top-4 z-10"
               data-testid="button-copy-sticky"
             >
               {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
@@ -2647,7 +2647,7 @@ export default function Result() {
             <Button
               variant="outline"
               onClick={handleTailorAgain}
-              className="rounded-2xl gap-2 text-sm btn-press"
+              className="rounded-xl gap-2 text-sm"
               data-testid="button-tailor-again"
             >
               <WandSparkles className="w-4 h-4" /> Nouveau tailoring
@@ -2666,7 +2666,7 @@ export default function Result() {
               }
               return "/library";
             })()}>
-              <Button variant="ghost" className="rounded-2xl gap-2 text-sm text-muted-foreground hover:text-foreground" data-testid="button-improve-library">
+              <Button variant="ghost" className="rounded-xl gap-2 text-sm text-muted-foreground hover:text-foreground" data-testid="button-improve-library">
                 <Library className="w-4 h-4" /> Ameliorer la bibliotheque
               </Button>
             </Link>

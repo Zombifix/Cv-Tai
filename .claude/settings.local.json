@@ -13,7 +13,9 @@
       "Bash(node -e \":*)",
       "Bash(node -e ':*)",
       "Bash(grep -v \"//.*responsibilities\")",
-      "Bash(grep -v \"//\\\\|^\\\\s*//\")"
+      "Bash(grep -v \"//\\\\|^\\\\s*//\")",
+      "WebFetch(domain:www.diabrowser.com)",
+      "Bash(grep -E \"\\\\.\\(tsx|ts|css\\)$\")"
     ]
   }
 }

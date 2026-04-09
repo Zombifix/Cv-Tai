@@ -104,19 +104,18 @@ export default function Library() {
 
   return (
     <Layout>
-      <div className="flex flex-col gap-8 max-w-4xl animate-fade-up">
-        <section className="space-y-4">
-          <div className="pill bg-primary/10 text-primary w-fit">
-            <Briefcase className="h-3 w-3" />
-            Super CV
+      <div className="flex flex-col gap-10 max-w-4xl">
+        <div className="space-y-2 mt-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Super CV</p>
+          <div className="space-y-1">
+            <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Bibliotheque source</h1>
+            <p className="text-sm text-muted-foreground">La base qui alimente tous tes tailorings.</p>
           </div>
-          <h1 className="text-4xl font-extrabold tracking-tight text-foreground">Bibliothèque source</h1>
-          <p className="text-base text-muted-foreground leading-relaxed">La base qui alimente tous tes tailorings. Enrichis tes expériences pour des CV plus ciblés.</p>
-        </section>
+        </div>
 
         {/* ── PROFILE HEADER ── */}
-        <div className="surface p-5">
-          <div className="p-0">
+        <Card className="border border-border">
+          <CardContent className="p-5">
           {editingProfile ? (
             <div className="space-y-3 animate-in fade-in-50">
               <Input value={profileDraft.name} onChange={e => setProfileDraft({ ...profileDraft, name: e.target.value })}
@@ -139,8 +138,8 @@ export default function Library() {
               </div>
             </div>
           )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* ── EXPERIENCES ── */}
         <ExperiencesSection enrichmentContext={enrichmentContext} />
@@ -240,19 +239,19 @@ function ExperiencesSection({ enrichmentContext }: { enrichmentContext?: Enrichm
       </div>
 
       {!experiences?.length ? (
-        <div className="border-2 border-dashed border-border/60 rounded-[24px] bg-transparent">
-          <div className="flex flex-col items-center justify-center py-16 text-center px-6">
-            <div className="w-14 h-14 bg-primary/10 text-primary rounded-[18px] flex items-center justify-center mb-5">
+        <Card className="border-dashed border-2 bg-transparent shadow-none">
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-4">
               <Upload className="w-6 h-6" />
             </div>
-            <h3 className="font-bold text-lg">Importez votre CV</h3>
-            <p className="text-muted-foreground mt-1.5 mb-5 max-w-sm text-sm leading-relaxed">Uploadez un PDF ou collez le texte de votre CV pour pré-remplir vos expériences.</p>
-            <div className="flex gap-2 flex-wrap justify-center">
-              <Button className="rounded-2xl btn-press gap-2" onClick={() => setImportOpen(true)}><Upload className="w-4 h-4" /> Importer un CV</Button>
-              <Button variant="outline" className="rounded-2xl btn-press gap-2" onClick={() => setEditOpen(true)}><Plus className="w-4 h-4" /> Ajouter manuellement</Button>
+            <h3 className="font-semibold text-lg">Importez votre CV</h3>
+            <p className="text-muted-foreground mt-1 mb-4 max-w-sm">Uploadez un PDF ou collez le texte de votre CV pour pre-remplir vos experiences.</p>
+            <div className="flex gap-2">
+              <Button onClick={() => setImportOpen(true)}><Upload className="w-4 h-4 mr-2" /> Importer un CV</Button>
+              <Button variant="outline" onClick={() => setEditOpen(true)}><Plus className="w-4 h-4 mr-2" /> Ajouter manuellement</Button>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       ) : (
         <Accordion type="multiple" className="space-y-3">
           {sortedExperiences.map(exp => (
@@ -321,7 +320,7 @@ function ExperienceAccordionItem({ experience, onEdit, onOpenPanel }: {
 
   return (
     <div ref={cardRef}>
-    <AccordionItem value={experience.id} className="bg-card border border-border/60 rounded-[24px] shadow-sm overflow-hidden card-hover">
+    <AccordionItem value={experience.id} className="bg-card border rounded-xl shadow-sm overflow-hidden">
       <div className="flex items-center pr-4">
         <AccordionTrigger className="flex-1 hover:no-underline py-5 px-5 data-[state=open]:border-b data-[state=open]:border-border/50 [&>svg]:hidden">
           <div className="flex items-start gap-3 w-full">
@@ -373,7 +372,7 @@ function ExperienceAccordionItem({ experience, onEdit, onOpenPanel }: {
               <div
                 key={bullet.id}
                 onClick={() => onOpenPanel(bullet.id)}
-                className={`rounded-[18px] p-4 border transition-all duration-150 cursor-pointer hover:border-primary/30 hover:shadow-sm ${warnings.length > 0 ? "border-amber-200 dark:border-amber-800/30" : "border-border/40"}`}
+                className={`rounded-lg p-4 border transition-colors cursor-pointer hover:border-primary/30 ${warnings.length > 0 ? "border-amber-200 dark:border-amber-800/30" : "border-border/30"}`}
               >
                 {/* Tags */}
                 {bullet.tags && bullet.tags.length > 0 && (
@@ -633,7 +632,7 @@ function EnrichmentPanel({ experience, initialBulletId, missingKeywords, jobTitl
           <div className="space-y-2.5">
             {axes.map((axis, i) => (
               <button key={i} onClick={() => openEdit(null, axis, [])} disabled={remaining <= 0}
-                className="w-full text-left text-sm p-4 rounded-[16px] border border-border/60 bg-background hover:border-primary/40 hover:bg-primary/5 hover:shadow-sm transition-all duration-150 disabled:opacity-50 leading-relaxed btn-press">
+                className="w-full text-left text-sm p-4 rounded-lg border border-border bg-background hover:border-primary/50 hover:bg-primary/5 transition-all disabled:opacity-50 leading-relaxed">
                 {axis}
               </button>
             ))}
