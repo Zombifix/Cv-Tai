@@ -15,7 +15,12 @@
       "Bash(grep -v \"//.*responsibilities\")",
       "Bash(grep -v \"//\\\\|^\\\\s*//\")",
       "WebFetch(domain:www.diabrowser.com)",
-      "Bash(grep -E \"\\\\.\\(tsx|ts|css\\)$\")"
+      "Bash(grep -E \"\\\\.\\(tsx|ts|css\\)$\")",
+      "Bash(cp .ai/backups/ui-backup-2026-04-09/index.css client/src/index.css)",
+      "Bash(cp .ai/backups/ui-backup-2026-04-09/layout.tsx client/src/components/layout.tsx)",
+      "Bash(cp .ai/backups/ui-backup-2026-04-09/auth.tsx client/src/pages/auth.tsx)",
+      "Bash(cp .ai/backups/ui-backup-2026-04-09/tailor.tsx client/src/pages/tailor.tsx)",
+      "Bash(cp .ai/backups/ui-backup-2026-04-09/history.tsx client/src/pages/history.tsx)"
     ]
   }
 }
