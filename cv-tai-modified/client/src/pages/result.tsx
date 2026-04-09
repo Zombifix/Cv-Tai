@@ -441,6 +441,21 @@ function computeLetterGrade(scoreBreakdown?: ReportScoreBreakdown, confidence?: 
   return { grade: "F", label: "Hors zone", className: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-300 dark:border-red-700" };
 }
 
+function computeWarningBanner(scoreBreakdown?: ReportScoreBreakdown, fallbackUsed?: boolean): { severity: "error" | "warn" | "info"; message: string } | null {
+  const hardWarnings = scoreBreakdown?.hardWarnings || [];
+  if (hardWarnings.length > 0) {
+    const meta = getHardWarningMeta(hardWarnings[0]);
+    return { severity: "error", message: meta.label + (hardWarnings.length > 1 ? ` (+${hardWarnings.length - 1} autre${hardWarnings.length > 2 ? "s" : ""})` : "") };
+  }
+  if (scoreBreakdown?.domainMismatch || scoreBreakdown?.distanceDomain === "different") {
+    return { severity: "warn", message: `Domaine different (${scoreBreakdown?.domainMismatch || "distance metier"}) — les competences se croisent mais le coeur du role differe.` };
+  }
+  if (fallbackUsed) {
+    return { severity: "info", message: "Peu de bullets forts trouves pour cette annonce — selection de secours appliquee." };
+  }
+  return null;
+}
+
 function MatchScore({ confidence, reasoning, fallbackUsed, scoreBreakdown }: { confidence: number; reasoning?: string; fallbackUsed?: boolean; scoreBreakdown?: ReportScoreBreakdown }) {
   const size = 56;
   const strokeWidth = 5;
@@ -606,6 +621,10 @@ function SkillsCoverage({ matched, missing }: { matched: string[]; missing: stri
   const total = matched.length + missing.length;
   const pct = total === 0 ? 0 : Math.round((matched.length / total) * 100);
   const [added, setAdded] = useState<Set<string>>(new Set());
+  const [showAllMatched, setShowAllMatched] = useState(false);
+  const [showAllMissing, setShowAllMissing] = useState(false);
+  const MATCHED_CAP = 8;
+  const MISSING_CAP = 8;
 
   const mutation = useMutation({
     mutationFn: (skill: string) =>
@@ -620,146 +639,148 @@ function SkillsCoverage({ matched, missing }: { matched: string[]; missing: stri
     if (!added.has(skill) && !mutation.isPending) mutation.mutate(skill);
   };
 
+  const visibleMatched = showAllMatched ? matched : matched.slice(0, MATCHED_CAP);
+  const visibleMissing = showAllMissing ? missing : missing.slice(0, MISSING_CAP);
+
   return (
-    <Card className="border-border/60 shadow-none" data-testid="section-skills-coverage">
-      <CardContent className="p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold text-foreground">Skills de l'offre</h4>
-          <span className="text-xs font-bold text-primary tabular-nums">{matched.length}/{total} dans ta biblio</span>
-        </div>
-        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-700 ${pct >= 70 ? "bg-green-500" : pct >= 40 ? "bg-amber-500" : "bg-red-500"}`}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-        {matched.length > 0 && (
+    <div className="space-y-3" data-testid="section-skills-coverage">
+      <div className="flex items-center justify-between">
+        <h4 className="text-[11px] font-semibold text-foreground uppercase tracking-wider">Skills de l'offre</h4>
+        <span className="text-xs font-bold text-primary tabular-nums">{matched.length}/{total}</span>
+      </div>
+      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${pct >= 70 ? "bg-green-500" : pct >= 40 ? "bg-amber-500" : "bg-red-500"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {matched.length > 0 && (
+        <div>
           <div className="flex flex-wrap gap-1.5">
-            {matched.map((s, i) => (
+            {visibleMatched.map((s, i) => (
               <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium" data-testid={`badge-matched-${i}`}>
                 <CheckCircle className="w-3 h-3 flex-shrink-0" /> {repairMojibake(s)}
               </span>
             ))}
-          </div>
-        )}
-        {missing.length > 0 && (
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 font-semibold">
-              {matched.length === 0 ? "Absentes de ta bibliotheque, cliquer pour ajouter" : "Manquantes, cliquer pour ajouter"}
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {missing.map((s, i) => {
-                const isAdded = added.has(s);
-                return (
-                  <button
-                    key={i}
-                    data-testid={`badge-missing-${i}`}
-                    onClick={() => handleAdd(s)}
-                    disabled={isAdded || mutation.isPending}
-                    title={isAdded ? "Ajoute a la bibliotheque" : "Ajouter a la bibliotheque"}
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full font-medium border transition-all ${
-                      isAdded
-                        ? "bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 cursor-default"
-                        : "bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 cursor-pointer"
-                    }`}
-                  >
-                    {isAdded ? <Check className="w-3 h-3 flex-shrink-0" /> : <Plus className="w-3 h-3 flex-shrink-0" />}
-                    {repairMojibake(s)}
-                  </button>
-                );
-              })}
-            </div>
-            {matched.length === 0 && (
-              <p className="text-[10px] text-muted-foreground mt-2 italic">
-                Ces competences ne sont pas encore dans votre Super-CV. Cliquez sur "+" pour les ajouter.
-              </p>
+            {!showAllMatched && matched.length > MATCHED_CAP && (
+              <button onClick={() => setShowAllMatched(true)} className="px-2 py-0.5 text-xs rounded-full border border-border/60 text-muted-foreground hover:text-foreground transition-colors">
+                +{matched.length - MATCHED_CAP}
+              </button>
             )}
           </div>
-        )}
-        {total === 0 && <p className="text-xs text-muted-foreground italic">Aucune donnee de competence disponible.</p>}
-      </CardContent>
-    </Card>
+        </div>
+      )}
+      {missing.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 font-semibold">
+            {matched.length === 0 ? "Absentes — cliquer pour ajouter" : "Manquantes — cliquer pour ajouter"}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {visibleMissing.map((s, i) => {
+              const isAdded = added.has(s);
+              return (
+                <button
+                  key={i}
+                  data-testid={`badge-missing-${i}`}
+                  onClick={() => handleAdd(s)}
+                  disabled={isAdded || mutation.isPending}
+                  title={isAdded ? "Ajoute a la bibliotheque" : "Ajouter a la bibliotheque"}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full font-medium border transition-all ${
+                    isAdded
+                      ? "bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 cursor-default"
+                      : "bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 cursor-pointer"
+                  }`}
+                >
+                  {isAdded ? <Check className="w-3 h-3 flex-shrink-0" /> : <Plus className="w-3 h-3 flex-shrink-0" />}
+                  {repairMojibake(s)}
+                </button>
+              );
+            })}
+            {!showAllMissing && missing.length > MISSING_CAP && (
+              <button onClick={() => setShowAllMissing(true)} className="px-2 py-0.5 text-xs rounded-full border border-border/60 text-muted-foreground hover:text-foreground transition-colors">
+                +{missing.length - MISSING_CAP}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      {total === 0 && <p className="text-xs text-muted-foreground italic">Aucune donnee de competence disponible.</p>}
+    </div>
   );
 }
 
 function KeyTips({ tips, insight }: { tips: string[]; insight?: string }) {
+  const [showAll, setShowAll] = useState(false);
   const hasContent = (tips && tips.length > 0) || insight;
   if (!hasContent) return null;
+  const TIPS_CAP = 3;
+  const visibleTips = showAll ? tips : tips.slice(0, TIPS_CAP);
 
   return (
-    <Card className="border-yellow-200/60 dark:border-yellow-900/40 bg-yellow-50/50 dark:bg-yellow-900/10 shadow-none" data-testid="section-tips">
-      <CardContent className="p-4 space-y-2">
-        <h4 className="text-sm font-semibold flex items-center gap-2 text-foreground">
-          <Lightbulb className="w-4 h-4 text-yellow-500 flex-shrink-0" /> Points d'attention
-        </h4>
-        {insight && (
-          <p className="text-xs text-foreground/70 leading-relaxed italic border-l-2 border-yellow-400/50 pl-2" data-testid="text-insight">
-            {repairMojibake(insight)}
-          </p>
-        )}
-        {tips && tips.length > 0 && (
+    <div className="space-y-2" data-testid="section-tips">
+      {insight && (
+        <p className="text-xs text-foreground/70 leading-relaxed italic border-l-2 border-yellow-400/50 pl-2" data-testid="text-insight">
+          {repairMojibake(insight)}
+        </p>
+      )}
+      {tips && tips.length > 0 && (
+        <>
           <ul className="space-y-1.5">
-            {tips.map((tip, i) => (
+            {visibleTips.map((tip, i) => (
               <li key={i} className="flex items-start gap-2 text-[12px] text-foreground/80 leading-relaxed" data-testid={`text-tip-${i}`}>
-                <span className="mt-1.5 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-yellow-500" />
+                <Lightbulb className="w-3.5 h-3.5 mt-0.5 text-yellow-500 flex-shrink-0" />
                 {repairMojibake(tip)}
               </li>
             ))}
           </ul>
-        )}
-      </CardContent>
-    </Card>
+          {tips.length > TIPS_CAP && (
+            <button onClick={() => setShowAll(v => !v)} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+              {showAll ? "Reduire" : `Voir les ${tips.length - TIPS_CAP} autres conseils`}
+            </button>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
-function LibraryHealth({
-  selectedBullets,
-  selectedExperiences,
-  totalBullets,
-  bulletsWithNumbers,
-}: {
-  selectedBullets: any[];
-  selectedExperiences: any[];
-  totalBullets: number;
-  bulletsWithNumbers: number;
+
+function LibraryHealthAccordion({ selectedBullets, selectedExperiences, totalBullets, bulletsWithNumbers }: {
+  selectedBullets: any[]; selectedExperiences: any[]; totalBullets: number; bulletsWithNumbers: number;
 }) {
+  const [open, setOpen] = useState(false);
   const pctWithNumbers = Math.round(bulletsWithNumbers / Math.max(1, totalBullets) * 100);
   const pctWithTags = Math.round(
     selectedBullets.filter(b => b.matchedKeywords?.length > 0).length / Math.max(1, selectedBullets.length) * 100
   );
-  const expWithDescription = selectedExperiences.filter(
-    e => e.reason && e.reason !== "Timeline continuity"
-  ).length;
+  const expWithDescription = selectedExperiences.filter(e => e.reason && e.reason !== "Timeline continuity").length;
   const score = Math.round(
     (pctWithNumbers + pctWithTags + (expWithDescription / Math.max(1, selectedExperiences.length) * 100)) / 3
   );
-
   const barColor = score >= 70 ? "bg-green-500" : score >= 40 ? "bg-amber-400" : "bg-red-500";
-  const message =
-    score >= 70
-      ? "Bibliothèque solide pour ce tailoring."
-      : score >= 40
-      ? "Enrichis les bullets avec des chiffres et du contexte."
-      : "Bibliothèque trop fine — ajoute des bullets avant de retailor.";
 
   return (
-    <Card className="border-border/60 shadow-none" data-testid="section-library-health">
-      <CardContent className="p-4 space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[13px] font-semibold text-foreground">Qualité bibliothèque</span>
-          <span className="text-[13px] font-bold text-foreground">{score}%</span>
+    <div className="rounded-xl border border-border/60" data-testid="section-library-health">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <span className="flex items-center gap-2"><Library className="w-3.5 h-3.5" /> Bibliothèque — {score}%</span>
+        {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </button>
+      {open && (
+        <div className="border-t border-border/60 px-4 py-3 space-y-3 bg-muted/10 rounded-b-xl">
+          <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
+            <div className={`h-full rounded-full ${barColor}`} style={{ width: `${score}%` }} />
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <span className="text-[11px] text-muted-foreground">Bullets chiffrées : <span className="font-medium text-foreground">{pctWithNumbers}%</span></span>
+            <span className="text-[11px] text-muted-foreground">Keywords matchés : <span className="font-medium text-foreground">{pctWithTags}%</span></span>
+            <span className="text-[11px] text-muted-foreground">Expériences avec contexte : <span className="font-medium text-foreground">{expWithDescription}/{selectedExperiences.length}</span></span>
+          </div>
         </div>
-        <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
-          <div className={`h-full rounded-full ${barColor}`} style={{ width: `${score}%` }} />
-        </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-1">
-          <span className="text-[11px] text-muted-foreground">Bullets chiffrées : <span className="font-medium text-foreground">{pctWithNumbers}%</span></span>
-          <span className="text-[11px] text-muted-foreground">Keywords matchés : <span className="font-medium text-foreground">{pctWithTags}%</span></span>
-          <span className="text-[11px] text-muted-foreground">Expériences avec contexte : <span className="font-medium text-foreground">{expWithDescription}/{selectedExperiences.length}</span></span>
-        </div>
-        <p className="text-[11px] text-muted-foreground">{message}</p>
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
 }
 
@@ -783,7 +804,7 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
         className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
         data-testid="button-toggle-details"
       >
-        <span className="flex items-center gap-2"><BookOpen className="w-3.5 h-3.5" /> Analyse detaillee</span>
+        <span className="flex items-center gap-2"><BookOpen className="w-3.5 h-3.5" /> Debug &amp; métriques</span>
         {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
 
@@ -1125,43 +1146,55 @@ function LibrarySuggestions({ missingSkills }: { missingSkills: string[] }) {
 // ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ Critical Keywords Coverage ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬
 
 function CriticalKeywordsCoverage({ covered, missing, injected }: { covered: string[]; missing: string[]; injected?: string[] }) {
+  const [showAllCovered, setShowAllCovered] = useState(false);
+  const [showAllMissing, setShowAllMissing] = useState(false);
+  const COVERED_CAP = 8;
+  const MISSING_CAP = 5;
   const total = covered.length + missing.length;
   if (total === 0) return null;
   const pct = Math.round((covered.length / total) * 100);
   const scoreColor = pct >= 70 ? "text-green-600 dark:text-green-400" : pct >= 40 ? "text-amber-600 dark:text-amber-400" : "text-red-500 dark:text-red-400";
   const barColor = pct >= 70 ? "bg-green-500" : pct >= 40 ? "bg-amber-500" : "bg-red-500";
+  const visibleCovered = showAllCovered ? covered : covered.slice(0, COVERED_CAP);
+  const visibleMissing = showAllMissing ? missing : missing.slice(0, MISSING_CAP);
 
   return (
-    <Card className="border-border/60 shadow-none" data-testid="section-critical-keywords">
-      <CardContent className="p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold flex items-center gap-2 text-foreground">
-            <Hash className="w-4 h-4 text-muted-foreground" /> Keywords critiques
-          </h4>
-          <span className={`text-xs font-bold tabular-nums ${scoreColor}`}>{covered.length}/{total} dans le CV</span>
-        </div>
-        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-          <div className={`h-full rounded-full transition-all duration-700 ${barColor}`} style={{ width: `${pct}%` }} />
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {covered.map((k, i) => (
-            <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium">
-              <Check className="w-2.5 h-2.5 flex-shrink-0" /> {k}
-            </span>
-          ))}
-          {missing.map((k, i) => (
-            <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 font-medium">
-              <X className="w-2.5 h-2.5 flex-shrink-0" /> {k}
-            </span>
-          ))}
-        </div>
-        {injected && injected.length > 0 && (
-          <p className="text-[10px] text-muted-foreground leading-relaxed">
-            Keywords injectes pour l'optimisation ATS finale : {injected.join(", ")}.
-          </p>
+    <div className="space-y-3" data-testid="section-critical-keywords">
+      <div className="flex items-center justify-between">
+        <h4 className="text-[11px] font-semibold uppercase tracking-wider text-foreground">Keywords critiques</h4>
+        <span className={`text-xs font-bold tabular-nums ${scoreColor}`}>{covered.length}/{total} dans le CV</span>
+      </div>
+      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all duration-700 ${barColor}`} style={{ width: `${pct}%` }} />
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {visibleCovered.map((k, i) => (
+          <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium">
+            <Check className="w-2.5 h-2.5 flex-shrink-0" /> {k}
+          </span>
+        ))}
+        {!showAllCovered && covered.length > COVERED_CAP && (
+          <button onClick={() => setShowAllCovered(true)} className="px-2 py-0.5 text-[11px] rounded-full border border-border/60 text-muted-foreground hover:text-foreground transition-colors">
+            +{covered.length - COVERED_CAP}
+          </button>
         )}
-      </CardContent>
-    </Card>
+        {visibleMissing.map((k, i) => (
+          <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 font-medium">
+            <X className="w-2.5 h-2.5 flex-shrink-0" /> {k}
+          </span>
+        ))}
+        {!showAllMissing && missing.length > MISSING_CAP && (
+          <button onClick={() => setShowAllMissing(true)} className="px-2 py-0.5 text-[11px] rounded-full border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 hover:opacity-80 transition-colors">
+            +{missing.length - MISSING_CAP} manquants
+          </button>
+        )}
+      </div>
+      {injected && injected.length > 0 && (
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
+          Injectes pour ATS : {injected.join(", ")}.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -1205,13 +1238,12 @@ function scrapeQualityMeta(meta?: JobInputInfo) {
 }
 
 function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: { score: number; diagnosis?: ReportDiagnosis; fallbackUsed?: boolean; scoreBreakdown?: ReportScoreBreakdown }) {
+  const [showDetail, setShowDetail] = useState(false);
   const displayScore = scoreBreakdown?.pertinence ?? scoreBreakdown?.fitOffer ?? score;
   const fitMeta = getFitLabel(displayScore);
   const badgeMeta = getBadgeMeta(scoreBreakdown?.badge);
   const credibilityMeta = getCredibilityMeta(scoreBreakdown?.recruiterCredibility);
   const scoreLabel = scoreBreakdown?.fitMetier != null ? "Pertinence" : "Fit offre";
-  const distanceLabel = getDistanceDomainLabel(scoreBreakdown?.distanceDomain);
-  const fitNiveauLabel = getFitNiveauLabel(scoreBreakdown?.fitNiveau);
   const primaryDiagnosis = repairMojibake(diagnosis?.primaryDiagnosis || "");
   const verdict = repairMojibake(diagnosis?.verdict || "Le moteur a estime un niveau de correspondance global pour cette annonce.");
   const whatMatches = (diagnosis?.whatMatches || []).map(item => repairMojibake(item));
@@ -1220,42 +1252,15 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
   const primaryCause = getCauseLabel(diagnosis?.primaryCause);
   const secondaryCauses = (diagnosis?.secondaryCauses || []).map(cause => getCauseLabel(cause));
   const recommendedAction = repairMojibake(diagnosis?.recommendedAction || "");
-  const overstatementRisk = scoreBreakdown?.overstatementRisk;
-  const hardWarnings = scoreBreakdown?.hardWarnings || [];
-  const optimizationMeta = getOptimizationDecisionMeta(scoreBreakdown?.optimizationDecision);
   const optimizationNotes = (scoreBreakdown?.optimizationNotes || []).map(note => repairMojibake(note));
-  const textIntegrity = scoreBreakdown?.textIntegrityScore;
   const letterGrade = computeLetterGrade(scoreBreakdown, score);
+  const warning = computeWarningBanner(scoreBreakdown, fallbackUsed);
+  const hasDetail = whatMatches.length > 0 || whatMissing.length > 0 || nextActions.length > 0 || !!primaryCause || optimizationNotes.length > 0;
 
   return (
     <Card className="border-border/60 shadow-none" data-testid="section-match-diagnosis">
-      <CardContent className="p-4 space-y-4">
-        {hardWarnings.length > 0 && (
-          <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Warnings prioritaires</p>
-            <div className="space-y-2">
-              {hardWarnings.map((warning, index) => {
-                const meta = getHardWarningMeta(warning);
-                return (
-                  <div key={`${warning}-${index}`} className={`rounded-lg border px-2.5 py-2 ${meta.className}`}>
-                    <p className="text-[11px] font-semibold">{meta.label}</p>
-                    {meta.description && <p className="text-[11px] leading-relaxed mt-0.5 opacity-90">{meta.description}</p>}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {(scoreBreakdown?.domainMismatch || scoreBreakdown?.distanceDomain === "different") && (
-          <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40">
-            <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-            <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug font-medium">
-              Mismatch detecte ({scoreBreakdown.domainMismatch || "distance metier"}) : tes experiences se croisent avec le poste, mais le coeur du role reste different.
-            </p>
-          </div>
-        )}
-
+      <CardContent className="p-4 space-y-3">
+        {/* Score hero */}
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-center gap-1.5">
             <ConfidenceRing value={displayScore} size={56} />
@@ -1282,105 +1287,112 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
             {primaryDiagnosis && (
               <p className="text-[11px] text-foreground font-medium mt-0.5">{primaryDiagnosis}</p>
             )}
-            <div className="flex items-center gap-3 mt-2 flex-wrap">
-              {optimizationMeta && (
-                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${optimizationMeta.className}`}>
-                  {optimizationMeta.label}
-                </span>
-              )}
-              <p className="text-[11px] text-muted-foreground">
-                Credibilite: <span className="font-semibold text-foreground">{scoreBreakdown?.recruiterCredibilityScore ?? scoreBreakdown?.credibiliteCv ?? "n/a"}%</span>
-              </p>
-              {overstatementRisk !== undefined ? (
-                <p className="text-[11px] text-muted-foreground">
-                  Risque survente: <span className="font-semibold text-foreground">{overstatementRisk}%</span>
-                </p>
-              ) : null}
-              <p className="text-[11px] text-muted-foreground">
-                ATS final: <span className="font-semibold text-foreground">{scoreBreakdown?.atsOptimized ?? scoreBreakdown?.ats ?? "n/a"}%</span>
-              </p>
-              {textIntegrity !== undefined ? (
-                <p className="text-[11px] text-muted-foreground">
-                  Integrite texte: <span className="font-semibold text-foreground">{textIntegrity}%</span>
-                </p>
-              ) : null}
-              {(distanceLabel || fitNiveauLabel) ? (
-                <p className="text-[11px] text-muted-foreground">
-                  {[distanceLabel, fitNiveauLabel].filter(Boolean).join(" • ")}
-                </p>
-              ) : null}
-            </div>
-            {fallbackUsed && (
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">Le moteur a trouve peu de bullets forts pour cette annonce.</p>
-            )}
           </div>
         </div>
 
+        {/* Verdict */}
         <p className="text-[12px] text-foreground/80 leading-relaxed">{verdict}</p>
 
-        {optimizationNotes.length > 0 && (
-          <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 space-y-1.5">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Decision moteur</p>
-            {optimizationNotes.slice(0, 2).map((note, index) => (
-              <p key={index} className="text-[11px] text-foreground/80 leading-relaxed">{note}</p>
-            ))}
+        {/* Consolidated warning — single line */}
+        {warning && (
+          <div className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border text-[11px] font-medium leading-snug ${
+            warning.severity === "error"
+              ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/40 text-red-700 dark:text-red-300"
+              : warning.severity === "warn"
+              ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/40 text-amber-700 dark:text-amber-300"
+              : "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/40 text-blue-700 dark:text-blue-300"
+          }`}>
+            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+            {warning.message}
           </div>
         )}
 
-        <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 space-y-1.5">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Cause principale</p>
-          <p className="text-[12px] font-medium text-foreground">{primaryCause}</p>
-          {secondaryCauses.length > 0 && (
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Causes secondaires : {secondaryCauses.join(", ")}.
-            </p>
-          )}
-          {recommendedAction && (
-            <p className="text-[11px] text-foreground/80 leading-relaxed">
-              Action recommandee : {recommendedAction}
-            </p>
-          )}
-        </div>
-
-        {whatMatches.length > 0 && (
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Ce qui matche</p>
-            <ul className="space-y-1.5">
-              {whatMatches.map((item, index) => (
-                <li key={index} className="flex items-start gap-2 text-[12px] text-foreground/80 leading-relaxed">
-                  <CheckCircle className="w-3.5 h-3.5 mt-0.5 text-green-600 dark:text-green-400 flex-shrink-0" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
+        {/* Progressive disclosure toggle */}
+        {hasDetail && (
+          <button
+            onClick={() => setShowDetail(v => !v)}
+            className="w-full flex items-center justify-between text-[11px] text-muted-foreground hover:text-foreground transition-colors pt-1"
+          >
+            <span>{showDetail ? "Masquer l'analyse" : "Voir l'analyse"}</span>
+            {showDetail ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
         )}
 
-        {whatMissing.length > 0 && (
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Ce qui manque</p>
-            <ul className="space-y-1.5">
-              {whatMissing.map((item, index) => (
-                <li key={index} className="flex items-start gap-2 text-[12px] text-foreground/80 leading-relaxed">
-                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {/* Detail panel */}
+        {showDetail && (
+          <div className="space-y-3 pt-1 border-t border-border/40">
+            {optimizationNotes.length > 0 && (
+              <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 space-y-1">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Decision moteur</p>
+                {optimizationNotes.slice(0, 2).map((note, i) => (
+                  <p key={i} className="text-[11px] text-foreground/80 leading-relaxed">{note}</p>
+                ))}
+              </div>
+            )}
 
-        {nextActions.length > 0 && (
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Quoi faire maintenant</p>
-            <ul className="space-y-1.5">
-              {nextActions.map((item, index) => (
-                <li key={index} className="flex items-start gap-2 text-[12px] text-foreground/80 leading-relaxed">
-                  <Lightbulb className="w-3.5 h-3.5 mt-0.5 text-yellow-500 flex-shrink-0" />
-                  {item}
-                </li>
-              ))}
-            </ul>
+            {primaryCause && (
+              <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 space-y-1">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Cause principale</p>
+                <p className="text-[12px] font-medium text-foreground">{primaryCause}</p>
+                {secondaryCauses.length > 0 && (
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">Causes secondaires : {secondaryCauses.join(", ")}.</p>
+                )}
+                {recommendedAction && (
+                  <p className="text-[11px] text-foreground/80 leading-relaxed">Action recommandee : {recommendedAction}</p>
+                )}
+              </div>
+            )}
+
+            {whatMatches.length > 0 && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Ce qui matche</p>
+                <ul className="space-y-1.5">
+                  {whatMatches.slice(0, 4).map((item, i) => (
+                    <li key={i} className="flex items-start gap-2 text-[12px] text-foreground/80 leading-relaxed">
+                      <CheckCircle className="w-3.5 h-3.5 mt-0.5 text-green-600 dark:text-green-400 flex-shrink-0" />
+                      {item}
+                    </li>
+                  ))}
+                  {whatMatches.length > 4 && (
+                    <li className="text-[11px] text-muted-foreground pl-5">+{whatMatches.length - 4} autre{whatMatches.length - 4 > 1 ? "s" : ""}</li>
+                  )}
+                </ul>
+              </div>
+            )}
+
+            {whatMissing.length > 0 && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Ce qui manque</p>
+                <ul className="space-y-1.5">
+                  {whatMissing.slice(0, 4).map((item, i) => (
+                    <li key={i} className="flex items-start gap-2 text-[12px] text-foreground/80 leading-relaxed">
+                      <AlertCircle className="w-3.5 h-3.5 mt-0.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                      {item}
+                    </li>
+                  ))}
+                  {whatMissing.length > 4 && (
+                    <li className="text-[11px] text-muted-foreground pl-5">+{whatMissing.length - 4} autre{whatMissing.length - 4 > 1 ? "s" : ""}</li>
+                  )}
+                </ul>
+              </div>
+            )}
+
+            {nextActions.length > 0 && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Quoi faire maintenant</p>
+                <ul className="space-y-1.5">
+                  {nextActions.slice(0, 3).map((item, i) => (
+                    <li key={i} className="flex items-start gap-2 text-[12px] text-foreground/80 leading-relaxed">
+                      <Lightbulb className="w-3.5 h-3.5 mt-0.5 text-yellow-500 flex-shrink-0" />
+                      {item}
+                    </li>
+                  ))}
+                  {nextActions.length > 3 && (
+                    <li className="text-[11px] text-muted-foreground pl-5">+{nextActions.length - 3} autre{nextActions.length - 3 > 1 ? "s" : ""}</li>
+                  )}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </CardContent>
@@ -2195,6 +2207,48 @@ function ApplicationTrackerSafe({ runId, initialTracking }: { runId: string; ini
   );
 }
 
+function TabbedCoveragePanel({
+  covered, missing, injected, matchedSkills, missingSkills, tips, insight,
+}: {
+  covered: string[]; missing: string[]; injected?: string[];
+  matchedSkills: string[]; missingSkills: string[];
+  tips: string[]; insight?: string;
+}) {
+  const hasKeywords = covered.length > 0 || missing.length > 0;
+  const hasSkills = matchedSkills.length > 0 || missingSkills.length > 0;
+  const hasTips = tips.length > 0 || !!insight;
+  if (!hasKeywords && !hasSkills && !hasTips) return null;
+
+  return (
+    <Card className="border-border/60 shadow-none" data-testid="section-coverage-panel">
+      <CardContent className="p-0">
+        <Tabs defaultValue={hasKeywords ? "keywords" : hasSkills ? "skills" : "conseils"}>
+          <TabsList className="w-full rounded-none rounded-t-xl border-b border-border/60 bg-muted/30 h-9 gap-0 px-1">
+            {hasKeywords && <TabsTrigger value="keywords" className="text-xs h-7 px-3 flex-1">Mots-clés</TabsTrigger>}
+            {hasSkills && <TabsTrigger value="skills" className="text-xs h-7 px-3 flex-1">Skills</TabsTrigger>}
+            {hasTips && <TabsTrigger value="conseils" className="text-xs h-7 px-3 flex-1">Conseils</TabsTrigger>}
+          </TabsList>
+          {hasKeywords && (
+            <TabsContent value="keywords" className="p-4 mt-0">
+              <CriticalKeywordsCoverage covered={covered} missing={missing} injected={injected} />
+            </TabsContent>
+          )}
+          {hasSkills && (
+            <TabsContent value="skills" className="p-4 mt-0">
+              <SkillsCoverage matched={matchedSkills} missing={missingSkills} />
+            </TabsContent>
+          )}
+          {hasTips && (
+            <TabsContent value="conseils" className="p-4 mt-0">
+              <KeyTips tips={tips} insight={insight} />
+            </TabsContent>
+          )}
+        </Tabs>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Result() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
@@ -2203,6 +2257,7 @@ export default function Result() {
   const [exported, setExported] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState<string | null>(null);
+  const [actionsOpen, setActionsOpen] = useState(false);
 
   const displayText = repairMojibake(editedText ?? run?.outputCvText ?? "");
 
@@ -2398,25 +2453,34 @@ export default function Result() {
             </div>
           </div>
 
-          <Button
-            onClick={handleExportAnalysis}
-            variant="outline"
-            className="rounded-xl shadow-sm flex-shrink-0 hidden sm:flex"
-            data-testid="button-export-analysis-header"
-          >
-            {exported ? <Check className="w-4 h-4 mr-2 text-green-500" /> : <FileDown className="w-4 h-4 mr-2" />}
-            {exported ? "Pack IA pret" : "Exporter IA"}
-          </Button>
-
-          <Button
-            onClick={handleCopy}
-            variant="outline"
-            className="rounded-xl shadow-sm flex-shrink-0 hidden sm:flex"
-            data-testid="button-copy-header"
-          >
-            {copied ? <Check className="w-4 h-4 mr-2 text-green-500" /> : <Copy className="w-4 h-4 mr-2" />}
-            {copied ? "Copie !" : "Copier"}
-          </Button>
+          <div className="relative hidden sm:block flex-shrink-0" data-testid="header-actions-menu">
+            <Button
+              variant="outline"
+              className="rounded-xl shadow-sm px-3"
+              onClick={() => setActionsOpen(v => !v)}
+              aria-label="Actions"
+            >
+              <span className="text-base leading-none tracking-widest">···</span>
+            </Button>
+            {actionsOpen && (
+              <div className="absolute right-0 top-full mt-1 z-20 bg-background border border-border/60 rounded-xl shadow-lg py-1 min-w-[160px]" onMouseLeave={() => setActionsOpen(false)}>
+                <button
+                  onClick={() => { handleCopy(); setActionsOpen(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors"
+                >
+                  {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                  {copied ? "Copie !" : "Copier le CV"}
+                </button>
+                <button
+                  onClick={() => { handleExportAnalysis(); setActionsOpen(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors"
+                >
+                  {exported ? <Check className="w-4 h-4 text-green-500" /> : <FileDown className="w-4 h-4" />}
+                  {exported ? "Pack IA pret" : "Exporter IA"}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ MAIN GRID ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
@@ -2520,7 +2584,17 @@ export default function Result() {
           {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ RIGHT: Report Panel ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
           <div className="space-y-3" data-testid="section-report">
 
-            {/* 1. Match Score */}
+            {/* Sticky copy CTA */}
+            <Button
+              onClick={handleCopy}
+              className="w-full rounded-xl gap-2 shadow-sm shadow-primary/20 sticky top-4 z-10"
+              data-testid="button-copy-sticky"
+            >
+              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              {copied ? "Copie !" : "Copier le CV"}
+            </Button>
+
+            {/* Zone A — Hero score card */}
             {displayScore != null && (
               <MatchDiagnosisCard
                 score={displayScore}
@@ -2530,48 +2604,38 @@ export default function Result() {
               />
             )}
 
-            {/* 1b. Enrichment Coaching — contextual links to library */}
+            {/* Zone B — Tabbed coverage panel */}
+            <TabbedCoveragePanel
+              covered={report?.postRules?.keywordsCovered || []}
+              missing={report?.postRules?.keywordsMissing || []}
+              injected={report?.postRules?.injectedKeywords || []}
+              matchedSkills={report?.matchedSkills || []}
+              missingSkills={report?.missingSkills || []}
+              tips={report?.tips || []}
+              insight={keyInsight || undefined}
+            />
+
+            {/* Zone C — Accordions */}
+
+            {/* Enrichment Coaching accordion */}
             <EnrichmentCoaching
               report={report}
               selectedExperienceIds={run.selectedExperienceIds}
               jobTitle={report?.jobTitle}
             />
 
-            {/* 2. Critical Keywords Coverage */}
-            {(report?.postRules?.keywordsCovered?.length > 0 || report?.postRules?.keywordsMissing?.length > 0) && (
-              <CriticalKeywordsCoverage
-                covered={report.postRules.keywordsCovered || []}
-                missing={report.postRules.keywordsMissing || []}
-                injected={report.postRules.injectedKeywords || []}
-              />
-            )}
-
-            {/* 3. Skills Coverage */}
-            {(report?.matchedSkills || report?.missingSkills) && (
-              <SkillsCoverage
-                matched={report.matchedSkills || []}
-                missing={report.missingSkills || []}
-              />
-            )}
-
-            {/* Tips + Insight */}
-            <KeyTips
-              tips={report?.tips || []}
-              insight={keyInsight || undefined}
-            />
-
-            {/* Details Disclosure */}
-            <DetailsDisclosure report={report || {}} scoreBreakdown={report?.scoreBreakdown} />
-
-            {/* Library Health */}
-            <LibraryHealth
+            {/* Library Health accordion */}
+            <LibraryHealthAccordion
               selectedBullets={report?.selectedBullets || []}
               selectedExperiences={report?.selectedExperiences || []}
               totalBullets={report?.postRules?.totalBullets ?? 0}
               bulletsWithNumbers={report?.postRules?.bulletsWithNumbers ?? 0}
             />
 
-            {/* Application Tracker */}
+            {/* Debug & métriques accordion */}
+            <DetailsDisclosure report={report || {}} scoreBreakdown={report?.scoreBreakdown} />
+
+            {/* Suivi candidature accordion */}
             <ApplicationTrackerSafe runId={run.id} initialTracking={(run as any).tracking as AppTracking | null} />
 
           </div>
@@ -2607,23 +2671,6 @@ export default function Result() {
               </Button>
             </Link>
           </div>
-          <Button
-            onClick={handleExportAnalysis}
-            variant="outline"
-            className="rounded-xl gap-2 shadow-sm"
-            data-testid="button-export-analysis-footer"
-          >
-            {exported ? <Check className="w-4 h-4" /> : <FileDown className="w-4 h-4" />}
-            {exported ? "Pack IA pret" : "Exporter IA"}
-          </Button>
-          <Button
-            onClick={handleCopy}
-            className="rounded-xl gap-2 shadow-sm shadow-primary/20"
-            data-testid="button-copy-footer"
-          >
-            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            {copied ? "Copie !" : "Copier le CV"}
-          </Button>
         </div>
 
       </div>

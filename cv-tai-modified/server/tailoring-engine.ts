@@ -1736,17 +1736,18 @@ function applyAssessmentGuardrails(report: OptimizationReport, assessment: Gener
     hardWarnings: [...(assessment.hardWarnings || [])],
   };
   const evidenceCorpus = buildReportEvidenceCorpus(report);
+  // Only check title + parsed seniority — NOT responsibilities (which can mention "junior" in mentoring context,
+  // e.g. "mentor junior designers", creating a false positive for any senior-hiring role with mentoring duties)
   const senioritySignals = normalizeEvidenceText([
     report.jobTitle,
     report.jobSeniority,
-    ...(report.detectedKeywords.responsibilities || []),
   ].join(" "));
   const selectedScopeSignals = normalizeEvidenceText([
     ...report.selectedExperiences.map(exp => exp.title),
     ...report.selectedBullets.map(bullet => bullet.experienceTitle),
     evidenceCorpus,
   ].join(" "));
-  const juniorLikeRole = /\b(junior|stage|intern|internship|alternance|apprentice|entry level)\b/.test(senioritySignals);
+  const juniorLikeRole = /\b(junior|stage|intern|internship|alternance|apprentice|entry.?level)\b/.test(senioritySignals);
   const clearlySeniorProfile = /\b(senior|lead|head|staff|principal|manager|director)\b/.test(selectedScopeSignals);
   const missingEvidenceCount = report.postRules.evidenceKeywordsMissing.length;
   const atsBoost = report.scoreBreakdown.atsBoost ?? Math.max(0, (report.scoreBreakdown.atsOptimized ?? report.scoreBreakdown.ats) - report.scoreBreakdown.ats);
@@ -1757,6 +1758,13 @@ function applyAssessmentGuardrails(report: OptimizationReport, assessment: Gener
     adjusted.credibiliteCv = adjusted.recruiterCredibilityScore;
     adjusted.overstatementRisk = Math.max(adjusted.overstatementRisk, 72);
     adjusted.fitNiveau = "trop_junior";
+  }
+
+  // Safety net: if the LLM evaluator said "trop_junior" but the role is NOT actually junior/stage/intern
+  // (e.g. a "mid"-labeled role that still requires 5+ years), downgrade to "uncertain" to avoid a -18/ceiling-62 cliff.
+  // "trop_junior" penalty is reserved for roles that explicitly target juniors/interns/apprentices.
+  if (adjusted.fitNiveau === "trop_junior" && !juniorLikeRole) {
+    adjusted.fitNiveau = "uncertain";
   }
 
   if (requiresLeadScope(report)) {
@@ -1933,12 +1941,12 @@ function hasRealProductEvidence(bullets: OptimizationReport["selectedBullets"], 
 
 function buildHardWarnings(report: OptimizationReport, assessment: GeneratedCvAssessment, renderedCvText?: string, jobText?: string): HardWarningCode[] {
   const warnings: HardWarningCode[] = [];
+  // Only check title + parsed seniority — NOT responsibilities (same false-positive risk as in applyAssessmentGuardrails)
   const senioritySignals = normalizeEvidenceText([
     report.jobTitle,
     report.jobSeniority,
-    ...(report.detectedKeywords.responsibilities || []),
   ].join(" "));
-  const juniorLikeRole = /\b(junior|stage|intern|internship|alternance|apprentice|entry level)\b/.test(senioritySignals);
+  const juniorLikeRole = /\b(junior|stage|intern|internship|alternance|apprentice|entry.?level)\b/.test(senioritySignals);
   const nicheUnderproven =
     inferNicheDomainRequirement(report)
     && assessment.distanceDomain === "same"
@@ -1952,29 +1960,32 @@ function buildHardWarnings(report: OptimizationReport, assessment: GeneratedCvAs
   if (nicheUnderproven) warnings.push("niche_domain_underproven");
   if (integrityScore < 98) warnings.push("text_integrity_issue");
 
-  // Concept factory: only warn if CV has real-product evidence
-  // A concept-heavy profile applying to a concept lab is fine — no penalty
+  // Concept factory: only warn if CV has real-product evidence AND domain matches
+  // If domain is already "different", the mismatch is already captured — no need to pile on
   if (
     report.productMaturity === "concept_prototype" &&
+    assessment.distanceDomain !== "different" &&
     hasRealProductEvidence(report.selectedBullets, assessment.evidenceGrounding)
   ) {
     warnings.push("concept_factory_mismatch");
   }
 
-  // Scope too simple: only warn if CV shows complex-system evidence
-  // SMB tools are a fine fit for someone with simple-tools background
+  // Scope too simple: only warn if CV shows complex-system evidence AND domain matches
+  // If domain is already "different", the mismatch is already captured — no need to pile on
   if (
     report.complexityLevel === "simple_tools" &&
+    assessment.distanceDomain !== "different" &&
     hasComplexSystemEvidence(report.selectedBullets)
   ) {
     warnings.push("scope_too_simple");
   }
 
-  // Support-only scope: only warn if CV shows ownership/lead evidence
-  // Iterating is fine for a contributor-level profile
+  // Support-only scope: only warn if CV shows ownership/lead evidence AND domain matches
+  // If domain is already "different", the mismatch is already captured — no need to pile on
   const evidenceCorpusLocal = buildReportEvidenceCorpus(report);
   if (
     report.ownershipLevel === "support" &&
+    assessment.distanceDomain !== "different" &&
     countPatternGroups(evidenceCorpusLocal, LEAD_SCOPE_EVIDENCE_GROUPS) >= 2
   ) {
     warnings.push("scope_support_fragmented");
