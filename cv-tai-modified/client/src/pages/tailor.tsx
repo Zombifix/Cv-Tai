@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   AlertTriangle,
+  ArrowRight,
   CheckCircle2,
   ChevronDown,
   FileText,
@@ -177,6 +178,28 @@ export default function Tailor() {
           title: "Fidele",
           description: "Selectionne et agence tes bullets tels quels, sans reecriture.",
         };
+
+  // #region agent log
+  fetch("http://127.0.0.1:7297/ingest/a5304bcd-7823-4ec6-ac0b-4a69ddc533f3", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "77058f" },
+    body: JSON.stringify({
+      sessionId: "77058f",
+      runId: "pre-fix",
+      hypothesisId: "H1_H2_H4",
+      location: "client/src/pages/tailor.tsx:before-return",
+      message: "Tailor render reached before JSX return",
+      data: {
+        hasAnnouncement,
+        mode,
+        isBusy,
+        urlLength: url.length,
+        textLength: text.length,
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
 
   const handleUrlChange = (value: string) => {
     const { url: normalized, converted } = normalizeLinkedInUrl(value);
