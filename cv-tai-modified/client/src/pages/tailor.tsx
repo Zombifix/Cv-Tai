@@ -19,8 +19,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   AlertTriangle,
-  ArrowRight,
   CheckCircle2,
+  ChevronDown,
   FileText,
   Info,
   Link as LinkIcon,

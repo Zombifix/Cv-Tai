@@ -104,8 +104,8 @@ export default function Library() {
 
   return (
     <Layout>
-      <div className="flex flex-col gap-8 max-w-4xl">
-        <div className="space-y-2 mt-1">
+      <div className="flex flex-col gap-10 max-w-4xl">
+        <div className="space-y-2 mt-2">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Super CV</p>
           <div className="space-y-1">
             <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Bibliotheque source</h1>
@@ -114,7 +114,7 @@ export default function Library() {
         </div>
 
         {/* ── PROFILE HEADER ── */}
-        <Card className="border border-border/70 shadow-sm">
+        <Card className="border border-border">
           <CardContent className="p-5">
           {editingProfile ? (
             <div className="space-y-3 animate-in fade-in-50">
@@ -127,22 +127,14 @@ export default function Library() {
               <Button size="sm" onClick={handleSaveProfile}>Valider</Button>
             </div>
           ) : (
-            <div className="group">
+            <div className="cursor-pointer group" onClick={() => setEditingProfile(true)}>
               <div className="flex items-start justify-between">
                 <div>
                   <h2 className="text-2xl font-bold tracking-tight">{profile.name || "Votre nom"}</h2>
                   <p className="text-base text-muted-foreground mt-0.5">{profile.title || "Votre poste"}</p>
                   {profile.summary && <p className="text-sm text-muted-foreground/70 mt-1">{profile.summary}</p>}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-                  onClick={() => setEditingProfile(true)}
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                  Modifier
-                </Button>
+                <Pencil className="w-4 h-4 text-muted-foreground opacity-50 group-hover:opacity-100 transition-opacity mt-1" />
               </div>
             </div>
           )}
@@ -156,7 +148,7 @@ export default function Library() {
         <SkillsSection />
 
         {/* ── FORMATIONS + LANGUAGES — side by side ── */}
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <div className="grid grid-cols-2 gap-6">
           <FormationsSection />
           <LanguagesSection />
         </div>
@@ -236,13 +228,10 @@ function ExperiencesSection({ enrichmentContext }: { enrichmentContext?: Enrichm
         </div>
       ) : null}
 
-      <div className="flex justify-between items-end gap-4">
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Briefcase className="w-4 h-4 text-primary" /> Experiences
-          </h2>
-          <p className="text-sm text-muted-foreground">Structure tes experiences et bullets pour un tailoring plus fiable.</p>
-        </div>
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-bold flex items-center gap-2">
+          <Briefcase className="w-5 h-5 text-primary" /> Experiences
+        </h2>
         <div className="flex gap-2">
           <CVImportDialog open={importOpen} onOpenChange={setImportOpen} />
           <ExperienceDialog open={editOpen} onOpenChange={setEditOpen} experience={editingExp} onClose={() => setEditingExp(null)} />
@@ -311,9 +300,27 @@ function ExperienceAccordionItem({ experience, onEdit, onOpenPanel }: {
     return warnings;
   }
 
+  const cardRef = useRef<HTMLDivElement>(null);
+  const btnsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const card = cardRef.current;
+    const btns = btnsRef.current;
+    if (!card || !btns) return;
+    btns.style.visibility = "hidden";
+    const show = () => { btns.style.visibility = "visible"; };
+    const hide = () => { btns.style.visibility = "hidden"; };
+    card.addEventListener("mouseenter", show);
+    card.addEventListener("mouseleave", hide);
+    return () => {
+      card.removeEventListener("mouseenter", show);
+      card.removeEventListener("mouseleave", hide);
+    };
+  }, []);
+
   return (
-    <div className="group">
-    <AccordionItem value={experience.id} className="bg-card border border-border/70 rounded-xl shadow-sm overflow-hidden">
+    <div ref={cardRef}>
+    <AccordionItem value={experience.id} className="bg-card border rounded-xl shadow-sm overflow-hidden">
       <div className="flex items-center pr-4">
         <AccordionTrigger className="flex-1 hover:no-underline py-5 px-5 data-[state=open]:border-b data-[state=open]:border-border/50 [&>svg]:hidden">
           <div className="flex items-start gap-3 w-full">
@@ -340,7 +347,7 @@ function ExperienceAccordionItem({ experience, onEdit, onOpenPanel }: {
             </div>
           </div>
         </AccordionTrigger>
-        <div className="flex items-center gap-1 ml-auto pl-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity">
+        <div ref={btnsRef} className="flex items-center gap-1 ml-auto pl-3">
           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={onEdit}>
             <Pencil className="w-4 h-4" />
           </Button>
@@ -365,7 +372,7 @@ function ExperienceAccordionItem({ experience, onEdit, onOpenPanel }: {
               <div
                 key={bullet.id}
                 onClick={() => onOpenPanel(bullet.id)}
-                className={`rounded-lg p-4 border transition-colors cursor-pointer hover:border-primary/30 ${warnings.length > 0 ? "border-amber-200 dark:border-amber-800/30 bg-amber-50/20 dark:bg-amber-950/10" : "border-border/40 bg-background/70"}`}
+                className={`rounded-lg p-4 border transition-colors cursor-pointer hover:border-primary/30 ${warnings.length > 0 ? "border-amber-200 dark:border-amber-800/30" : "border-border/30"}`}
               >
                 {/* Tags */}
                 {bullet.tags && bullet.tags.length > 0 && (
@@ -593,7 +600,7 @@ function EnrichmentPanel({ experience, initialBulletId, missingKeywords, jobTitl
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <SheetHeader className="p-6 pb-5 border-b border-border/50 bg-background/80 space-y-1.5">
+      <SheetHeader className="p-6 pb-5 border-b border-border/50 space-y-1">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Building className="w-3.5 h-3.5" /> {experience.company}
           {experience.startDate && (
@@ -604,7 +611,7 @@ function EnrichmentPanel({ experience, initialBulletId, missingKeywords, jobTitl
             </>
           )}
         </div>
-        <SheetTitle className="text-lg font-semibold tracking-tight">{experience.title}</SheetTitle>
+        <SheetTitle className="text-lg font-bold">{experience.title}</SheetTitle>
         <Badge variant="outline" className="text-xs w-fit">{bulletCount}/{MAX_BULLETS} bullets</Badge>
       </SheetHeader>
 
@@ -674,12 +681,12 @@ function EnrichmentPanel({ experience, initialBulletId, missingKeywords, jobTitl
 
       {/* ── LIST ── */}
       {step === "list" && (
-        <div className="flex-1 overflow-y-auto p-6 space-y-3.5">
+        <div className="flex-1 overflow-y-auto p-6 space-y-3">
           {bullets?.map((b: any) => {
             const warnings = quickCheck(b.text, b.tags || []);
             return (
               <div key={b.id} onClick={() => openEdit(b.id, b.text, b.tags || [])}
-                className={`p-4 rounded-lg border transition-colors cursor-pointer hover:border-primary/30 ${warnings.length > 0 ? "border-amber-200 dark:border-amber-800/30 bg-amber-50/20 dark:bg-amber-950/10" : "border-green-200 dark:border-green-800/30 bg-green-50/20 dark:bg-green-950/10"}`}>
+                className={`p-4 rounded-lg border transition-colors cursor-pointer hover:border-primary/30 ${warnings.length > 0 ? "border-amber-200 dark:border-amber-800/30" : "border-green-200 dark:border-green-800/30"}`}>
                 {/* Tags */}
                 {b.tags?.length > 0 && (
                   <div className="flex gap-1.5 flex-wrap mb-2">
@@ -862,16 +869,16 @@ function EnrichmentPanel({ experience, initialBulletId, missingKeywords, jobTitl
                 <RefreshCw className="w-4 h-4 animate-spin" /> Analyse...
               </div>
             )}
-            <Button onClick={handleSave} disabled={!charValid || createBullet.isPending} className="w-full h-10">
-              <Check className="w-4 h-4 mr-2" /> {editId ? "Enregistrer" : "Ajouter"}
-            </Button>
             <div className="flex gap-2">
+              <Button onClick={handleSave} disabled={!charValid || createBullet.isPending} className="flex-1 h-10">
+                <Check className="w-4 h-4 mr-2" /> {editId ? "Enregistrer" : "Ajouter"}
+              </Button>
               {editEval && !processing && (
                 <Button variant="outline" onClick={handleEvaluate} className="h-10 px-3" title="Re-evaluer">
                   <RefreshCw className="w-4 h-4" />
                 </Button>
               )}
-              <Button variant="outline" onClick={() => setStep(bulletCount > 0 ? "list" : gaps.length > 0 ? "gaps" : axes.length > 0 ? "axes" : "list")} className="flex-1 h-10">
+              <Button variant="outline" onClick={() => setStep(bulletCount > 0 ? "list" : gaps.length > 0 ? "gaps" : axes.length > 0 ? "axes" : "list")} className="h-10">
                 Retour
               </Button>
             </div>
@@ -948,7 +955,7 @@ function ExperienceDialog({ open, onOpenChange, experience, onClose }: any) {
   return (
     <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); if (!val) onClose(); }}>
       <DialogTrigger asChild>
-        {!experience && <Button variant="outline"><Plus className="w-4 h-4 mr-2" /> Ajouter une experience</Button>}
+        {!experience && <Button><Plus className="w-4 h-4 mr-2" /> Add Experience</Button>}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader><DialogTitle>{experience ? "Modifier" : "Ajouter une experience"}</DialogTitle></DialogHeader>
@@ -1087,11 +1094,8 @@ function SkillsSection() {
 
   return (
     <div>
-      <div className="flex justify-between items-end mb-4 gap-4">
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold flex items-center gap-2"><Zap className="w-4 h-4 text-primary" /> Competences</h2>
-          <p className="text-sm text-muted-foreground">Garde uniquement les competences utiles pour tes candidatures cibles.</p>
-        </div>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2"><Zap className="w-3.5 h-3.5" /> Competences</h2>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleExtract} disabled={extracting || atLimit} className="gap-2 h-8 text-xs">
             {extracting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
@@ -1129,9 +1133,9 @@ function SkillsSection() {
       </div>
 
       {/* Skills grouped by category — 2 columns */}
-      <div className="bg-card border border-border/70 rounded-xl p-5 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+      <div className="bg-card border rounded-xl p-5 shadow-sm grid grid-cols-2 gap-x-8 gap-y-4">
         {Object.keys(grouped).length === 0 ? (
-          <div className="text-center py-6 text-muted-foreground md:col-span-2">
+          <div className="text-center py-6 text-muted-foreground col-span-2">
             <p className="text-sm">Aucune competence.</p>
             <p className="text-xs mt-1">Cliquez "Extraire auto" pour detecter vos competences.</p>
           </div>
@@ -1391,9 +1395,9 @@ function FormationsSection() {
 
   return (
     <div>
-      <div className="flex justify-between items-end mb-4 gap-4">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <GraduationCap className="w-4 h-4 text-primary" /> Formation
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+          <GraduationCap className="w-3.5 h-3.5" /> Formation
         </h2>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
@@ -1480,9 +1484,9 @@ function LanguagesSection() {
 
   return (
     <div>
-      <div className="flex justify-between items-end mb-4 gap-4">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <Globe className="w-4 h-4 text-primary" /> Langues
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+          <Globe className="w-3.5 h-3.5" /> Langues
         </h2>
         <Dialog open={addOpen} onOpenChange={(val) => { setAddOpen(val); if (!val) { setName(""); setLevel(""); } }}>
           <DialogTrigger asChild>
