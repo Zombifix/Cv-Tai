@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,15 +19,11 @@ import {
 import {
   AlertTriangle,
   ArrowRight,
-  CheckCircle2,
-  ChevronDown,
   FileText,
   Info,
   Link as LinkIcon,
   RefreshCw,
-  SlidersHorizontal,
   Sparkles,
-  Target,
   WandSparkles,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -61,6 +56,7 @@ function getUrlWarning(url: string): string | null {
 }
 
 type Mode = "fidele" | "optimise";
+type InputMode = "lien" | "texte";
 type PrecheckVerdict = "go" | "prudence" | "faible_chance";
 
 function getPrecheckVerdictMeta(verdict?: PrecheckVerdict) {
@@ -116,6 +112,7 @@ export default function Tailor() {
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
   const [mode, setMode] = useState<Mode>("optimise");
+  const [inputMode, setInputMode] = useState<InputMode>("lien");
   const [urlConverted, setUrlConverted] = useState(false);
   const [introMaxChars, setIntroMaxChars] = useState("");
   const [bodyMaxChars, setBodyMaxChars] = useState("");
@@ -136,13 +133,7 @@ export default function Tailor() {
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(
-        TAILOR_PREFS_KEY,
-        JSON.stringify({
-          introMaxChars,
-          bodyMaxChars,
-        }),
-      );
+      window.localStorage.setItem(TAILOR_PREFS_KEY, JSON.stringify({ introMaxChars, bodyMaxChars }));
     } catch {}
   }, [introMaxChars, bodyMaxChars]);
 
@@ -156,9 +147,13 @@ export default function Tailor() {
           const { url: normalized, converted } = normalizeLinkedInUrl(prefillUrl);
           setUrl(normalized);
           setUrlConverted(converted);
+          setInputMode("lien");
         } else if (prefillText) {
           const cleaned = prefillText.replace(/^Mock extracted description for .*/gm, "").trim();
-          if (cleaned) setText(cleaned);
+          if (cleaned) {
+            setText(cleaned);
+            setInputMode("texte");
+          }
         }
       }
     } catch {}
@@ -168,38 +163,6 @@ export default function Tailor() {
   const hasAnnouncement = Boolean(url.trim() || text.trim());
   const isBusy = checkMatch.isPending || generate.isPending;
   const pendingVerdictMeta = getPrecheckVerdictMeta(pendingConfirm?.verdict);
-  const selectedMode =
-    mode === "optimise"
-      ? {
-          title: "Optimise",
-          description: "Reformule legerement pour mieux coller a l'annonce sans changer le fond.",
-        }
-      : {
-          title: "Fidele",
-          description: "Selectionne et agence tes bullets tels quels, sans reecriture.",
-        };
-
-  // #region agent log
-  fetch("http://127.0.0.1:7297/ingest/a5304bcd-7823-4ec6-ac0b-4a69ddc533f3", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "77058f" },
-    body: JSON.stringify({
-      sessionId: "77058f",
-      runId: "pre-fix",
-      hypothesisId: "H1_H2_H4",
-      location: "client/src/pages/tailor.tsx:before-return",
-      message: "Tailor render reached before JSX return",
-      data: {
-        hasAnnouncement,
-        mode,
-        isBusy,
-        urlLength: url.length,
-        textLength: text.length,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
 
   const handleUrlChange = (value: string) => {
     const { url: normalized, converted } = normalizeLinkedInUrl(value);
@@ -231,11 +194,7 @@ export default function Tailor() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url && !text) {
-      toast({
-        title: "Champ requis",
-        description: "Colle une URL ou le texte de l'annonce.",
-        variant: "destructive",
-      });
+      toast({ title: "Champ requis", description: "Colle une URL ou le texte de l'annonce.", variant: "destructive" });
       return;
     }
 
@@ -276,157 +235,282 @@ export default function Tailor() {
     <>
       <Layout>
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 animate-in slide-in-from-bottom-4 duration-500">
-          <section className="space-y-4">
+          {/* Page header */}
+          <section className="space-y-2">
             <div className="inline-flex w-fit items-center gap-2 rounded-full border border-border/70 bg-background/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               <WandSparkles className="h-3.5 w-3.5 text-primary" />
               Tailoring
             </div>
-
-            <div className="max-w-3xl space-y-3">
-              <h1 className="text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl">
-                Genere vite un CV cible
-              </h1>
-              <p className="text-base text-muted-foreground sm:text-lg">
-                Colle une annonce, choisis le niveau d'optimisation, puis lance. Le moteur part de ton Super CV pour sortir un document
-                directement exploitable.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2 text-xs">
-              <span className="rounded-full border border-border/70 bg-background/70 px-3 py-1.5 text-muted-foreground">
-                URL ou texte brut
-              </span>
-              <span className="rounded-full border border-border/70 bg-background/70 px-3 py-1.5 text-muted-foreground">
-                Pre-check prudent avant generation
-              </span>
-              <span className="rounded-full border border-primary/20 bg-primary/8 px-3 py-1.5 text-primary">
-                Ton Super CV reste la source
-              </span>
-            </div>
+            <h1 className="text-4xl font-extrabold tracking-tight text-foreground">
+              Adapter ton CV à une offre
+            </h1>
+            <p className="text-base text-muted-foreground">
+              Colle une offre pour extraire les attentes clés et ajuster ton CV.
+            </p>
           </section>
 
-          <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="space-y-5">
-              <section className="overflow-hidden rounded-[28px] border border-border/70 bg-card/75 shadow-sm">
-                <div className="border-b border-border/60 bg-muted/20 px-5 py-4 md:px-7">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Annonce cible</p>
-                      <h2 className="text-xl font-semibold text-foreground">Colle la source la plus propre possible</h2>
-                    </div>
-                    <div className="inline-flex items-center gap-2 rounded-full bg-primary/8 px-3 py-1 text-xs font-medium text-primary">
-                      <Target className="h-3.5 w-3.5" />
-                      Meme base que celle affichee dans le resultat
+          <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+            {/* Left column */}
+            <div className="space-y-4">
+              {/* ANNONCE CIBLE card */}
+              <section className="overflow-hidden rounded-[20px] border border-border/70 bg-card shadow-sm">
+                <div className="border-b border-border/60 bg-muted/10 px-6 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      Annonce cible
+                    </p>
+                    <div className="flex items-center gap-1.5 text-xs text-primary">
+                      <Info className="h-3.5 w-3.5" />
+                      <span>Plus l'offre est précise, plus l'analyse est fiable</span>
                     </div>
                   </div>
+                  <h2 className="mt-1 text-xl font-semibold text-foreground">
+                    Colle l'offre complète ou un extrait
+                  </h2>
                 </div>
 
-                <div className="space-y-6 px-5 py-5 md:px-7 md:py-7">
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <Label className="text-sm font-semibold">URL de l'annonce</Label>
-                      <p className="text-xs text-muted-foreground">Pratique si le site se laisse scraper. Sinon, colle directement le texte juste en dessous.</p>
+                <div className="px-6 py-5 space-y-4">
+                  {/* Sub-header with toggle */}
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-foreground text-sm">Ajoute une offre</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Colle un lien ou du texte pour servir de base à l'adaptation.
+                      </p>
                     </div>
-
-                    <div className="relative">
-                      <LinkIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="https://linkedin.com/jobs/view/..."
-                        className="h-12 rounded-2xl border-border/70 bg-background pl-10 text-sm"
-                        value={url}
-                        onChange={(e) => handleUrlChange(e.target.value)}
-                      />
+                    {/* Lien / Texte toggle */}
+                    <div className="flex items-center gap-2 rounded-full border border-border/70 bg-muted/30 p-1">
+                      <button
+                        type="button"
+                        onClick={() => setInputMode("lien")}
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                          inputMode === "lien"
+                            ? "bg-background text-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Lien
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setInputMode("texte")}
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                          inputMode === "texte"
+                            ? "bg-background text-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Texte
+                      </button>
                     </div>
-
-                    {urlWarning && (
-                      <div className="flex items-start gap-2 rounded-2xl border border-amber-300/70 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/20 dark:text-amber-300">
-                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                        <span>{urlWarning}</span>
-                      </div>
-                    )}
-
-                    {urlConverted && !urlWarning && (
-                      <div className="flex items-start gap-2 rounded-2xl border border-primary/20 bg-primary/6 p-3 text-xs text-primary">
-                        <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                        <span>URL LinkedIn convertie automatiquement pour tenter une recuperation plus stable.</span>
-                      </div>
-                    )}
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <div className="h-px flex-1 bg-border/70" />
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Ou</span>
-                    <div className="h-px flex-1 bg-border/70" />
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <Label className="text-sm font-semibold">Texte de l'annonce</Label>
-                      <p className="text-xs text-muted-foreground">Le plus fiable pour aller vite quand une page bloque le scraping ou est trop bruitee.</p>
+                  {/* URL input */}
+                  {inputMode === "lien" && (
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <LinkIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Colle un lien vers l'annonce LinkedIn, Welcome to the Jungle, etc..."
+                          className="h-12 rounded-2xl border-border/70 bg-background pl-10 text-sm"
+                          value={url}
+                          onChange={(e) => handleUrlChange(e.target.value)}
+                        />
+                      </div>
+                      {urlWarning && (
+                        <div className="flex items-start gap-2 rounded-2xl border border-amber-300/70 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/20 dark:text-amber-300">
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                          <span>{urlWarning}</span>
+                        </div>
+                      )}
+                      {urlConverted && !urlWarning && (
+                        <div className="flex items-start gap-2 rounded-2xl border border-primary/20 bg-primary/6 p-3 text-xs text-primary">
+                          <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                          <span>URL LinkedIn convertie automatiquement pour tenter une recuperation plus stable.</span>
+                        </div>
+                      )}
+                      {scrapeFailReason && (
+                        <div className="flex items-start gap-2 rounded-2xl border border-amber-300/70 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/20 dark:text-amber-300">
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                          <span>{scrapeFailReason} Colle le texte pour continuer.</span>
+                        </div>
+                      )}
                     </div>
+                  )}
 
-                    {scrapeFailReason && (
-                      <div className="flex items-start gap-2 rounded-2xl border border-amber-300/70 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/20 dark:text-amber-300">
-                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                        <span>{scrapeFailReason} Colle le texte ici pour continuer.</span>
-                      </div>
-                    )}
-
-                    {!scrapeFailReason && scrapeNotice && (
-                      <div className="flex items-start gap-2 rounded-2xl border border-amber-300/70 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/20 dark:text-amber-300">
-                        <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                        <span>{scrapeNotice}</span>
-                      </div>
-                    )}
-
-                    <div className="relative">
-                      <FileText className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  {/* Text input */}
+                  {inputMode === "texte" && (
+                    <div className="space-y-2">
+                      {scrapeNotice && (
+                        <div className="flex items-start gap-2 rounded-2xl border border-amber-300/70 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/20 dark:text-amber-300">
+                          <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                          <span>{scrapeNotice}</span>
+                        </div>
+                      )}
                       <Textarea
                         placeholder="Colle le texte brut de l'annonce ici..."
-                        className="min-h-[280px] rounded-[24px] border-border/70 bg-background pl-10 pt-3 text-sm leading-6"
+                        className="min-h-[200px] rounded-[20px] border-border/70 bg-background text-sm leading-6"
                         value={text}
                         onChange={(e) => {
                           setText(e.target.value);
-                          if (e.target.value) {
-                            setScrapeFailReason(null);
-                            setScrapeNotice(null);
-                          }
+                          if (e.target.value) setScrapeNotice(null);
                         }}
                       />
                     </div>
-                  </div>
+                  )}
                 </div>
               </section>
+
+              {/* RÉGLAGES + Mode row */}
+              <div className="grid gap-4 md:grid-cols-2">
+                {/* RÉGLAGES card */}
+                <section className="rounded-[20px] border border-border/70 bg-card p-5 shadow-sm">
+                  <div className="space-y-0.5">
+                    <p className="font-semibold text-foreground text-sm">
+                      <span className="font-bold">RÉGLAGES</span>{" "}
+                      <span className="font-normal text-muted-foreground">(optionnel)</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Laisse vide pour un résultat automatique.
+                    </p>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Intro (longueur)</Label>
+                      <Input
+                        type="number"
+                        placeholder="Ex: 300"
+                        value={introMaxChars}
+                        onChange={(e) => setIntroMaxChars(e.target.value)}
+                        className="h-10 rounded-xl text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Expériences (longueur)</Label>
+                      <Input
+                        type="number"
+                        placeholder="Ex: 3400"
+                        value={bodyMaxChars}
+                        onChange={(e) => setBodyMaxChars(e.target.value)}
+                        className="h-10 rounded-xl text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Contexte additionnel</Label>
+                    <Textarea
+                      placeholder="Ex : Le recruteur cherche surtout quelqu'un capable de structurer les pratiques design dans une equipe produit deja mature."
+                      className="min-h-[120px] rounded-[16px] border-border/70 bg-background text-sm leading-6"
+                      value={extraContext}
+                      onChange={(e) => setExtraContext(e.target.value)}
+                      maxLength={1000}
+                    />
+                  </div>
+                </section>
+
+                {/* Mode card */}
+                <section className="rounded-[20px] border border-border/70 bg-card p-5 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    <p className="font-semibold text-foreground text-sm">Mode</p>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Choisis comment le CV est retravaillé.
+                  </p>
+
+                  <div className="mt-4 space-y-3">
+                    {/* Fidele */}
+                    <button
+                      type="button"
+                      onClick={() => setMode("fidele")}
+                      className={`w-full text-left rounded-[16px] border p-4 transition-all ${
+                        mode === "fidele"
+                          ? "border-primary bg-primary/6"
+                          : "border-border/70 bg-background hover:border-primary/30"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <FileText className={`h-4 w-4 ${mode === "fidele" ? "text-primary" : "text-muted-foreground"}`} />
+                          <span className="font-medium text-foreground text-sm">Fidele</span>
+                        </div>
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                          BRUT
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground leading-5">
+                        Idéal pour voir la sélection brute, sans modification.
+                      </p>
+                    </button>
+
+                    {/* Optimise */}
+                    <button
+                      type="button"
+                      onClick={() => setMode("optimise")}
+                      className={`w-full text-left rounded-[16px] border p-4 transition-all ${
+                        mode === "optimise"
+                          ? "border-primary bg-primary/6"
+                          : "border-border/70 bg-background hover:border-primary/30"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className={`h-4 w-4 ${mode === "optimise" ? "text-primary" : "text-muted-foreground"}`} />
+                          <span className="font-medium text-foreground text-sm">Optimise</span>
+                        </div>
+                        <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary-foreground">
+                          RECOMMANDE
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground leading-5">
+                        Le meilleur mode pour candidater vite, sans changer le fond.
+                      </p>
+                    </button>
+                  </div>
+                </section>
+              </div>
             </div>
 
+            {/* Right sidebar — FAST LANE */}
             <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
-              <section className="rounded-[28px] border border-primary/20 bg-gradient-to-b from-primary/[0.08] via-background to-background p-5 shadow-sm">
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Fast lane</p>
-                  <h2 className="text-xl font-semibold text-foreground">Lancer le tailoring</h2>
-                  <p className="text-sm text-muted-foreground">Une fois l'annonce collee, tout part d'ici.</p>
-                </div>
+              <section className="rounded-[20px] border border-primary/20 bg-gradient-to-b from-primary/[0.08] via-background to-background p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Fast lane
+                </p>
+                <h2 className="mt-1 text-xl font-semibold text-foreground">Lancer le tailoring</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Une fois l'annonce collée, tout part d'ici.
+                </p>
 
-                <div className="mt-5 space-y-3 rounded-[22px] border border-border/60 bg-background/85 p-4">
-                  <div className="flex items-center justify-between gap-3 text-sm">
+                <div className="mt-5 space-y-3 rounded-[16px] border border-border/60 bg-background/85 p-4">
+                  <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Mode</span>
-                    <span className="font-medium text-foreground">{selectedMode.title}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 text-sm">
-                    <span className="text-muted-foreground">Annonce</span>
-                    <span className={`font-medium ${hasAnnouncement ? "text-foreground" : "text-muted-foreground"}`}>
-                      {hasAnnouncement ? "Renseignee" : "A remplir"}
+                    <span className="font-semibold text-foreground">
+                      {mode === "optimise" ? "Optimisé" : "Fidele"}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between gap-3 text-sm">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Annonce</span>
+                    <span className={`font-semibold ${hasAnnouncement ? "text-foreground" : "text-muted-foreground"}`}>
+                      {hasAnnouncement ? "Renseignée" : "À ajouter"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Limites</span>
-                    <span className="font-medium text-foreground">
-                      {introMaxChars || bodyMaxChars ? "Personnalisees" : "Auto"}
+                    <span className="font-semibold text-foreground">
+                      {introMaxChars || bodyMaxChars ? "Personnalisées" : "Auto"}
                     </span>
                   </div>
                 </div>
 
-                <Button type="submit" size="lg" className="mt-5 h-12 w-full rounded-2xl text-base shadow-lg shadow-primary/20" disabled={isBusy}>
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="mt-5 h-12 w-full rounded-2xl text-base font-semibold shadow-lg shadow-primary/20"
+                  disabled={isBusy}
+                >
                   {checkMatch.isPending ? (
                     <>
                       <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
@@ -444,156 +528,33 @@ export default function Tailor() {
                     </>
                   )}
                 </Button>
-
-                <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                  Pre-check prudent avant generation complete. Si l'optimisation n'apporte rien, le moteur garde silencieusement la version la plus solide.
-                </p>
               </section>
 
-              {checkMatch.data?.jobProfileAssessment && (() => {
-                const jpa = checkMatch.data.jobProfileAssessment;
-                const verdictMeta = {
-                  worth_applying: { label: "Dans ta zone", icon: "✓", className: "border-green-300/70 bg-green-50 dark:border-green-700/50 dark:bg-green-950/20", textColor: "text-green-700 dark:text-green-400" },
-                  possible_but_niche: { label: "Zone adjacente", icon: "~", className: "border-amber-300/70 bg-amber-50 dark:border-amber-700/50 dark:bg-amber-950/20", textColor: "text-amber-700 dark:text-amber-400" },
-                  likely_overreach: { label: "Hors zone habituelle", icon: "!", className: "border-red-300/70 bg-red-50 dark:border-red-700/50 dark:bg-red-950/20", textColor: "text-red-700 dark:text-red-400" },
-                }[jpa.verdict];
-                return (
-                  <section className={`rounded-[28px] border p-5 shadow-sm ${verdictMeta.className}`}>
-                    <div className="flex items-center justify-between gap-2 mb-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Ton profil vs l'offre</p>
-                      <span className={`text-xs font-bold ${verdictMeta.textColor}`}>{jpa.zoneScore}% couvert</span>
-                    </div>
-                    <p className={`text-sm font-semibold ${verdictMeta.textColor}`}>{verdictMeta.label}</p>
-                    {jpa.signals.length > 0 && (
-                      <ul className="mt-2 space-y-1">
-                        {jpa.signals.map((signal, i) => (
-                          <li key={i} className="flex items-start gap-1.5 text-[11px] text-muted-foreground leading-relaxed">
-                            <span className="mt-0.5 flex-shrink-0">{verdictMeta.icon}</span>
-                            {signal}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <p className="mt-2 text-[10px] text-muted-foreground">Signal indicatif — le jugement final reste le CV genere.</p>
-                  </section>
-                );
-              })()}
-
-              <section className="rounded-[28px] border border-border/70 bg-card/75 p-5 shadow-sm">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 text-foreground">
-                    <SlidersHorizontal className="h-4 w-4 text-primary" />
-                    <h3 className="font-semibold">Mode</h3>
-                  </div>
-                  <p className="text-xs leading-5 text-muted-foreground">{selectedMode.description}</p>
-                </div>
-
-                <RadioGroup value={mode} onValueChange={(value) => setMode(value as Mode)} className="mt-4 space-y-3">
-                  <Label
-                    htmlFor="mode-fidele"
-                    className={`flex cursor-pointer flex-col gap-2 rounded-[22px] border p-4 transition-colors ${
-                      mode === "fidele" ? "border-primary bg-primary/6" : "border-border/70 bg-background hover:border-primary/30"
-                    }`}
-                  >
-                    <RadioGroupItem value="fidele" id="mode-fidele" className="sr-only" />
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <FileText className={`h-4 w-4 ${mode === "fidele" ? "text-primary" : "text-muted-foreground"}`} />
-                        <span className="font-medium text-foreground">Fidele</span>
-                      </div>
-                      <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Brut</span>
-                    </div>
-                    <span className="text-xs leading-5 text-muted-foreground">Ideal pour juger la selection brute de la library, sans reecriture.</span>
-                  </Label>
-
-                  <Label
-                    htmlFor="mode-optimise"
-                    className={`flex cursor-pointer flex-col gap-2 rounded-[22px] border p-4 transition-colors ${
-                      mode === "optimise" ? "border-primary bg-primary/6" : "border-border/70 bg-background hover:border-primary/30"
-                    }`}
-                  >
-                    <RadioGroupItem value="optimise" id="mode-optimise" className="sr-only" />
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className={`h-4 w-4 ${mode === "optimise" ? "text-primary" : "text-muted-foreground"}`} />
-                        <span className="font-medium text-foreground">Optimise</span>
-                      </div>
-                      <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary-foreground">
-                        Recommande
-                      </span>
-                    </div>
-                    <span className="text-xs leading-5 text-muted-foreground">Le meilleur mode pour candidater vite quand le fond est deja bon.</span>
-                  </Label>
-                </RadioGroup>
-              </section>
-
-              <section className="rounded-[28px] border border-border/70 bg-card/75 p-5 shadow-sm">
-                <div className="space-y-1">
-                  <h3 className="font-semibold text-foreground">Reglages rapides</h3>
-                  <p className="text-xs leading-5 text-muted-foreground">Laisse vide pour un comportement auto, ou contraints ton template si besoin.</p>
-                </div>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Intro / Resume pro</Label>
-                    <Input
-                      type="number"
-                      placeholder="Ex: 300"
-                      value={introMaxChars}
-                      onChange={(e) => setIntroMaxChars(e.target.value)}
-                      className="h-11 rounded-2xl text-sm"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Corps experiences</Label>
-                    <Input
-                      type="number"
-                      placeholder="Ex: 3400"
-                      value={bodyMaxChars}
-                      onChange={(e) => setBodyMaxChars(e.target.value)}
-                      className="h-11 rounded-2xl text-sm"
-                    />
-                  </div>
-                </div>
-              </section>
-
-              <section className="rounded-[28px] border border-border/70 bg-card/75 p-5 shadow-sm">
-                <div className="space-y-1">
-                  <h3 className="font-semibold text-foreground">Contexte additionnel</h3>
-                  <p className="text-xs leading-5 text-muted-foreground">Optionnel. Utile si tu as un signal recruteur, un angle business ou un detail strategique a pousser.</p>
-                </div>
-
-                <Textarea
-                  placeholder="Ex : Le recruteur cherche surtout quelqu'un capable de structurer les pratiques design dans une equipe produit deja mature."
-                  className="mt-4 min-h-[132px] rounded-[22px] border-border/70 bg-background text-sm leading-6"
-                  value={extraContext}
-                  onChange={(e) => setExtraContext(e.target.value)}
-                  maxLength={1000}
-                />
-
-                <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span>Ne sert que si ca change vraiment la lecture du poste.</span>
-                  <span>{extraContext.length}/1000</span>
-                </div>
-              </section>
-
-              <section className="rounded-[28px] border border-border/70 bg-muted/25 p-5 shadow-sm">
-                <h3 className="font-semibold text-foreground">Repères utiles</h3>
-                <ul className="mt-3 space-y-2 text-xs leading-5 text-muted-foreground">
-                  <li className="flex gap-2">
+              {/* Repères utiles */}
+              <section className="rounded-[20px] border border-border/70 bg-card/75 p-5 shadow-sm">
+                <h3 className="font-semibold text-foreground text-sm">Repères utiles</h3>
+                <ul className="mt-3 space-y-2.5">
+                  <li className="flex gap-2 text-xs leading-5 text-muted-foreground">
                     <ArrowRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary" />
                     Utilise le texte brut si une annonce est longue, repetitive ou mal scrappee.
                   </li>
-                  <li className="flex gap-2">
+                  <li className="flex gap-2 text-xs leading-5 text-muted-foreground">
                     <ArrowRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary" />
                     Passe en fidele si tu veux juger la selection pure avant toute reformulation.
                   </li>
-                  <li className="flex gap-2">
+                  <li className="flex gap-2 text-xs leading-5 text-muted-foreground">
                     <ArrowRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary" />
                     Garde les limites en auto si ton template n'impose pas de contrainte stricte.
                   </li>
                 </ul>
+                {/* Illustration placeholder matching design */}
+                <div className="mt-4 flex justify-end opacity-60">
+                  <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="24" cy="28" r="16" stroke="currentColor" strokeWidth="2" className="text-muted-foreground" />
+                    <path d="M36 40 L52 56" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-muted-foreground" />
+                    <path d="M18 28 L22 32 L30 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary" />
+                  </svg>
+                </div>
               </section>
             </aside>
           </form>

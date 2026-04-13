@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 
 function getTracking(run: any) {
-  // Prefer DB tracking, fallback to localStorage
   if (run.tracking && typeof run.tracking === "object") return run.tracking;
   try {
     return JSON.parse(localStorage.getItem(`app-tracking-${run.id}`) || "null");
@@ -57,14 +56,14 @@ function getTrackingMeta(run: any) {
 
 const MODE_META = {
   original: {
-    label: "Fidele",
+    label: "Optimise",
     icon: <ShieldCheck className="h-3 w-3" />,
     className: "bg-primary/10 text-primary",
   },
   polished: {
     label: "Optimise",
     icon: <Zap className="h-3 w-3" />,
-    className: "bg-accent/10 text-accent",
+    className: "bg-primary/10 text-primary",
   },
   adaptive: {
     label: "Adaptatif",
@@ -94,19 +93,135 @@ function getBadgeMeta(badge?: string) {
 
 function formatDate(iso: string) {
   try {
-    return new Intl.DateTimeFormat(undefined, {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(iso));
+    const d = new Date(iso);
+    const day = d.getDate();
+    const month = d.toLocaleString("fr-FR", { month: "short" }).toUpperCase();
+    const year = d.getFullYear();
+    const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    return `${day} ${month}. ${year}, ${time}`;
   } catch {
     return iso;
   }
 }
 
 const PAGE_SIZE = 10;
+
+function RunCard({ run, index }: { run: any; index: number }) {
+  const report = run.outputReportJson as any;
+  const modeMeta = MODE_META[run.mode as keyof typeof MODE_META] || MODE_META.polished;
+  const trackingMeta = getTrackingMeta(run);
+  const displayScore = report?.scoreBreakdown?.pertinence ?? report?.confidence;
+  const badgeMeta = getBadgeMeta(report?.scoreBreakdown?.badge);
+  const atsOptimized = report?.scoreBreakdown?.atsOptimized;
+  const selectedExperiences = report?.selectedExperiences?.length ?? 0;
+  const detectedLang = report?.detectedLanguage ? report.detectedLanguage.toUpperCase() : "";
+
+  const shortVerdict =
+    report?.diagnosis?.primaryDiagnosis ||
+    report?.confidenceReasoning ||
+    "Ouvre le resultat pour revoir le detail.";
+
+  return (
+    <Link href={`/results/${run.id}`}>
+      <article
+        className="group cursor-pointer rounded-[20px] border border-border/70 bg-card transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-lg hover:shadow-primary/5"
+        data-testid={`card-history-${index}`}
+      >
+        <div className="p-5 space-y-4">
+          {/* Date + lang */}
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            {formatDate(run.createdAt)}{detectedLang ? ` ${detectedLang}` : ""}
+          </div>
+
+          {/* Title + company */}
+          <div className="space-y-0.5">
+            <h3
+              className="text-lg font-bold leading-tight text-foreground transition-colors group-hover:text-primary"
+              data-testid={`text-history-title-${index}`}
+            >
+              {report?.jobTitle || "Poste inconnu"}
+            </h3>
+            {report?.jobCompany && (
+              <p className="text-sm text-muted-foreground">{report.jobCompany}</p>
+            )}
+          </div>
+
+          {/* Score block */}
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-2 flex-1 min-w-0">
+              {/* Badges */}
+              <div className="flex flex-wrap gap-1.5">
+                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${modeMeta.className}`}>
+                  {modeMeta.icon}
+                  {modeMeta.label}
+                </span>
+                {badgeMeta && (
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${badgeMeta.className}`}>
+                    <Sparkles className="h-3 w-3" />
+                    {badgeMeta.label}
+                  </span>
+                )}
+                {trackingMeta && (
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${trackingMeta.className}`}>
+                    {trackingMeta.icon}
+                    {trackingMeta.label}
+                  </span>
+                )}
+                {selectedExperiences > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                    <FileText className="h-3 w-3" />
+                    {selectedExperiences} experiences
+                  </span>
+                )}
+              </div>
+
+              {/* Verdict */}
+              <p className="text-xs leading-5 text-muted-foreground line-clamp-2">{shortVerdict}</p>
+            </div>
+
+            {/* Score column */}
+            <div className="flex-shrink-0 space-y-2 min-w-[120px]">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Pertinence
+                </span>
+                <span className="text-xl font-bold tabular-nums text-foreground">
+                  {displayScore != null ? `${displayScore}%` : "n/a"}
+                </span>
+              </div>
+              {displayScore != null && (
+                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={`h-full rounded-full ${getScoreTone(displayScore)}`}
+                    style={{ width: `${Math.max(0, Math.min(100, displayScore))}%` }}
+                  />
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <p className="text-muted-foreground">ATS</p>
+                  <p className="font-semibold text-foreground">
+                    {typeof atsOptimized === "number" ? `${atsOptimized}%` : "n/a"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Document</p>
+                  <p className="font-semibold text-foreground">{badgeMeta?.label || "—"}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CTA */}
+          <div className="flex items-center gap-1.5 text-xs font-medium text-primary border-t border-border/50 pt-3">
+            Voir le CV adapté
+            <ArrowRight className="h-3.5 w-3.5" />
+          </div>
+        </div>
+      </article>
+    </Link>
+  );
+}
 
 export default function History() {
   const { data: runs, isLoading, error } = useRuns();
@@ -131,76 +246,94 @@ export default function History() {
   const appliedCount = runs?.filter((run: any) => getTracking(run)?.applied).length ?? 0;
   const interviewCount = runs?.filter((run: any) => getTracking(run)?.status === "interview").length ?? 0;
 
+  const totalPages = runs ? Math.ceil(runs.length / PAGE_SIZE) : 0;
+  const pagedRuns = runs ? runs.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE) : [];
+
   return (
     <Layout>
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 animate-in fade-in duration-500">
-        <section className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-4">
+        {/* Page header */}
+        <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-2">
             <div className="inline-flex w-fit items-center gap-2 rounded-full border border-border/70 bg-background/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               <Clock className="h-3.5 w-3.5 text-primary" />
               Historique
             </div>
-
-            <div className="max-w-3xl space-y-3">
-              <h1 className="text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl">Retrouve vite les bons CV</h1>
-              <p className="text-base text-muted-foreground sm:text-lg">
-                Cette page sert de triage rapide: ouvre un run, juge la pertinence, puis repars de la meilleure version sans rerevenir dans
-                tout le detail.
-              </p>
-            </div>
+            <h1 className="text-4xl font-extrabold tracking-tight text-foreground">
+              Derniers CV générés
+            </h1>
+            <p className="text-base text-muted-foreground">
+              Retrouve l'historique de tes CV générés et suis tes candidatures.
+            </p>
           </div>
 
           <Link href="/tailor">
-            <Button data-testid="button-new-tailor" className="h-12 rounded-2xl px-5 text-sm shadow-lg shadow-primary/20">
+            <Button className="h-11 rounded-2xl px-5 text-sm shadow-lg shadow-primary/20 flex-shrink-0">
               <WandSparkles className="mr-2 h-4 w-4" />
               Nouveau tailoring
             </Button>
           </Link>
         </section>
 
+        {/* Stats */}
         {!isLoading && !error && runs && runs.length > 0 && (
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-[24px] border border-border/70 bg-card/75 p-5 shadow-sm">
+            <div className="rounded-[20px] border border-border/70 bg-card p-5 shadow-sm">
               <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Runs</p>
               <p className="mt-2 text-3xl font-bold text-foreground">{runs.length}</p>
-              <p className="mt-1 text-xs text-muted-foreground">CV generes disponibles dans l'historique.</p>
+              <p className="mt-1 text-xs text-muted-foreground">CV générés et disponibles dans l'historique.</p>
             </div>
 
-            <div className="rounded-[24px] border border-border/70 bg-card/75 p-5 shadow-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Postules</p>
+            <div className="rounded-[20px] border border-border/70 bg-card p-5 shadow-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">CV envoyés</p>
               <p className="mt-2 text-3xl font-bold text-foreground">{appliedCount}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Candidatures marquees comme envoyees.</p>
+              <p className="mt-1 text-xs text-muted-foreground">CV envoyés à des offres.</p>
             </div>
 
-            <div className="rounded-[24px] border border-border/70 bg-card/75 p-5 shadow-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Entretiens</p>
+            <div className="rounded-[20px] border border-border/70 bg-card p-5 shadow-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Entretiens obtenus</p>
               <p className="mt-2 text-3xl font-bold text-foreground">{interviewCount}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Runs deja passes au statut entretien.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Candidatures ayant donné lieu à un entretien.</p>
             </div>
 
-            <div className="rounded-[24px] border border-primary/20 bg-gradient-to-b from-primary/[0.08] via-background to-background p-5 shadow-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Pertinence moyenne</p>
-              <p className="mt-2 text-3xl font-bold text-foreground">{averageScore != null ? `${averageScore}%` : "n/a"}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Repere rapide base sur les runs disponibles.</p>
+            <div className="rounded-[20px] border border-primary/20 bg-gradient-to-b from-primary/[0.08] via-background to-background p-5 shadow-sm flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Adéquation moyenne</p>
+                <p className="mt-2 text-3xl font-bold text-foreground">
+                  {averageScore != null ? `${averageScore}%` : "n/a"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">Avec les offres</p>
+              </div>
+              <div className="opacity-50 flex-shrink-0 mt-1">
+                <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="8" y="20" width="6" height="20" rx="2" fill="currentColor" className="text-primary" />
+                  <rect x="18" y="14" width="6" height="26" rx="2" fill="currentColor" className="text-primary" />
+                  <rect x="28" y="8" width="6" height="32" rx="2" fill="currentColor" className="text-primary" />
+                  <rect x="38" y="16" width="6" height="24" rx="2" fill="currentColor" className="text-primary" />
+                </svg>
+              </div>
             </div>
           </section>
         )}
 
+        {/* Loading */}
         {isLoading && (
-          <div className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             {[1, 2, 3, 4].map((item) => (
-              <div key={item} className="h-36 rounded-[28px] bg-muted/40 animate-pulse" />
+              <div key={item} className="h-48 rounded-[20px] bg-muted/40 animate-pulse" />
             ))}
           </div>
         )}
 
+        {/* Error */}
         {error && (
-          <div className="flex items-center gap-3 rounded-[24px] border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          <div className="flex items-center gap-3 rounded-[20px] border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
             <AlertCircle className="h-4 w-4 flex-shrink-0" />
             Impossible de charger l'historique.
           </div>
         )}
 
+        {/* Empty state */}
         {!isLoading && !error && runs?.length === 0 && (
           <Card className="border-2 border-dashed bg-transparent shadow-none">
             <CardContent className="flex flex-col items-center justify-center gap-4 py-16 text-center">
@@ -208,8 +341,8 @@ export default function History() {
                 <FileText className="h-8 w-8 text-muted-foreground" />
               </div>
               <div className="space-y-1">
-                <p className="font-semibold text-foreground">Aucun CV genere</p>
-                <p className="text-sm text-muted-foreground">Ton historique apparaitra ici apres ton premier tailoring.</p>
+                <p className="font-semibold text-foreground">Aucun CV généré</p>
+                <p className="text-sm text-muted-foreground">Ton historique apparaîtra ici après ton premier tailoring.</p>
               </div>
               <Link href="/tailor">
                 <Button variant="outline" className="mt-2 rounded-2xl" data-testid="button-start-tailoring">
@@ -221,159 +354,46 @@ export default function History() {
           </Card>
         )}
 
-        {!isLoading && runs && runs.length > 0 && (() => {
-          const totalPages = Math.ceil(runs.length / PAGE_SIZE);
-          const pagedRuns = runs.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-          return (
-          <section className="space-y-3">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-semibold text-foreground">Runs recents</h2>
-                <p className="text-sm text-muted-foreground">Les lignes ci-dessous sont pensees pour scanner vite ce qui vaut encore le coup.</p>
-              </div>
-            </div>
+        {/* Run list */}
+        {!isLoading && runs && runs.length > 0 && (
+          <section className="space-y-4">
+            <h2 className="text-xl font-semibold text-foreground">Runs recents</h2>
 
-            <div className="space-y-3">
-              {pagedRuns.map((run: any, i: number) => {
-                const report = run.outputReportJson as any;
-                const modeMeta = MODE_META[run.mode as keyof typeof MODE_META] || MODE_META.polished;
-                const trackingMeta = getTrackingMeta(run);
-                const displayScore = report?.scoreBreakdown?.pertinence ?? report?.confidence;
-                const scoreLabel = report?.scoreBreakdown?.fitMetier != null ? "Pertinence" : "Fit offre";
-                const badgeMeta = getBadgeMeta(report?.scoreBreakdown?.badge);
-                const atsOptimized = report?.scoreBreakdown?.atsOptimized;
-                const shortVerdict =
-                  report?.diagnosis?.primaryDiagnosis ||
-                  report?.confidenceReasoning ||
-                  "Ouvre le resultat pour revoir le detail de ce tailoring.";
-                const selectedExperiences = report?.selectedExperiences?.length ?? 0;
-
-                return (
-                  <Link key={run.id} href={`/results/${run.id}`}>
-                    <article
-                      className="group cursor-pointer overflow-hidden rounded-[28px] border border-border/70 bg-card/75 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-lg hover:shadow-primary/5"
-                      data-testid={`card-history-${i}`}
-                    >
-                      <div className="flex flex-col gap-5 p-5 md:p-6">
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                          <div className="min-w-0 space-y-3">
-                            <div className="space-y-1">
-                              <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                                <span>{formatDate(run.createdAt)}</span>
-                                {report?.detectedLanguage && <span>{report.detectedLanguage}</span>}
-                              </div>
-                              <h3
-                                className="text-xl font-semibold leading-tight text-foreground transition-colors group-hover:text-primary"
-                                data-testid={`text-history-title-${i}`}
-                              >
-                                {report?.jobTitle || "Poste inconnu"}
-                              </h3>
-                              {report?.jobCompany && <p className="text-sm text-muted-foreground">{report.jobCompany}</p>}
-                            </div>
-
-                            <div className="flex flex-wrap gap-2">
-                              <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium ${modeMeta.className}`}>
-                                {modeMeta.icon}
-                                {modeMeta.label}
-                              </span>
-
-                              {badgeMeta && (
-                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium ${badgeMeta.className}`}>
-                                  <Sparkles className="h-3 w-3" />
-                                  {badgeMeta.label}
-                                </span>
-                              )}
-
-                              {trackingMeta && (
-                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium ${trackingMeta.className}`}>
-                                  {trackingMeta.icon}
-                                  {trackingMeta.label}
-                                </span>
-                              )}
-
-                              {selectedExperiences > 0 && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                                  <FileText className="h-3 w-3" />
-                                  {selectedExperiences} experiences
-                                </span>
-                              )}
-                            </div>
-
-                            <p className="text-sm leading-6 text-muted-foreground">{shortVerdict}</p>
-                          </div>
-
-                          <div className="flex flex-col gap-3 rounded-[24px] border border-border/60 bg-background/80 p-4 lg:min-w-[176px]">
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{scoreLabel}</span>
-                              <span className="text-xl font-bold tabular-nums text-foreground">
-                                {displayScore != null ? `${displayScore}%` : "n/a"}
-                              </span>
-                            </div>
-
-                            {displayScore != null && (
-                              <div className="h-2 overflow-hidden rounded-full bg-muted">
-                                <div
-                                  className={`h-full rounded-full ${getScoreTone(displayScore)}`}
-                                  style={{ width: `${Math.max(0, Math.min(100, displayScore))}%` }}
-                                />
-                              </div>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-3 text-xs">
-                              <div className="space-y-1">
-                                <p className="text-muted-foreground">ATS</p>
-                                <p className="font-semibold text-foreground">{typeof atsOptimized === "number" ? `${atsOptimized}%` : "n/a"}</p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-muted-foreground">Document</p>
-                                <p className="font-semibold text-foreground">{badgeMeta?.label || "Legacy"}</p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-4 text-sm">
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <ArrowRight className="h-4 w-4 text-primary" />
-                            <span>Ouvrir le resultat complet et revoir le CV genere</span>
-                          </div>
-                          <span className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Resultat</span>
-                        </div>
-                      </div>
-                    </article>
-                  </Link>
-                );
-              })}
+            <div className="grid gap-4 sm:grid-cols-2">
+              {pagedRuns.map((run: any, i: number) => (
+                <RunCard key={run.id} run={run} index={i} />
+              ))}
             </div>
 
             {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-3 pt-2">
+              <div className="flex items-center justify-center gap-2 pt-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="rounded-xl"
+                  className="rounded-xl h-9 px-4"
                   disabled={page === 0}
                   onClick={() => setPage((p) => Math.max(0, p - 1))}
                 >
-                  <ChevronLeft className="h-4 w-4 mr-1" /> Precedent
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Precedent
                 </Button>
-                <span className="text-sm text-muted-foreground tabular-nums">
+                <span className="rounded-full border border-border/70 bg-background px-4 py-1.5 text-sm text-muted-foreground tabular-nums">
                   {page + 1} / {totalPages}
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="rounded-xl"
+                  className="rounded-xl h-9 px-4"
                   disabled={page >= totalPages - 1}
                   onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                 >
-                  Suivant <ChevronRight className="h-4 w-4 ml-1" />
+                  Suivant
+                  <ChevronRight className="h-4 w-4 ml-1" />
                 </Button>
               </div>
             )}
           </section>
-          );
-        })()}
+        )}
       </div>
     </Layout>
   );
