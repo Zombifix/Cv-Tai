@@ -2586,24 +2586,47 @@ export default function Result() {
                     initialTracking={(run as any).tracking as AppTracking | null}
                   />
                 </div>
+                {/* Megaphone illustration — ref image 2 */}
                 <svg
-                  width="44"
-                  height="44"
-                  viewBox="0 0 56 56"
+                  width="72"
+                  height="80"
+                  viewBox="0 0 72 80"
                   fill="none"
                   xmlns="http://www.w3.org/2000/svg"
-                  className="flex-shrink-0 opacity-60 mt-1"
+                  className="flex-shrink-0 -mt-1 -mr-1"
                 >
-                  <circle cx="28" cy="18" r="9" stroke="#2563eb" strokeWidth="1.8" />
-                  <circle cx="28" cy="18" r="2.5" fill="#2563eb" />
-                  <path
-                    d="M16 44c0-6.627 5.373-12 12-12s12 5.373 12 12"
-                    stroke="#2563eb"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                  />
-                  <circle cx="38" cy="9" r="4" fill="#dbeafe" stroke="#2563eb" strokeWidth="1.5" />
-                  <text x="35.5" y="12.5" fontSize="6" fill="#2563eb" fontWeight="bold">?</text>
+                  {/* Hair */}
+                  <path d="M24 19 Q24 7 36 7 Q48 7 48 19" fill="#1C0F00" />
+                  {/* Head */}
+                  <circle cx="36" cy="21" r="12" fill="#FFD4A8" />
+                  {/* Eyes */}
+                  <circle cx="32" cy="20" r="1.6" fill="#3D1F00" />
+                  <circle cx="40" cy="20" r="1.6" fill="#3D1F00" />
+                  {/* Smile */}
+                  <path d="M32 26 Q36 29.5 40 26" stroke="#3D1F00" strokeWidth="1.3" strokeLinecap="round" fill="none" />
+                  {/* Ear left */}
+                  <ellipse cx="24" cy="21" rx="2.5" ry="3.5" fill="#FFD4A8" />
+                  {/* Body */}
+                  <path d="M20 53 Q20 39 36 37 Q52 39 52 53 L52 67 Q36 71 20 67 Z" fill="#2563EB" />
+                  {/* Collar */}
+                  <path d="M30 37 L36 42 L42 37" stroke="white" strokeWidth="1.5" fill="none" />
+                  {/* Left arm down */}
+                  <path d="M20 44 Q11 46 9 54" stroke="#FFD4A8" strokeWidth="5" strokeLinecap="round" fill="none" />
+                  {/* Right arm up holding megaphone */}
+                  <path d="M52 44 Q59 38 61 32" stroke="#FFD4A8" strokeWidth="5" strokeLinecap="round" fill="none" />
+                  {/* Megaphone body (trapezoid) */}
+                  <path d="M59 24 L70 16 L70 40 L59 36 Z" fill="#F59E0B" />
+                  {/* Megaphone handle */}
+                  <rect x="52" y="28" width="9" height="9" rx="2" fill="#D97706" />
+                  {/* Sound waves */}
+                  <path d="M71 19 C74 22 74 34 71 37" stroke="#FCD34D" strokeWidth="2.2" strokeLinecap="round" fill="none" />
+                  <path d="M71 23 C73 25.5 73 30.5 71 33" stroke="#FCD34D" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+                  {/* Legs */}
+                  <path d="M29 67 L27 78" stroke="#1D4ED8" strokeWidth="4.5" strokeLinecap="round" />
+                  <path d="M43 67 L45 78" stroke="#1D4ED8" strokeWidth="4.5" strokeLinecap="round" />
+                  {/* Shoes */}
+                  <ellipse cx="26" cy="78.5" rx="5.5" ry="2.5" fill="#1C0F00" />
+                  <ellipse cx="46" cy="78.5" rx="5.5" ry="2.5" fill="#1C0F00" />
                 </svg>
               </div>
             </div>
@@ -2611,20 +2634,20 @@ export default function Result() {
             {/* 2. Copy + Export */}
             <div className="grid grid-cols-2 gap-2">
               <Button
-                variant="outline"
+                variant="default"
                 onClick={handleCopy}
-                className="rounded-[12px] gap-1.5 text-xs h-10 border-[#e2e8f0] text-[#1e293b] hover:bg-[#f8fafc]"
+                className="rounded-[12px] gap-1.5 text-xs h-10 bg-[#2563eb] hover:bg-[#1d4ed8] text-white"
                 data-testid="button-copy-sticky"
               >
-                {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 {copied ? "Copie !" : "Copier le CV"}
               </Button>
               <Button
-                variant="outline"
+                variant="default"
                 onClick={handleExportAnalysis}
-                className="rounded-[12px] gap-1.5 text-xs h-10 border-[#e2e8f0] text-[#1e293b] hover:bg-[#f8fafc]"
+                className="rounded-[12px] gap-1.5 text-xs h-10 bg-[#2563eb] hover:bg-[#1d4ed8] text-white"
               >
-                {exported ? <Check className="w-3.5 h-3.5 text-green-500" /> : <FileDown className="w-3.5 h-3.5" />}
+                {exported ? <Check className="w-3.5 h-3.5" /> : <FileDown className="w-3.5 h-3.5" />}
                 {exported ? "Pret" : "Export IA"}
               </Button>
             </div>

@@ -23,7 +23,8 @@
       "Bash(cp .ai/backups/ui-backup-2026-04-09/history.tsx client/src/pages/history.tsx)",
       "Bash(python3 /dev/stdin)",
       "Bash(node patch_result.mjs)",
-      "Bash(rm patch_result.mjs)"
+      "Bash(rm patch_result.mjs)",
+      "WebFetch(domain:www.figma.com)"
     ]
   }
 }
