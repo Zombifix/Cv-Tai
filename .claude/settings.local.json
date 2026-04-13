@@ -21,7 +21,9 @@
       "Bash(cp .ai/backups/ui-backup-2026-04-09/auth.tsx client/src/pages/auth.tsx)",
       "Bash(cp .ai/backups/ui-backup-2026-04-09/tailor.tsx client/src/pages/tailor.tsx)",
       "Bash(cp .ai/backups/ui-backup-2026-04-09/history.tsx client/src/pages/history.tsx)",
-      "Bash(python3 /dev/stdin)"
+      "Bash(python3 /dev/stdin)",
+      "Bash(node patch_result.mjs)",
+      "Bash(rm patch_result.mjs)"
     ]
   }
 }

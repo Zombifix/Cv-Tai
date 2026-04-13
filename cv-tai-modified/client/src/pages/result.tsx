@@ -2394,116 +2394,97 @@ export default function Result() {
 
   return (
     <Layout>
-      <div className="flex flex-col gap-6 animate-in fade-in duration-400">
+      <div className="flex flex-col gap-5 animate-in fade-in duration-400">
 
-        {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ HEADER ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
-        <div className="flex items-start gap-4 flex-wrap" data-testid="section-page-header">
-          <Link href="/tailor">
-            <Button variant="outline" size="icon" className="rounded-xl shadow-sm flex-shrink-0 mt-0.5" data-testid="button-back">
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
+        {/* ── PAGE HEADER ── */}
+        <div className="flex items-center gap-4" data-testid="section-page-header">
+          <Link href="/history">
+            <button
+              className="flex-shrink-0 w-9 h-9 rounded-full border border-[#e2e8f0] bg-white flex items-center justify-center hover:bg-[#f8fafc] transition-colors shadow-sm"
+              data-testid="button-back"
+            >
+              <ArrowLeft className="w-4 h-4 text-[#64748b]" />
+            </button>
           </Link>
 
-          <div className="flex-1 min-w-0 flex items-start gap-4">
-            {displayScore != null && (
-              <div className="flex flex-col items-center gap-1">
-                <ConfidenceRing value={displayScore ?? 0} size={68} />
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{scoreLabel}</span>
-              </div>
-            )}
-
-            <div className="flex-1 min-w-0 pt-1">
-              <h1 className="text-xl font-extrabold tracking-tight text-foreground leading-tight truncate" data-testid="text-page-title">
-                {pageTitle}
-              </h1>
-              {safeDiagnosis?.primaryDiagnosis && (
-                <p className="text-[12px] text-muted-foreground leading-snug mt-0.5 mb-1">
-                  {repairMojibake(safeDiagnosis.primaryDiagnosis)}
-                </p>
-              )}
-              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                <span className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full font-semibold ${modeMeta.color}`} data-testid="badge-mode">
-                  {modeMeta.icon} {modeMeta.label}
-                </span>
-                {report?.detectedLanguage && (
-                  <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-semibold" data-testid="badge-language">
-                    <Globe className="w-3 h-3" /> {repairMojibake(report.detectedLanguage)}
-                  </span>
-                )}
-                {report?.jobSeniority && (
-                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">{repairMojibake(report.jobSeniority)}</span>
-                )}
-                {jobUrl && (
-                  <span className="inline-flex flex-col items-start">
-                    <a
-                      href={jobUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full border border-border/60 bg-background text-muted-foreground hover:text-foreground hover:border-border transition-colors font-medium"
-                      data-testid="link-job-posting"
-                    >
-                      <ExternalLink className="w-3 h-3" /> Voir l'annonce
-                    </a>
-                    {jobUrl.includes("linkedin.com") && (
-                      <span className="text-[9px] text-muted-foreground/60 px-2.5 mt-0.5">Connexion LinkedIn requise</span>
-                    )}
-                  </span>
-                )}
-              </div>
+          {displayScore != null && (
+            <div className="flex-shrink-0 flex flex-col items-center gap-0.5">
+              <ConfidenceRing value={displayScore} size={72} />
+              <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#94a3b8]">
+                Pertinence
+              </span>
             </div>
-          </div>
+          )}
 
-          <div className="relative hidden sm:block flex-shrink-0" data-testid="header-actions-menu">
-            <Button
-              variant="outline"
-              className="rounded-xl shadow-sm px-3"
-              onClick={() => setActionsOpen(v => !v)}
-              aria-label="Actions"
+          <div className="flex-1 min-w-0">
+            <h1
+              className="text-xl font-extrabold tracking-tight text-[#1e293b] leading-tight"
+              data-testid="text-page-title"
             >
-              <span className="text-base leading-none tracking-widest">···</span>
-            </Button>
-            {actionsOpen && (
-              <div className="absolute right-0 top-full mt-1 z-20 bg-background border border-border/60 rounded-xl shadow-lg py-1 min-w-[160px]" onMouseLeave={() => setActionsOpen(false)}>
-                <button
-                  onClick={() => { handleCopy(); setActionsOpen(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors"
-                >
-                  {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                  {copied ? "Copie !" : "Copier le CV"}
-                </button>
-                <button
-                  onClick={() => { handleExportAnalysis(); setActionsOpen(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors"
-                >
-                  {exported ? <Check className="w-4 h-4 text-green-500" /> : <FileDown className="w-4 h-4" />}
-                  {exported ? "Pack IA pret" : "Exporter IA"}
-                </button>
-              </div>
+              {pageTitle}
+            </h1>
+            {safeDiagnosis?.primaryDiagnosis && (
+              <p className="text-[13px] text-amber-600 leading-snug mt-0.5">
+                {repairMojibake(safeDiagnosis.primaryDiagnosis)}
+              </p>
             )}
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              <span
+                className={"inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full font-semibold " + modeMeta.color}
+                data-testid="badge-mode"
+              >
+                {modeMeta.icon} {modeMeta.label}
+              </span>
+              {report?.detectedLanguage && (
+                <span
+                  className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold"
+                  data-testid="badge-language"
+                >
+                  <Globe className="w-3 h-3" /> {repairMojibake(report.detectedLanguage)}
+                </span>
+              )}
+              {report?.jobSeniority && (
+                <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-[#f1f5f9] text-[#64748b] font-medium">
+                  {repairMojibake(report.jobSeniority)}
+                </span>
+              )}
+              {jobUrl && (
+                <a
+                  href={jobUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full border border-[#e2e8f0] bg-white text-[#64748b] hover:text-[#1e293b] transition-colors font-medium"
+                  data-testid="link-job-posting"
+                >
+                  <ExternalLink className="w-3 h-3" /> Voir l'annonce
+                </a>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ MAIN GRID ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* ── MAIN GRID ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-5 items-start">
 
-          {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ LEFT: CV Document ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
-          <div className="lg:col-span-2 flex flex-col gap-0 rounded-xl overflow-hidden border border-border/60 shadow-[0_2px_24px_rgba(0,0,0,0.07)] dark:shadow-[0_2px_24px_rgba(0,0,0,0.3)]" data-testid="section-cv-panel">
-
-            {/* Panel toolbar */}
-            <div className="flex items-center justify-between bg-muted/30 border-b px-4 py-2.5 gap-3">
+          {/* CENTER: CV Document */}
+          <div
+            className="flex flex-col rounded-[20px] overflow-hidden border border-[#e2e8f0] bg-white shadow-sm"
+            data-testid="section-cv-panel"
+          >
+            <div className="flex items-center justify-between border-b border-[#f1f5f9] bg-[#f8fafc] px-4 py-2.5 gap-3">
               {!isEditing ? (
                 <Tabs defaultValue="generated" className="flex-1">
                   <div className="flex items-center justify-between gap-3">
-                    <TabsList className="h-7 text-xs gap-0.5 bg-background/70">
-                      <TabsTrigger value="generated" className="text-xs h-6 px-2.5" data-testid="tab-generated">CV genere</TabsTrigger>
-                      <TabsTrigger value="source" className="text-xs h-6 px-2.5" data-testid="tab-source">Super CV utilise</TabsTrigger>
-                      <TabsTrigger value="job" className="text-xs h-6 px-2.5" data-testid="tab-job">Annonce utilisee</TabsTrigger>
+                    <TabsList className="h-7 text-xs bg-white/80 rounded-lg">
+                      <TabsTrigger value="generated" className="text-xs h-6 px-2.5 rounded-md" data-testid="tab-generated">CV genere</TabsTrigger>
+                      <TabsTrigger value="source" className="text-xs h-6 px-2.5 rounded-md" data-testid="tab-source">Super CV utilise</TabsTrigger>
+                      <TabsTrigger value="job" className="text-xs h-6 px-2.5 rounded-md" data-testid="tab-job">Annonce utilisee</TabsTrigger>
                     </TabsList>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={handleStartEdit}
-                      className="text-xs h-7 px-2.5 text-muted-foreground hover:text-foreground gap-1.5"
+                      className="text-xs h-7 px-2.5 text-[#94a3b8] hover:text-[#1e293b] gap-1.5"
                       data-testid="button-edit-cv"
                     >
                       <Pencil className="w-3 h-3" /> Modifier
@@ -2512,7 +2493,7 @@ export default function Result() {
 
                   <TabsContent value="generated" className="mt-0">
                     <div
-                      className="bg-white dark:bg-zinc-950 px-8 py-10 md:px-14 md:py-12 min-h-[400px]"
+                      className="bg-white px-8 py-10 md:px-14 md:py-12 min-h-[400px]"
                       data-testid="text-cv-output"
                     >
                       <FormattedCV text={displayText || "No text generated."} keywords={allKeywords} />
@@ -2520,47 +2501,58 @@ export default function Result() {
                   </TabsContent>
 
                   <TabsContent value="source" className="mt-0">
-                    <div className="bg-white dark:bg-zinc-950 px-8 py-10 md:px-14 md:py-12 min-h-[300px]" data-testid="section-source-bullets">
-                      <p className="text-xs text-muted-foreground italic mb-6 pb-4 border-b">Bullets originaux de ta bibliotheque, avant toute reecriture IA.</p>
+                    <div className="bg-white px-8 py-10 md:px-14 md:py-12 min-h-[300px]" data-testid="section-source-bullets">
+                      <p className="text-xs text-[#94a3b8] italic mb-6 pb-4 border-b border-[#f1f5f9]">
+                        Bullets originaux de ta bibliotheque, avant toute reecriture IA.
+                      </p>
                       {report?.selectedExperiences?.map((exp: any, i: number) => {
-                        const bullets = (report.selectedBullets || []).filter((b: any) => b.experienceTitle === exp.title);
+                        const bullets = (report.selectedBullets || []).filter(
+                          (b: any) => b.experienceTitle === exp.title,
+                        );
                         return (
                           <div key={i} className="mb-6">
                             <div className="flex items-center gap-3 mb-2">
-                              <p className="text-[10px] font-extrabold text-muted-foreground tracking-[0.12em] uppercase">{exp.title}</p>
-                              <div className="flex-1 h-px bg-border/60" />
-                              <p className="text-[10px] text-muted-foreground">{exp.company}</p>
+                              <p className="text-[10px] font-extrabold text-[#94a3b8] tracking-[0.12em] uppercase">{exp.title}</p>
+                              <div className="flex-1 h-px bg-[#f1f5f9]" />
+                              <p className="text-[10px] text-[#94a3b8]">{exp.company}</p>
                             </div>
                             <div className="space-y-1.5">
                               {bullets.map((b: any, j: number) => (
                                 <div key={j} className="flex items-start gap-2.5">
-                                  <span className="mt-[7px] flex-shrink-0 w-1 h-1 rounded-full bg-foreground/40" />
-                                  <p className="text-[13px] text-foreground/85 leading-relaxed">{b.text}</p>
+                                  <span className="mt-[7px] flex-shrink-0 w-1 h-1 rounded-full bg-[#1e293b]/40" />
+                                  <p className="text-[13px] leading-relaxed">{b.text}</p>
                                 </div>
                               ))}
-                              {bullets.length === 0 && <p className="text-xs text-muted-foreground italic pl-3">Aucun bullet enregistre.</p>}
+                              {bullets.length === 0 && (
+                                <p className="text-xs text-[#94a3b8] italic pl-3">Aucun bullet enregistre.</p>
+                              )}
                             </div>
                           </div>
                         );
                       })}
                       {!report?.selectedExperiences?.length && (
-                        <p className="text-sm text-muted-foreground italic">Aucune donnee source disponible.</p>
+                        <p className="text-sm text-[#94a3b8] italic">Aucune donnee source disponible.</p>
                       )}
                     </div>
                   </TabsContent>
 
                   <TabsContent value="job" className="mt-0">
-                    <UsedJobPosting meta={jobInput} rawText={run?.jobPost?.rawText || undefined} url={jobUrl || undefined} parsedJob={parsedJob} />
+                    <UsedJobPosting
+                      meta={jobInput}
+                      rawText={run?.jobPost?.rawText || undefined}
+                      url={jobUrl || undefined}
+                      parsedJob={parsedJob}
+                    />
                   </TabsContent>
                 </Tabs>
               ) : (
                 <div className="flex items-center justify-between w-full gap-3">
-                  <span className="text-xs text-muted-foreground font-medium">Modification en cours</span>
+                  <span className="text-xs text-[#94a3b8] font-medium">Modification en cours</span>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={handleCancelEdit}
-                    className="text-xs h-7 px-2.5 text-muted-foreground hover:text-foreground gap-1.5"
+                    className="text-xs h-7 px-2.5 text-[#94a3b8] hover:text-[#1e293b] gap-1.5"
                     data-testid="button-cancel-edit"
                   >
                     <X className="w-3 h-3" /> Annuler
@@ -2570,31 +2562,74 @@ export default function Result() {
             </div>
 
             {isEditing && (
-              <div className="bg-white dark:bg-zinc-950 p-4">
+              <div className="bg-white p-4">
                 <Textarea
                   data-testid="textarea-cv-edit"
                   value={editedText ?? ""}
                   onChange={e => setEditedText(e.target.value)}
-                  className="w-full min-h-[500px] resize-y font-mono text-sm leading-relaxed border border-border/50 focus-visible:ring-1 focus-visible:ring-primary/40 bg-transparent rounded-lg p-4"
+                  className="w-full min-h-[500px] resize-y font-mono text-sm leading-relaxed border border-[#e2e8f0] rounded-xl p-4"
                 />
               </div>
             )}
           </div>
 
-          {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ RIGHT: Report Panel ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
+          {/* ── RIGHT PANEL ── */}
           <div className="space-y-3" data-testid="section-report">
 
-            {/* Sticky copy CTA */}
-            <Button
-              onClick={handleCopy}
-              className="w-full rounded-xl gap-2 shadow-sm shadow-primary/20 sticky top-4 z-10"
-              data-testid="button-copy-sticky"
-            >
-              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              {copied ? "Copie !" : "Copier le CV"}
-            </Button>
+            {/* 1. Suivi de candidature */}
+            <div className="rounded-[16px] border border-[#e2e8f0] bg-white p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-[#1e293b] mb-2">Suivi de candidature</p>
+                  <ApplicationTrackerSafe
+                    runId={run.id}
+                    initialTracking={(run as any).tracking as AppTracking | null}
+                  />
+                </div>
+                <svg
+                  width="44"
+                  height="44"
+                  viewBox="0 0 56 56"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="flex-shrink-0 opacity-60 mt-1"
+                >
+                  <circle cx="28" cy="18" r="9" stroke="#2563eb" strokeWidth="1.8" />
+                  <circle cx="28" cy="18" r="2.5" fill="#2563eb" />
+                  <path
+                    d="M16 44c0-6.627 5.373-12 12-12s12 5.373 12 12"
+                    stroke="#2563eb"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                  <circle cx="38" cy="9" r="4" fill="#dbeafe" stroke="#2563eb" strokeWidth="1.5" />
+                  <text x="35.5" y="12.5" fontSize="6" fill="#2563eb" fontWeight="bold">?</text>
+                </svg>
+              </div>
+            </div>
 
-            {/* Zone A — Hero score card */}
+            {/* 2. Copy + Export */}
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                onClick={handleCopy}
+                className="rounded-[12px] gap-1.5 text-xs h-10 border-[#e2e8f0] text-[#1e293b] hover:bg-[#f8fafc]"
+                data-testid="button-copy-sticky"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? "Copie !" : "Copier le CV"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleExportAnalysis}
+                className="rounded-[12px] gap-1.5 text-xs h-10 border-[#e2e8f0] text-[#1e293b] hover:bg-[#f8fafc]"
+              >
+                {exported ? <Check className="w-3.5 h-3.5 text-green-500" /> : <FileDown className="w-3.5 h-3.5" />}
+                {exported ? "Pret" : "Export IA"}
+              </Button>
+            </div>
+
+            {/* 3. Fit / score card */}
             {displayScore != null && (
               <MatchDiagnosisCard
                 score={displayScore}
@@ -2604,7 +2639,7 @@ export default function Result() {
               />
             )}
 
-            {/* Zone B — Tabbed coverage panel */}
+            {/* 4. Keywords / Skills / Conseils */}
             <TabbedCoveragePanel
               covered={report?.postRules?.keywordsCovered || []}
               missing={report?.postRules?.keywordsMissing || []}
@@ -2615,16 +2650,14 @@ export default function Result() {
               insight={keyInsight || undefined}
             />
 
-            {/* Zone C — Accordions */}
-
-            {/* Enrichment Coaching accordion */}
+            {/* 5. Renforcer les experiences */}
             <EnrichmentCoaching
               report={report}
               selectedExperienceIds={run.selectedExperienceIds}
               jobTitle={report?.jobTitle}
             />
 
-            {/* Library Health accordion */}
+            {/* 6. Library health */}
             <LibraryHealthAccordion
               selectedBullets={report?.selectedBullets || []}
               selectedExperiences={report?.selectedExperiences || []}
@@ -2632,45 +2665,34 @@ export default function Result() {
               bulletsWithNumbers={report?.postRules?.bulletsWithNumbers ?? 0}
             />
 
-            {/* Debug & métriques accordion */}
+            {/* 7. Debug & metriques */}
             <DetailsDisclosure report={report || {}} scoreBreakdown={report?.scoreBreakdown} />
-
-            {/* Suivi candidature accordion */}
-            <ApplicationTrackerSafe runId={run.id} initialTracking={(run as any).tracking as AppTracking | null} />
 
           </div>
         </div>
 
-        {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ ACTION FOOTER ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
-        <div className="flex items-center justify-between gap-3 pt-4 border-t border-border/50 flex-wrap" data-testid="section-action-footer">
-          <div className="flex items-center gap-2 flex-wrap">
+        {/* ── FOOTER ── */}
+        <div
+          className="flex items-center gap-2 pt-3 border-t border-[#f1f5f9] flex-wrap"
+          data-testid="section-action-footer"
+        >
+          <Button
+            variant="outline"
+            onClick={handleTailorAgain}
+            className="rounded-xl gap-2 text-sm"
+            data-testid="button-tailor-again"
+          >
+            <WandSparkles className="w-4 h-4" /> Nouveau tailoring
+          </Button>
+          <Link href="/library">
             <Button
-              variant="outline"
-              onClick={handleTailorAgain}
-              className="rounded-xl gap-2 text-sm"
-              data-testid="button-tailor-again"
+              variant="ghost"
+              className="rounded-xl gap-2 text-sm text-[#94a3b8] hover:text-[#1e293b]"
+              data-testid="button-improve-library"
             >
-              <WandSparkles className="w-4 h-4" /> Nouveau tailoring
+              <Library className="w-4 h-4" /> Ameliorer la bibliotheque
             </Button>
-            <Link href={(() => {
-              // Pass context to library if we have enrichment data
-              const firstExpId = run?.selectedExperienceIds?.[0];
-              const evidenceMissing = (report?.postRules?.evidenceKeywordsMissing || []).slice(0, 6);
-              if (firstExpId && evidenceMissing.length > 0) {
-                const params = new URLSearchParams({
-                  experienceId: firstExpId,
-                  missing: evidenceMissing.join(","),
-                  ...(report?.jobTitle ? { jobTitle: report.jobTitle } : {}),
-                });
-                return `/library?${params.toString()}`;
-              }
-              return "/library";
-            })()}>
-              <Button variant="ghost" className="rounded-xl gap-2 text-sm text-muted-foreground hover:text-foreground" data-testid="button-improve-library">
-                <Library className="w-4 h-4" /> Ameliorer la bibliotheque
-              </Button>
-            </Link>
-          </div>
+          </Link>
         </div>
 
       </div>
