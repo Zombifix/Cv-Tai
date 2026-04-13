@@ -1,135 +1,166 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarTrigger
-} from "@/components/ui/sidebar";
-import { Library, WandSparkles, Clock, Settings, LogOut, AlignLeft } from "lucide-react";
+import { Library, WandSparkles, Clock, Settings, LogOut, AlignLeft, Menu, X } from "lucide-react";
 import { useLogout, useCurrentUser } from "@/hooks/use-auth";
 
-export function AppSidebar() {
+// ─── Nav items ────────────────────────────────────────────────────────────────
+
+const NAV_ITEMS = [
+  { title: "Super CV",   url: "/library",  icon: Library      },
+  { title: "Tailoring",  url: "/tailor",   icon: WandSparkles },
+  { title: "Historique", url: "/history",  icon: Clock        },
+];
+
+// ─── Single nav link ──────────────────────────────────────────────────────────
+
+function NavItem({ title, url, icon: Icon, active }: {
+  title: string;
+  url: string;
+  icon: React.ElementType;
+  active: boolean;
+}) {
+  return (
+    <Link href={url}>
+      <div
+        className={[
+          "flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer select-none transition-colors duration-150",
+          active
+            ? "bg-primary text-white shadow-sm shadow-primary/30"
+            : "text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#1e293b]",
+        ].join(" ")}
+      >
+        <Icon className="w-[18px] h-[18px] flex-shrink-0" />
+        <span className="text-sm font-medium leading-none">{title}</span>
+      </div>
+    </Link>
+  );
+}
+
+// ─── Sidebar (desktop) ────────────────────────────────────────────────────────
+
+function Sidebar({ onClose }: { onClose?: () => void }) {
   const [location] = useLocation();
   const logout = useLogout();
 
-  const items = [
-    { title: "Super CV", url: "/library", icon: Library },
-    { title: "Tailoring", url: "/tailor", icon: WandSparkles },
-    { title: "Historique", url: "/history", icon: Clock },
-  ];
-
-  const bottomItems = [
-    { title: "Parametres", url: "/settings", icon: Settings },
-  ];
-
   return (
-    <Sidebar variant="inset" className="border-r border-border/50">
-      <SidebarContent className="bg-sidebar flex flex-col">
-        <div className="p-6">
-          <Link href="/library">
-            <div className="flex items-center gap-2 cursor-pointer">
-              <AlignLeft className="w-5 h-5 text-primary" />
-              <span className="font-extrabold text-xl tracking-tight text-foreground">dispatch.</span>
-            </div>
-          </Link>
-        </div>
+    <div className="flex flex-col h-full w-full bg-white rounded-2xl overflow-hidden">
+      {/* Logo */}
+      <div className="px-6 pt-7 pb-6 flex items-center justify-between">
+        <Link href="/library">
+          <div className="flex items-center gap-2 cursor-pointer">
+            <AlignLeft className="w-5 h-5 text-primary" strokeWidth={2.5} />
+            <span className="font-extrabold text-xl tracking-tight text-primary">dispatch.</span>
+          </div>
+        </Link>
+        {/* Mobile close */}
+        {onClose && (
+          <button onClick={onClose} className="p-1 rounded-lg text-[#64748b] hover:bg-[#f1f5f9] lg:hidden">
+            <X className="w-5 h-5" />
+          </button>
+        )}
+      </div>
 
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-            Navigation
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {items.map((item) => {
-                const isActive = location.startsWith(item.url);
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
-                      <Link href={item.url} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${isActive ? 'bg-primary text-primary-foreground font-medium shadow-md shadow-primary/20' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}>
-                        <item.icon className="w-5 h-5" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+      {/* Nav */}
+      <div className="px-4 flex-1 min-h-0 overflow-y-auto">
+        <p className="px-3 mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#94a3b8]">
+          Navigation
+        </p>
+        <nav className="flex flex-col gap-1">
+          {NAV_ITEMS.map((item) => (
+            <NavItem
+              key={item.url}
+              {...item}
+              active={location.startsWith(item.url)}
+            />
+          ))}
+        </nav>
+      </div>
 
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Bottom section */}
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {bottomItems.map((item) => {
-                const isActive = location.startsWith(item.url);
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
-                      <Link href={item.url} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${isActive ? 'bg-primary text-primary-foreground font-medium shadow-md shadow-primary/20' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}>
-                        <item.icon className="w-5 h-5" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="Deconnexion" onClick={() => logout.mutate()}>
-                  <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all duration-200 cursor-pointer w-full">
-                    <LogOut className="w-5 h-5" />
-                    <span>Deconnexion</span>
-                  </div>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <div className="h-4" />
-      </SidebarContent>
-    </Sidebar>
+      {/* Bottom */}
+      <div className="px-4 pb-6 flex flex-col gap-1">
+        <NavItem
+          title="Parametres"
+          url="/settings"
+          icon={Settings}
+          active={location.startsWith("/settings")}
+        />
+        <button
+          onClick={() => logout.mutate()}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-[#f43f5e] hover:bg-[#fff1f2] transition-colors duration-150 w-full"
+        >
+          <LogOut className="w-[18px] h-[18px] flex-shrink-0" />
+          <span className="text-sm font-medium leading-none">Deconnexion</span>
+        </button>
+      </div>
+    </div>
   );
 }
+
+// ─── Layout ───────────────────────────────────────────────────────────────────
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { data: user } = useCurrentUser();
-  const style = {
-    "--sidebar-width": "18rem",
-    "--sidebar-width-icon": "4rem",
-  } as React.CSSProperties;
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <SidebarProvider style={style}>
-      <div className="flex min-h-screen w-full bg-background/50">
-        <AppSidebar />
-        <div className="flex flex-col flex-1 w-full min-w-0">
-          <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b border-border/50 bg-background/90 px-5 md:px-6 backdrop-blur-xl transition-all">
-            <SidebarTrigger className="hover-elevate" />
-            <div className="flex-1" />
-            <div className="flex items-center gap-3 rounded-2xl border border-border/60 bg-card px-4 py-2 shadow-sm">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-accent border-2 border-background shadow-sm overflow-hidden flex-shrink-0" />
-              <div className="hidden sm:block text-right">
-                <p className="text-sm font-semibold text-foreground leading-tight">
-                  {user?.email?.split("@")[0] ?? "Utilisateur"}
-                </p>
-                <p className="text-xs text-muted-foreground">Credit illimites</p>
-              </div>
-            </div>
-          </header>
-          <main className="flex-1 w-full p-4 md:p-6 lg:p-8 mx-auto max-w-6xl overflow-x-hidden">
-            {children}
-          </main>
+    <div className="flex min-h-screen bg-[#f1f5f9]">
+      {/* Desktop sidebar */}
+      <aside className="hidden lg:flex flex-col w-[240px] flex-shrink-0 p-3 min-h-screen sticky top-0">
+        <Sidebar />
+      </aside>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            onClick={() => setMobileOpen(false)}
+          />
+          <aside className="absolute left-0 top-0 bottom-0 w-[240px] p-3">
+            <Sidebar onClose={() => setMobileOpen(false)} />
+          </aside>
         </div>
+      )}
+
+      {/* Main */}
+      <div className="flex flex-col flex-1 min-w-0">
+        {/* Header */}
+        <header className="sticky top-0 z-40 flex h-16 items-center gap-4 bg-[#f1f5f9] px-5 md:px-6">
+          {/* Mobile menu */}
+          <button
+            className="lg:hidden p-2 rounded-xl text-[#64748b] hover:bg-white transition-colors"
+            onClick={() => setMobileOpen(true)}
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="flex-1" />
+          {/* User card */}
+          <div className="flex items-center gap-3 rounded-2xl border border-white/80 bg-white px-4 py-2 shadow-sm">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-accent flex-shrink-0 overflow-hidden">
+              <img
+                src="https://api.dicebear.com/7.x/initials/svg?seed=TP&backgroundColor=4f46e5"
+                alt="avatar"
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
+            </div>
+            <div className="hidden sm:block">
+              <p className="text-sm font-semibold text-[#1e293b] leading-tight">
+                {user?.email?.split("@")[0] ?? "Utilisateur"}
+              </p>
+              <p className="text-xs text-[#94a3b8]">Credit illimites</p>
+            </div>
+          </div>
+        </header>
+
+        {/* Page content */}
+        <main className="flex-1 w-full p-4 md:p-6 lg:p-8 max-w-6xl mx-auto overflow-x-hidden">
+          {children}
+        </main>
       </div>
-    </SidebarProvider>
+    </div>
   );
 }
+
+// Keep AppSidebar export for any existing imports
+export { Sidebar as AppSidebar };
