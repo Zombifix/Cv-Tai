@@ -1,166 +1,175 @@
-import { useState } from "react";
+﻿import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Library, WandSparkles, Clock, Settings, LogOut, AlignLeft, Menu, X } from "lucide-react";
-import { useLogout, useCurrentUser } from "@/hooks/use-auth";
+import { Clock3, LogOut, Menu, Settings, WandSparkles, X } from "lucide-react";
+import { useCurrentUser, useLogout } from "@/hooks/use-auth";
 
-// ─── Nav items ────────────────────────────────────────────────────────────────
-
-const NAV_ITEMS = [
-  { title: "Super CV",   url: "/library",  icon: Library      },
-  { title: "Tailoring",  url: "/tailor",   icon: WandSparkles },
-  { title: "Historique", url: "/history",  icon: Clock        },
-];
-
-// ─── Single nav link ──────────────────────────────────────────────────────────
-
-function NavItem({ title, url, icon: Icon, active }: {
+type NavItemDef = {
   title: string;
   url: string;
-  icon: React.ElementType;
-  active: boolean;
-}) {
+  icon: (props: { className?: string }) => JSX.Element;
+};
+
+function DispatchMark({ className }: { className?: string }) {
   return (
-    <Link href={url}>
+    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden="true">
+      <path d="M6 4.4L17 4.4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M6 10L17 10" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M6 15.6L17 15.6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <circle cx="3.2" cy="4.4" r="1.4" fill="currentColor" />
+      <circle cx="3.2" cy="10" r="1.4" fill="currentColor" />
+      <circle cx="3.2" cy="15.6" r="1.4" fill="currentColor" />
+    </svg>
+  );
+}
+
+function SuperCvIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden="true">
+      <path d="M3.2 3.5V16.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M8 5V16.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M12.8 7V16.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M17 9.6V16.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+const NAV_ITEMS: NavItemDef[] = [
+  { title: "Super CV", url: "/library", icon: SuperCvIcon },
+  { title: "Tailoring", url: "/tailor", icon: WandSparkles },
+  { title: "Historique", url: "/history", icon: Clock3 },
+  { title: "Parametres", url: "/settings", icon: Settings },
+];
+
+function NavItem({ item, active }: { item: NavItemDef; active: boolean }) {
+  return (
+    <Link href={item.url}>
       <div
         className={[
-          "flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer select-none transition-colors duration-150",
-          active
-            ? "bg-primary text-white shadow-sm shadow-primary/30"
-            : "text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#1e293b]",
+          "flex h-12 items-center gap-3 rounded-[14px] px-4 transition-colors duration-150",
+          active ? "bg-[#2f63e2] text-white" : "text-[#627391] hover:bg-[#e6e9f0]",
         ].join(" ")}
       >
-        <Icon className="w-[18px] h-[18px] flex-shrink-0" />
-        <span className="text-sm font-medium leading-none">{title}</span>
+        <item.icon className="h-[20px] w-[20px] flex-shrink-0" />
+        <span className="text-[14px] font-medium leading-none">{item.title}</span>
       </div>
     </Link>
   );
 }
-
-// ─── Sidebar (desktop) ────────────────────────────────────────────────────────
 
 function Sidebar({ onClose }: { onClose?: () => void }) {
   const [location] = useLocation();
   const logout = useLogout();
 
   return (
-    <div className="flex flex-col h-full w-full bg-white rounded-2xl overflow-hidden">
-      {/* Logo */}
-      <div className="px-6 pt-7 pb-6 flex items-center justify-between">
+    <div className="flex h-full w-full flex-col rounded-[34px] bg-[#eceef2] px-6 pb-8 pt-8">
+      <div className="flex items-center justify-between">
         <Link href="/library">
-          <div className="flex items-center gap-2 cursor-pointer">
-            <AlignLeft className="w-5 h-5 text-primary" strokeWidth={2.5} />
-            <span className="font-extrabold text-xl tracking-tight text-primary">dispatch.</span>
+          <div className="flex cursor-pointer items-center gap-2 text-[#2f63e2]">
+            <DispatchMark className="h-6 w-6" />
+            <span className="text-[28px] font-extrabold leading-none tracking-[-0.02em]">dispatch.</span>
           </div>
         </Link>
-        {/* Mobile close */}
-        {onClose && (
-          <button onClick={onClose} className="p-1 rounded-lg text-[#64748b] hover:bg-[#f1f5f9] lg:hidden">
-            <X className="w-5 h-5" />
+
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1 text-[#627391] hover:bg-[#dfe4ec] lg:hidden"
+          >
+            <X className="h-5 w-5" />
           </button>
-        )}
+        ) : null}
       </div>
 
-      {/* Nav */}
-      <div className="px-4 flex-1 min-h-0 overflow-y-auto">
-        <p className="px-3 mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#94a3b8]">
-          Navigation
-        </p>
-        <nav className="flex flex-col gap-1">
+      <div className="mt-[54px]">
+        <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#65758f]">Navigation</p>
+        <nav className="mt-4 space-y-2">
           {NAV_ITEMS.map((item) => (
             <NavItem
               key={item.url}
-              {...item}
-              active={location.startsWith(item.url)}
+              item={item}
+              active={location === item.url || location.startsWith(`${item.url}/`) || (item.url === "/tailor" && location === "/")}
             />
           ))}
         </nav>
       </div>
 
-      {/* Bottom */}
-      <div className="px-4 pb-6 flex flex-col gap-1">
-        <NavItem
-          title="Parametres"
-          url="/settings"
-          icon={Settings}
-          active={location.startsWith("/settings")}
-        />
-        <button
-          onClick={() => logout.mutate()}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-[#f43f5e] hover:bg-[#fff1f2] transition-colors duration-150 w-full"
-        >
-          <LogOut className="w-[18px] h-[18px] flex-shrink-0" />
-          <span className="text-sm font-medium leading-none">Deconnexion</span>
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={() => logout.mutate()}
+        className="mt-auto flex h-11 items-center justify-center gap-3 rounded-xl text-[14px] font-medium text-[#e06492] transition-colors hover:bg-[#f8e6ee]"
+      >
+        <LogOut className="h-[18px] w-[18px]" />
+        <span className="leading-none">Deconnexion</span>
+      </button>
     </div>
   );
 }
-
-// ─── Layout ───────────────────────────────────────────────────────────────────
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { data: user } = useCurrentUser();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const userName = useMemo(() => {
+    const localPart = user?.email?.split("@")[0]?.trim();
+    if (!localPart) return "Theo Pornin";
+    if (localPart.includes(".")) {
+      return localPart
+        .split(".")
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+    }
+    return localPart.charAt(0).toUpperCase() + localPart.slice(1);
+  }, [user?.email]);
+
   return (
-    <div className="flex min-h-screen bg-[#f1f5f9]">
-      {/* Desktop sidebar */}
-      <aside className="hidden lg:flex flex-col w-[240px] flex-shrink-0 p-3 min-h-screen sticky top-0">
+    <div className="flex min-h-screen bg-[#f3f4f6]">
+      <aside className="hidden w-[276px] flex-shrink-0 p-5 lg:block">
         <Sidebar />
       </aside>
 
-      {/* Mobile overlay */}
-      {mobileOpen && (
+      {mobileOpen ? (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div
-            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
-            onClick={() => setMobileOpen(false)}
-          />
-          <aside className="absolute left-0 top-0 bottom-0 w-[240px] p-3">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setMobileOpen(false)} />
+          <aside className="absolute left-0 top-0 h-full w-[276px] p-5">
             <Sidebar onClose={() => setMobileOpen(false)} />
           </aside>
         </div>
-      )}
+      ) : null}
 
-      {/* Main */}
-      <div className="flex flex-col flex-1 min-w-0">
-        {/* Header */}
-        <header className="sticky top-0 z-40 flex h-16 items-center gap-4 bg-[#f1f5f9] px-5 md:px-6">
-          {/* Mobile menu */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-[94px] items-start px-4 pt-5 md:px-7 lg:px-8">
           <button
-            className="lg:hidden p-2 rounded-xl text-[#64748b] hover:bg-white transition-colors"
+            type="button"
+            className="rounded-xl p-2 text-[#627391] hover:bg-[#e6e9f0] lg:hidden"
             onClick={() => setMobileOpen(true)}
           >
-            <Menu className="w-5 h-5" />
+            <Menu className="h-5 w-5" />
           </button>
-          <div className="flex-1" />
-          {/* User card */}
-          <div className="flex items-center gap-3 rounded-2xl border border-white/80 bg-white px-4 py-2 shadow-sm">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-accent flex-shrink-0 overflow-hidden">
+
+          <div className="ml-auto flex h-[68px] items-center rounded-[34px] bg-[#eceef2] px-4 pr-7">
+            <div className="h-[52px] w-[52px] overflow-hidden rounded-full bg-[#dfe4ec]">
               <img
-                src="https://api.dicebear.com/7.x/initials/svg?seed=TP&backgroundColor=4f46e5"
+                src="https://api.dicebear.com/7.x/initials/svg?seed=Theo%20Pornin&backgroundColor=e5e7eb"
                 alt="avatar"
-                className="w-full h-full object-cover"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                className="h-full w-full object-cover"
+                onError={(event) => {
+                  (event.target as HTMLImageElement).style.display = "none";
+                }}
               />
             </div>
-            <div className="hidden sm:block">
-              <p className="text-sm font-semibold text-[#1e293b] leading-tight">
-                {user?.email?.split("@")[0] ?? "Utilisateur"}
-              </p>
-              <p className="text-xs text-[#94a3b8]">Credit illimites</p>
+            <div className="ml-3.5 leading-tight">
+              <p className="text-[16px] font-bold text-[#111a30]">{userName}</p>
+              <p className="mt-1 text-[13px] text-[#66758f]">Credit illimites</p>
             </div>
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 w-full p-4 md:p-6 lg:p-8 max-w-6xl mx-auto overflow-x-hidden">
-          {children}
-        </main>
+        <main className="flex-1 px-4 pb-6 md:px-7 md:pb-8 lg:px-8">{children}</main>
       </div>
     </div>
   );
 }
 
-// Keep AppSidebar export for any existing imports
 export { Sidebar as AppSidebar };
