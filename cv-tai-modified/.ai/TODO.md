@@ -19,6 +19,7 @@
 - Page `Tailoring` refondue en mode fast lane, avec backup local de l'ancienne version
 - Page `Historique` refondue pour un triage plus rapide, avec backup local de l'ancienne version
 - `npm run check` et `npm run build` passent
+- Rebuild fidelity de l'ecran `Tailoring` depuis le frame Figma (sidebar + header compact + grille + mode + fast lane + repères utiles)
 
 ## Next
 - Rejouer le batch grounded : `Alan`, `Thales`, `Beelix`, `TheFork`, `Razer`, `Behaviour`, `EdTech`, `EDF`
@@ -54,6 +55,7 @@
 - Le calcul d'integrite texte est maintenant volontairement plus dur : surveiller toute sur-penalisation si seul le debug est corrompu mais pas le CV final
 - Auth toujours non multi-tenant (`userId` absent des tables coeur)
 - Railway peut encore diverger local/prod sur cookies et version Node
+- Le lancement local du serveur reste bloque sans `DATABASE_URL`, et `npm run dev` garde une syntaxe d'env POSIX non portable sur Windows
 
 ## Do not repeat blindly
 - Relever / baisser des caps sur quelques cas design a deja cree de l'overfit
@@ -78,6 +80,7 @@
 - `.ai/TODO.md`
 - `.ai/LAST_CHANGES.md`
 - `analysis/calibration_targets_2026-04-05.md`
+- `client/public/tailor-help-illustration.png`
 
 ## Product backlog
 - [ ] Autocompletion des tags

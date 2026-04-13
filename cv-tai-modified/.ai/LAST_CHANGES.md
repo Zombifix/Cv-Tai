@@ -1,5 +1,28 @@
 # Last Changes
 
+## 2026-04-13
+
+### Tailoring Figma parity pass
+- Quoi : realignement de `Tailoring` directement sur le frame Figma partage (sidebar, header compact, panneaux, mode, fast lane, repères utiles)
+- Fichiers : `client/src/components/layout.tsx`, `client/src/pages/tailor.tsx`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
+- Impact :
+  - sidebar desktop rapprochee du visuel Figma (fond clair, item actif gris, wordmark `dispatch.`, deconnexion discrete)
+  - header global compact avec avatar seul a droite, plus proche du shell Figma
+  - page `Tailoring` re-scalee sur la grille Figma desktop (`1427px`, rail droit `388px`, cartes a grands rayons et bordures legeres)
+  - copy visible, hierarchie typo, modes `Fidele/Optimise`, fast lane et repères utiles recales sur le frame cible
+  - `npm run dev` reste non validable en local sans `DATABASE_URL`, et le script actuel utilise encore une syntaxe POSIX non portable sous Windows
+- Verification : `npm run check`, `npm run build`
+
+### Tailoring UI fidelity pass (screenshots)
+- Quoi : reconstruction de la page `Tailoring` pour coller au visuel cible (sidebar, header, cartes, fast lane, reperes utiles)
+- Fichiers : `client/src/components/layout.tsx`, `client/src/pages/tailor.tsx`, `client/public/tailor-help-illustration.png`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
+- Impact :
+  - sidebar desktop reconstruite avec la structure exacte attendue (`Super CV`, `Tailoring`, `Historique`, `Parametres`) et deconnexion ancree en bas
+  - hierarchie visuelle et proportions de la page `Tailoring` realignees sur les captures (badge, hero, carte annonce, reglages, mode, rail droit)
+  - bloc `Reperes utiles` refait avec l'illustration fournie (`Image 4`) en asset local public
+  - comportement fonctionnel conserve (`pre-check`, generation, modal de confirmation, persistance des limites)
+- Verification : `npm run check`, `npm run build`
+
 ## 2026-04-05
 
 ### Guardrails anti-faux-positifs

@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Clock3, LogOut, Menu, Settings, WandSparkles, X } from "lucide-react";
 import { useCurrentUser, useLogout } from "@/hooks/use-auth";
@@ -6,7 +6,7 @@ import { useCurrentUser, useLogout } from "@/hooks/use-auth";
 type NavItemDef = {
   title: string;
   url: string;
-  icon: (props: { className?: string }) => JSX.Element;
+  icon: React.ElementType<{ className?: string }>;
 };
 
 function DispatchMark({ className }: { className?: string }) {
@@ -45,12 +45,14 @@ function NavItem({ item, active }: { item: NavItemDef; active: boolean }) {
     <Link href={item.url}>
       <div
         className={[
-          "flex h-12 items-center gap-3 rounded-[14px] px-4 transition-colors duration-150",
-          active ? "bg-[#2f63e2] text-white" : "text-[#627391] hover:bg-[#e6e9f0]",
+          "flex h-8 items-center gap-3 rounded-[12px] px-3 transition-colors duration-150",
+          active
+            ? "border border-white/60 bg-[#efefef] text-[#18181b] shadow-[0_2px_4px_-2px_rgba(100,103,242,0.2)]"
+            : "text-[#65758b] hover:bg-[#efefef]",
         ].join(" ")}
       >
-        <item.icon className="h-[20px] w-[20px] flex-shrink-0" />
-        <span className="text-[14px] font-medium leading-none">{item.title}</span>
+        <item.icon className="h-[18px] w-[18px] flex-shrink-0" />
+        <span className="text-[16px] font-normal leading-none">{item.title}</span>
       </div>
     </Link>
   );
@@ -61,12 +63,12 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
   const logout = useLogout();
 
   return (
-    <div className="flex h-full w-full flex-col rounded-[34px] bg-[#eceef2] px-6 pb-8 pt-8">
-      <div className="flex items-center justify-between">
+    <div className="flex h-full w-full flex-col rounded-[40px] bg-[#f7f7f7] pb-6 pt-[33px] shadow-[inset_0_1px_0_rgba(255,255,255,0.96)]">
+      <div className="flex items-center justify-between px-6">
         <Link href="/library">
-          <div className="flex cursor-pointer items-center gap-2 text-[#2f63e2]">
-            <DispatchMark className="h-6 w-6" />
-            <span className="text-[28px] font-extrabold leading-none tracking-[-0.02em]">dispatch.</span>
+          <div className="flex cursor-pointer items-center gap-[7px] text-[#6470e8]">
+            <DispatchMark className="h-[15px] w-[15px]" />
+            <span className="text-[22px] font-extrabold leading-none tracking-[-0.04em]">dispatch.</span>
           </div>
         </Link>
 
@@ -81,9 +83,11 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
         ) : null}
       </div>
 
-      <div className="mt-[54px]">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#65758f]">Navigation</p>
-        <nav className="mt-4 space-y-2">
+      <div className="mt-8 px-2">
+        <div className="px-4 pb-2 pt-1">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#65758b]">Navigation</p>
+        </div>
+        <nav className="space-y-2 px-2">
           {NAV_ITEMS.map((item) => (
             <NavItem
               key={item.url}
@@ -97,9 +101,9 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
       <button
         type="button"
         onClick={() => logout.mutate()}
-        className="mt-auto flex h-11 items-center justify-center gap-3 rounded-xl text-[14px] font-medium text-[#e06492] transition-colors hover:bg-[#f8e6ee]"
+        className="mt-auto mx-2 flex h-10 items-center justify-center gap-3 rounded-[12px] text-[14px] font-normal text-[#65758b] transition-colors hover:bg-[#efefef]"
       >
-        <LogOut className="h-[18px] w-[18px]" />
+        <LogOut className="h-5 w-5" />
         <span className="leading-none">Deconnexion</span>
       </button>
     </div>
@@ -110,58 +114,43 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { data: user } = useCurrentUser();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const userName = useMemo(() => {
-    const localPart = user?.email?.split("@")[0]?.trim();
-    if (!localPart) return "Theo Pornin";
-    if (localPart.includes(".")) {
-      return localPart
-        .split(".")
-        .filter(Boolean)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(" ");
-    }
-    return localPart.charAt(0).toUpperCase() + localPart.slice(1);
-  }, [user?.email]);
+  const avatarSeed = useMemo(() => user?.email?.trim() || "Theo Pornin", [user?.email]);
 
   return (
-    <div className="flex min-h-screen bg-[#f3f4f6]">
-      <aside className="hidden w-[276px] flex-shrink-0 p-5 lg:block">
+    <div className="flex min-h-screen bg-[#f1f5f9]">
+      <aside className="hidden w-[288px] flex-shrink-0 p-4 lg:block">
         <Sidebar />
       </aside>
 
       {mobileOpen ? (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/30" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 h-full w-[276px] p-5">
+          <aside className="absolute left-0 top-0 h-full w-[288px] p-4">
             <Sidebar onClose={() => setMobileOpen(false)} />
           </aside>
         </div>
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-[94px] items-start px-4 pt-5 md:px-7 lg:px-8">
+        <header className="flex h-16 items-center px-4 md:px-7 lg:px-8">
           <button
             type="button"
-            className="rounded-xl p-2 text-[#627391] hover:bg-[#e6e9f0] lg:hidden"
+            className="rounded-xl p-2 text-[#65758b] hover:bg-[#e7edf5] lg:hidden"
             onClick={() => setMobileOpen(true)}
           >
             <Menu className="h-5 w-5" />
           </button>
 
-          <div className="ml-auto flex h-[68px] items-center rounded-[34px] bg-[#eceef2] px-4 pr-7">
-            <div className="h-[52px] w-[52px] overflow-hidden rounded-full bg-[#dfe4ec]">
+          <div className="ml-auto flex items-center">
+            <div className="h-8 w-8 overflow-hidden rounded-full border border-white/80 bg-[radial-gradient(circle_at_30%_30%,_#b8c2ff_0%,_#8f97f9_42%,_#6467f2_100%)] shadow-[0_8px_20px_-12px_rgba(100,103,242,0.9)]">
               <img
-                src="https://api.dicebear.com/7.x/initials/svg?seed=Theo%20Pornin&backgroundColor=e5e7eb"
+                src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(avatarSeed)}&backgroundColor=e5e7eb`}
                 alt="avatar"
                 className="h-full w-full object-cover"
                 onError={(event) => {
                   (event.target as HTMLImageElement).style.display = "none";
                 }}
               />
-            </div>
-            <div className="ml-3.5 leading-tight">
-              <p className="text-[16px] font-bold text-[#111a30]">{userName}</p>
-              <p className="mt-1 text-[13px] text-[#66758f]">Credit illimites</p>
             </div>
           </div>
         </header>
