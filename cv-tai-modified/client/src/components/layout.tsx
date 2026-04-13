@@ -17,7 +17,6 @@ import { useLogout, useCurrentUser } from "@/hooks/use-auth";
 export function AppSidebar() {
   const [location] = useLocation();
   const logout = useLogout();
-  const { data: user } = useCurrentUser();
 
   const items = [
     { title: "Super CV", url: "/library", icon: Library },
@@ -102,6 +101,7 @@ export function AppSidebar() {
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const { data: user } = useCurrentUser();
   const style = {
     "--sidebar-width": "18rem",
     "--sidebar-width-icon": "4rem",
