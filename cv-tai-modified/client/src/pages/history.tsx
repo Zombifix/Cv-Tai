@@ -285,10 +285,17 @@ export default function History() {
               <p className="text-sm text-muted-foreground">CV générés et disponibles dans l'historique.</p>
             </div>
 
-            <div className="rounded-[24px] border border-[rgba(225,231,239,0.7)] bg-[rgba(255,255,255,0.75)] px-[21px] pt-5 pb-5 shadow-sm flex flex-col gap-1">
-              <p className="text-sm font-semibold uppercase tracking-[2.2px] text-muted-foreground">CV envoyés</p>
-              <p className="pt-1 text-3xl font-bold text-foreground">{appliedCount}</p>
-              <p className="text-sm text-muted-foreground">CV envoyés à des offres.</p>
+            <div className="rounded-[24px] border border-[rgba(225,231,239,0.7)] bg-[rgba(255,255,255,0.75)] px-[21px] pt-[19px] pb-5 shadow-sm relative overflow-hidden">
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-semibold uppercase tracking-[2.2px] text-muted-foreground">CV envoyés</p>
+                <p className="pt-1 text-3xl font-bold text-foreground">{appliedCount}</p>
+                <p className="text-sm text-muted-foreground">CV envoyés à des offres.</p>
+              </div>
+              <img
+                src="/suivi-illustration.png"
+                alt=""
+                className="absolute right-0 bottom-0 h-[110px] w-auto object-contain pointer-events-none"
+              />
             </div>
 
             <div className="rounded-[24px] border border-[rgba(225,231,239,0.7)] bg-[rgba(255,255,255,0.75)] px-[21px] pt-5 pb-9 shadow-sm flex flex-col gap-1">

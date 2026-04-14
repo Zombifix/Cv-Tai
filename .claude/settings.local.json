@@ -27,7 +27,8 @@
       "WebFetch(domain:www.figma.com)",
       "mcp__figma__get_design_context",
       "mcp__figma__get_screenshot",
-      "Bash(curl -L \"https://www.figma.com/api/mcp/asset/44cfed38-5456-45f6-8045-94f0aaa0ee12\" -o \"C:/Users/theop/OneDrive/Documents/GitHub/Cv-Tai/cv-tai-modified/client/public/adequation-illustration.png\" --silent)"
+      "Bash(curl -L \"https://www.figma.com/api/mcp/asset/44cfed38-5456-45f6-8045-94f0aaa0ee12\" -o \"C:/Users/theop/OneDrive/Documents/GitHub/Cv-Tai/cv-tai-modified/client/public/adequation-illustration.png\" --silent)",
+      "Bash(python3 -c ':*)"
     ]
   }
 }

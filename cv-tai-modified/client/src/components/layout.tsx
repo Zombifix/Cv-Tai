@@ -117,7 +117,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const avatarSeed = useMemo(() => user?.email?.trim() || "Theo Pornin", [user?.email]);
 
   return (
-    <div className="flex min-h-screen bg-[#f1f5f9]">
+    <div className="flex min-h-screen bg-white">
       <aside className="hidden w-[288px] flex-shrink-0 p-4 lg:block">
         <Sidebar />
       </aside>
@@ -142,15 +142,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </button>
 
           <div className="ml-auto flex items-center">
-            <div className="h-8 w-8 overflow-hidden rounded-full border border-white/80 bg-[radial-gradient(circle_at_30%_30%,_#b8c2ff_0%,_#8f97f9_42%,_#6467f2_100%)] shadow-[0_8px_20px_-12px_rgba(100,103,242,0.9)]">
-              <img
-                src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(avatarSeed)}&backgroundColor=e5e7eb`}
-                alt="avatar"
-                className="h-full w-full object-cover"
-                onError={(event) => {
-                  (event.target as HTMLImageElement).style.display = "none";
-                }}
-              />
+            <div className="flex items-center gap-3 rounded-[30px] bg-[#f7f7f7] px-4 py-2">
+              <div className="h-[44px] w-[44px] flex-shrink-0 overflow-hidden rounded-full">
+                <img
+                  src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(avatarSeed)}&backgroundColor=e5e7eb`}
+                  alt="avatar"
+                  className="h-full w-full object-cover"
+                  onError={(event) => {
+                    (event.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
+              </div>
+              <div>
+                <p className="text-[14px] font-semibold leading-tight tracking-[-0.35px] text-[#0f1729]">
+                  {user?.email?.split("@")[0] || "Theo Pornin"}
+                </p>
+                <p className="text-[12px] tracking-[0.6px] text-[#65758b]">Crédit illimités</p>
+              </div>
             </div>
           </div>
         </header>
