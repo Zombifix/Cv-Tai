@@ -380,78 +380,99 @@ export default function Tailor() {
     <>
       <Layout>
         <div className="mx-auto w-full max-w-[1427px] pb-6">
-          <section className="space-y-1">
-            <p className="text-[16px] font-medium leading-5 text-[#65758b]">Tailoring</p>
-            <h1 className="text-[36px] font-semibold tracking-[-0.03em] text-[#0f1729]">Adapter ton CV a une offre</h1>
-            <p className="text-[20px] leading-8 text-[#65758b]">Colle une offre pour extraire les attentes cles et ajuster ton CV.</p>
+          <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-2">
+              <div className="inline-flex w-fit items-center gap-2 rounded-full border border-border/70 bg-background/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                <WandSparkles className="h-3.5 w-3.5 text-primary" />
+                Tailoring
+              </div>
+              <h1 className="text-4xl font-extrabold tracking-tight text-foreground">Adapter ton CV à une offre</h1>
+              <p className="text-xl text-muted-foreground">Colle une offre pour extraire les attentes clés et ajuster ton CV.</p>
+            </div>
           </section>
 
           <form onSubmit={handleSubmit} className="mt-8 grid gap-[29px] xl:grid-cols-[minmax(0,1010px)_388px]">
             <div className="space-y-[29px]">
-              <section className={`${PANEL_CLASS} p-[25.427px]`}>
-                <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-2">
-                    <p className="text-[14px] font-semibold uppercase tracking-[0.18em] text-[#65758b]">Annonce cible</p>
-                    <h2 className="text-[32px] font-semibold tracking-[-0.018em] text-[#0f1729]">Ajoute une annonce</h2>
-                    <p className="max-w-[620px] text-[16px] leading-[24.216px] text-[#65758b]">
-                      Colle un lien ou du texte pour servir de base au tailoring.
-                    </p>
+              <section className={`${PANEL_CLASS} overflow-hidden`}>
+                {/* Header with border-bottom */}
+                <div className="border-b border-[rgba(225,231,239,0.6)] bg-[rgba(241,245,249,0.2)] px-[33px] py-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <p className="text-[14px] font-semibold uppercase tracking-[2.9px] text-[#65758b]">Annonce cible</p>
+                      <h2 className="text-[24px] font-semibold tracking-[-0.025em] text-[#0f1729]">Colle l'offre complète ou un extrait</h2>
+                    </div>
+                    <div className="flex items-center gap-2 text-[16px] font-medium text-[#2563eb]">
+                      <Info className="h-[17px] w-[17px]" />
+                      Plus l'offre est précise, plus l'analyse est fiable
+                    </div>
                   </div>
-
-                  <InputModeSwitch value={inputMode} onChange={setInputMode} />
                 </div>
-
-                {inputMode === "lien" ? (
-                  <div className="mt-6 space-y-3">
-                    <div className="relative">
-                      <Link2 className="absolute left-[17px] top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#65758b]" />
-                      <Input
-                        value={url}
-                        onChange={(event) => handleUrlChange(event.target.value)}
-                        placeholder="Colle un lien vers l'annonce LinkedIn, Welcome to the Jungle, etc..."
-                        className={`${FIELD_CLASS} pl-[44px]`}
-                      />
+                {/* Body */}
+                <div className="p-[33px]">
+                  <div className="space-y-[19px]">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <h3 className="text-[19px] font-semibold text-[#0f1729]">Ajoute une offre</h3>
+                        <p className="text-[17px] text-[#65758b]">Colle un lien ou du texte pour servir de base à l'adaptation.</p>
+                      </div>
+                      <InputModeSwitch value={inputMode} onChange={setInputMode} />
                     </div>
 
-                    {urlWarning ? (
-                      <Notice icon={<AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />}>{urlWarning}</Notice>
-                    ) : null}
+                    {inputMode === "lien" ? (
+                      <div className="space-y-3">
+                        <div className="relative">
+                          <Link2 className="absolute left-[17px] top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#65758b]" />
+                          <Input
+                            value={url}
+                            onChange={(event) => handleUrlChange(event.target.value)}
+                            placeholder="Colle un lien vers l'annonce LinkedIn, Welcome to the Jungle, etc..."
+                            className={`${FIELD_CLASS} pl-[44px]`}
+                          />
+                        </div>
 
-                    {urlConverted && !urlWarning ? (
-                      <Notice tone="info" icon={<Info className="mt-0.5 h-4 w-4 flex-shrink-0" />}>
-                        URL LinkedIn convertie automatiquement pour une récupération plus stable.
-                      </Notice>
-                    ) : null}
+                        {urlWarning ? (
+                          <Notice icon={<AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />}>{urlWarning}</Notice>
+                        ) : null}
 
-                    {scrapeFailReason ? (
-                      <Notice icon={<AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />}>
-                        {scrapeFailReason} Colle le texte pour continuer.
-                      </Notice>
-                    ) : null}
+                        {urlConverted && !urlWarning ? (
+                          <Notice tone="info" icon={<Info className="mt-0.5 h-4 w-4 flex-shrink-0" />}>
+                            URL LinkedIn convertie automatiquement pour une récupération plus stable.
+                          </Notice>
+                        ) : null}
+
+                        {scrapeFailReason ? (
+                          <Notice icon={<AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />}>
+                            {scrapeFailReason} Colle le texte pour continuer.
+                          </Notice>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {scrapeNotice ? (
+                          <Notice icon={<Info className="mt-0.5 h-4 w-4 flex-shrink-0" />}>{scrapeNotice}</Notice>
+                        ) : null}
+
+                        <Textarea
+                          value={text}
+                          onChange={(event) => {
+                            setText(event.target.value);
+                            if (event.target.value) setScrapeNotice(null);
+                          }}
+                          placeholder="Colle le texte brut de l'annonce ici..."
+                          className={`min-h-[260px] ${TEXTAREA_CLASS}`}
+                        />
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="mt-6 space-y-3">
-                    {scrapeNotice ? (
-                      <Notice icon={<Info className="mt-0.5 h-4 w-4 flex-shrink-0" />}>{scrapeNotice}</Notice>
-                    ) : null}
-
-                    <Textarea
-                      value={text}
-                      onChange={(event) => {
-                        setText(event.target.value);
-                        if (event.target.value) setScrapeNotice(null);
-                      }}
-                      placeholder="Colle le texte brut de l'annonce ici..."
-                      className={`min-h-[260px] ${TEXTAREA_CLASS}`}
-                    />
-                  </div>
-                )}
+                </div>
               </section>
 
               <div className="grid gap-[29px] xl:grid-cols-[minmax(0,1fr)_387px]">
                 <section className={`${PANEL_CLASS} p-[25.427px]`}>
                   <div className="space-y-[10px]">
-                    <h3 className="text-[20px] font-semibold tracking-[-0.024em] text-[#0f1729]">Reglages</h3>
+                    <h3 className="text-[20px] font-semibold tracking-[-0.024em] text-[#0f1729]">
+                      RÉGLAGES <span className="font-medium text-[#5e5b73]">(optionnel)</span>
+                    </h3>
                     <p className="max-w-[542px] text-[16px] leading-[24.216px] text-[#65758b]">
                       Laisse vide pour un comportement auto, ou contraints ton template si besoin.
                     </p>
@@ -459,7 +480,7 @@ export default function Tailor() {
 
                   <div className="mt-6 grid gap-[14px] md:grid-cols-2">
                     <div className="space-y-[10px]">
-                      <Label className="text-[16px] font-medium leading-[19.373px] text-[#65758b]">Intro / Resume pro</Label>
+                      <Label className="text-[16px] font-medium leading-[19.373px] text-[#65758b]">Intro (longueur)</Label>
                       <Input
                         type="number"
                         value={introMaxChars}
@@ -470,7 +491,7 @@ export default function Tailor() {
                     </div>
 
                     <div className="space-y-[10px]">
-                      <Label className="text-[16px] font-medium leading-[19.373px] text-[#65758b]">Corps experiences</Label>
+                      <Label className="text-[16px] font-medium leading-[19.373px] text-[#65758b]">Expériences (longueur)</Label>
                       <Input
                         type="number"
                         value={bodyMaxChars}
