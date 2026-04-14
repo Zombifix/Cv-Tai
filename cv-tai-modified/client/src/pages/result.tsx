@@ -2585,7 +2585,7 @@ export default function Result() {
           </div>
 
           {/* ── RIGHT PANEL ── */}
-          <div className="space-y-[12px] h-fit xl:sticky xl:top-6" data-testid="section-report">
+          <div className="flex flex-col gap-[20px] h-fit xl:sticky xl:top-6" data-testid="section-report">
 
             {/* Suivi — mobile uniquement (desktop = header) */}
             <div className="xl:hidden rounded-[12px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] p-4 flex items-center justify-between gap-3">
@@ -2603,8 +2603,8 @@ export default function Result() {
               />
             </div>
 
-            {/* 1. Copy + Export */}
-            <div className="grid grid-cols-2 gap-2">
+            {/* 1. Copy + Export — groupés, gap interne serré */}
+            <div className="grid grid-cols-2 gap-[8px]">
               <Button
                 variant="default"
                 onClick={handleCopy}
