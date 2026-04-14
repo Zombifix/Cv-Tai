@@ -760,7 +760,7 @@ function LibraryHealthAccordion({ selectedBullets, selectedExperiences, totalBul
   const barColor = score >= 70 ? "bg-green-500" : score >= 40 ? "bg-amber-400" : "bg-red-500";
 
   return (
-    <div className="rounded-xl border border-border/60" data-testid="section-library-health">
+    <div className="rounded-[12px] border border-[rgba(225,231,239,0.6)] bg-white" data-testid="section-library-health">
       <button
         onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
@@ -769,7 +769,7 @@ function LibraryHealthAccordion({ selectedBullets, selectedExperiences, totalBul
         {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
       {open && (
-        <div className="border-t border-border/60 px-4 py-3 space-y-3 bg-muted/10 rounded-b-xl">
+        <div className="border-t border-[rgba(225,231,239,0.6)] px-4 py-3 space-y-3 bg-[rgba(241,245,249,0.25)] rounded-b-[12px]">
           <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
             <div className={`h-full rounded-full ${barColor}`} style={{ width: `${score}%` }} />
           </div>
@@ -798,7 +798,7 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
   const letterGrade = computeLetterGrade(scoreBreakdown, report?.confidence);
 
   return (
-    <div className="rounded-xl border border-border/60" data-testid="section-details">
+    <div className="rounded-[12px] border border-[rgba(225,231,239,0.6)] bg-white" data-testid="section-details">
       <button
         onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
@@ -809,7 +809,7 @@ function DetailsDisclosure({ report, scoreBreakdown }: { report: any; scoreBreak
       </button>
 
       {open && (
-        <div className="border-t border-border/60 px-4 py-4 space-y-4 bg-muted/10 rounded-b-xl">
+        <div className="border-t border-[rgba(225,231,239,0.6)] px-4 py-4 space-y-4 bg-[rgba(241,245,249,0.25)] rounded-b-[12px]">
           {scoreBreakdown && (
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Detail du score</p>
@@ -1052,8 +1052,8 @@ function EnrichmentCoaching({ report, selectedExperienceIds, jobTitle }: {
   if (coachingCards.length === 0) return null;
 
   return (
-    <Card className="border-border/60 shadow-none border-blue-200/60 dark:border-blue-800/40 bg-blue-50/30 dark:bg-blue-950/15" data-testid="section-enrichment-coaching">
-      <CardContent className="p-4 space-y-3">
+    <div className="rounded-[12px] border border-[rgba(225,231,239,0.6)] bg-white" data-testid="section-enrichment-coaching">
+      <div className="p-4 space-y-3">
         <div className="flex items-center gap-2">
           <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
           <h3 className="text-xs font-bold text-blue-700 dark:text-blue-300 tracking-wide uppercase">Renforcer tes experiences</h3>
@@ -1085,8 +1085,8 @@ function EnrichmentCoaching({ report, selectedExperienceIds, jobTitle }: {
             );
           })}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -1258,8 +1258,8 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
   const hasDetail = whatMatches.length > 0 || whatMissing.length > 0 || nextActions.length > 0 || !!primaryCause || optimizationNotes.length > 0;
 
   return (
-    <Card className="border-border/60 shadow-none" data-testid="section-match-diagnosis">
-      <CardContent className="p-4 space-y-3">
+    <div className="rounded-[12px] border border-[rgba(225,231,239,0.6)] bg-white" data-testid="section-match-diagnosis">
+      <div className="p-4 space-y-[12px]">
         {/* Score hero */}
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-center gap-1.5">
@@ -1395,8 +1395,8 @@ function MatchDiagnosisCard({ score, diagnosis, fallbackUsed, scoreBreakdown }: 
             )}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -2220,32 +2220,30 @@ function TabbedCoveragePanel({
   if (!hasKeywords && !hasSkills && !hasTips) return null;
 
   return (
-    <Card className="border-border/60 shadow-none" data-testid="section-coverage-panel">
-      <CardContent className="p-0">
-        <Tabs defaultValue={hasKeywords ? "keywords" : hasSkills ? "skills" : "conseils"}>
-          <TabsList className="w-full rounded-none rounded-t-xl border-b border-border/60 bg-muted/30 h-9 gap-0 px-1">
-            {hasKeywords && <TabsTrigger value="keywords" className="text-xs h-7 px-3 flex-1">Mots-clés</TabsTrigger>}
-            {hasSkills && <TabsTrigger value="skills" className="text-xs h-7 px-3 flex-1">Skills</TabsTrigger>}
-            {hasTips && <TabsTrigger value="conseils" className="text-xs h-7 px-3 flex-1">Conseils</TabsTrigger>}
-          </TabsList>
-          {hasKeywords && (
-            <TabsContent value="keywords" className="p-4 mt-0">
-              <CriticalKeywordsCoverage covered={covered} missing={missing} injected={injected} />
-            </TabsContent>
-          )}
-          {hasSkills && (
-            <TabsContent value="skills" className="p-4 mt-0">
-              <SkillsCoverage matched={matchedSkills} missing={missingSkills} />
-            </TabsContent>
-          )}
-          {hasTips && (
-            <TabsContent value="conseils" className="p-4 mt-0">
-              <KeyTips tips={tips} insight={insight} />
-            </TabsContent>
-          )}
-        </Tabs>
-      </CardContent>
-    </Card>
+    <div className="rounded-[12px] border border-[rgba(225,231,239,0.6)] bg-white overflow-hidden" data-testid="section-coverage-panel">
+      <Tabs defaultValue={hasKeywords ? "keywords" : hasSkills ? "skills" : "conseils"}>
+        <TabsList className="w-full rounded-none rounded-t-[12px] border-b border-[rgba(225,231,239,0.6)] bg-[rgba(241,245,249,0.3)] h-[28px] gap-0 p-0">
+          {hasKeywords && <TabsTrigger value="keywords" className="text-[12px] font-medium h-[28px] px-3 flex-1 rounded-none data-[state=active]:rounded-t-[3px]">Mots-clés</TabsTrigger>}
+          {hasSkills && <TabsTrigger value="skills" className="text-[12px] font-medium h-[28px] px-3 flex-1 rounded-none data-[state=active]:rounded-t-[3px]">Skills</TabsTrigger>}
+          {hasTips && <TabsTrigger value="conseils" className="text-[12px] font-medium h-[28px] px-3 flex-1 rounded-none data-[state=active]:rounded-t-[3px]">Conseils</TabsTrigger>}
+        </TabsList>
+        {hasKeywords && (
+          <TabsContent value="keywords" className="p-4 mt-0">
+            <CriticalKeywordsCoverage covered={covered} missing={missing} injected={injected} />
+          </TabsContent>
+        )}
+        {hasSkills && (
+          <TabsContent value="skills" className="p-4 mt-0">
+            <SkillsCoverage matched={matchedSkills} missing={missingSkills} />
+          </TabsContent>
+        )}
+        {hasTips && (
+          <TabsContent value="conseils" className="p-4 mt-0">
+            <KeyTips tips={tips} insight={insight} />
+          </TabsContent>
+        )}
+      </Tabs>
+    </div>
   );
 }
 
@@ -2400,7 +2398,7 @@ export default function Result() {
         <div className="flex items-center gap-4" data-testid="section-page-header">
           <Link href="/history">
             <button
-              className="flex-shrink-0 w-9 h-9 rounded-full border border-[#e2e8f0] bg-white flex items-center justify-center hover:bg-[#f8fafc] transition-colors shadow-sm"
+              className="flex-shrink-0 w-9 h-9 rounded-[12px] border border-[#0f1729] bg-white flex items-center justify-center hover:bg-[#f8fafc] transition-colors shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]"
               data-testid="button-back"
             >
               <ArrowLeft className="w-4 h-4 text-[#64748b]" />
@@ -2409,8 +2407,8 @@ export default function Result() {
 
           {displayScore != null && (
             <div className="flex-shrink-0 flex flex-col items-center gap-0.5">
-              <ConfidenceRing value={displayScore} size={72} />
-              <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#94a3b8]">
+              <ConfidenceRing value={displayScore} size={68} />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.5px] text-[#65758b]">
                 Pertinence
               </span>
             </div>
@@ -2464,14 +2462,14 @@ export default function Result() {
         </div>
 
         {/* ── MAIN GRID ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-5 items-start">
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_384px] gap-[28px] items-start">
 
           {/* CENTER: CV Document */}
           <div
-            className="flex flex-col rounded-[20px] overflow-hidden border border-[#e2e8f0] bg-white shadow-sm"
+            className="flex flex-col rounded-[12px] overflow-hidden border border-[rgba(225,231,239,0.6)] bg-white"
             data-testid="section-cv-panel"
           >
-            <div className="flex items-center justify-between border-b border-[#f1f5f9] bg-[#f8fafc] px-4 py-2.5 gap-3">
+            <div className="flex items-center justify-between border-b border-[rgba(225,231,239,0.6)] bg-[rgba(255,255,255,0.7)] px-4 py-2 gap-3">
               {!isEditing ? (
                 <Tabs defaultValue="generated" className="flex-1">
                   <div className="flex items-center justify-between gap-3">
@@ -2493,7 +2491,7 @@ export default function Result() {
 
                   <TabsContent value="generated" className="mt-0">
                     <div
-                      className="bg-white px-8 py-10 md:px-14 md:py-12 min-h-[400px]"
+                      className="bg-white px-8 py-9 md:px-14 md:py-9 min-h-[400px]"
                       data-testid="text-cv-output"
                     >
                       <FormattedCV text={displayText || "No text generated."} keywords={allKeywords} />
@@ -2574,10 +2572,10 @@ export default function Result() {
           </div>
 
           {/* ── RIGHT PANEL ── */}
-          <div className="space-y-3" data-testid="section-report">
+          <div className="space-y-[12px]" data-testid="section-report">
 
             {/* 1. Suivi de candidature */}
-            <div className="rounded-[16px] border border-[#e2e8f0] bg-white p-4">
+            <div className="rounded-[12px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] p-4">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-[#1e293b] mb-2">Suivi de candidature</p>
@@ -2636,16 +2634,16 @@ export default function Result() {
               <Button
                 variant="default"
                 onClick={handleCopy}
-                className="rounded-[12px] gap-1.5 text-xs h-10 bg-[#2563eb] hover:bg-[#1d4ed8] text-white"
+                className="rounded-[12px] gap-[8px] text-[14px] font-medium h-9 min-h-[36px] bg-[#2563eb] hover:bg-[#1d4ed8] text-[#f8fafc] shadow-[0px_1px_2px_0px_rgba(100,103,242,0.2)]"
                 data-testid="button-copy-sticky"
               >
-                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                 {copied ? "Copie !" : "Copier le CV"}
               </Button>
               <Button
                 variant="default"
                 onClick={handleExportAnalysis}
-                className="rounded-[12px] gap-1.5 text-xs h-10 bg-[#2563eb] hover:bg-[#1d4ed8] text-white"
+                className="rounded-[12px] gap-[8px] text-[14px] font-medium h-9 min-h-[36px] bg-[#2563eb] hover:bg-[#1d4ed8] text-[#f8fafc] shadow-[0px_1px_2px_0px_rgba(100,103,242,0.2)]"
               >
                 {exported ? <Check className="w-3.5 h-3.5" /> : <FileDown className="w-3.5 h-3.5" />}
                 {exported ? "Pret" : "Export IA"}
