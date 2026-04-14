@@ -297,13 +297,20 @@ export default function History() {
               <p className="text-sm text-muted-foreground">Candidatures ayant donné lieu à un entretien.</p>
             </div>
 
-            <div className="rounded-[24px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] backdrop-blur-sm px-5 pt-[19px] pb-5 shadow-sm flex items-start justify-between gap-3">
+            <div className="rounded-[24px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] backdrop-blur-sm px-5 pt-[19px] pb-5 shadow-sm flex items-start justify-between gap-3 overflow-hidden relative">
               <div className="flex flex-col gap-1">
                 <p className="text-sm font-semibold uppercase tracking-[2.2px] text-foreground">Adéquation moyenne</p>
                 <p className="pt-1 text-3xl font-bold text-foreground">
                   {averageScore != null ? `${averageScore}%` : "n/a"}
                 </p>
                 <p className="text-sm text-muted-foreground">Avec les offres</p>
+              </div>
+              <div className="flex-shrink-0 self-end">
+                <img
+                  src="/adequation-illustration.png"
+                  alt=""
+                  className="h-[100px] w-auto object-contain"
+                />
               </div>
             </div>
           </section>

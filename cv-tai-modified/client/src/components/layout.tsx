@@ -66,9 +66,9 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
     <div className="flex h-full w-full flex-col rounded-[40px] bg-[#f7f7f7] pb-6 pt-[33px] shadow-[inset_0_1px_0_rgba(255,255,255,0.96)]">
       <div className="flex items-center justify-between px-6">
         <Link href="/library">
-          <div className="flex cursor-pointer items-center gap-[7px] text-[#6470e8]">
-            <DispatchMark className="h-[15px] w-[15px]" />
-            <span className="text-[22px] font-extrabold leading-none tracking-[-0.04em]">dispatch.</span>
+          <div className="flex cursor-pointer items-center gap-[10px]">
+            <img src="/logo-mark.svg" alt="" className="h-[16px] w-auto" />
+            <img src="/logo-wordmark.svg" alt="dispatch." className="h-[28px] w-auto" />
           </div>
         </Link>
 
