@@ -2395,68 +2395,111 @@ export default function Result() {
       <div className="flex flex-col gap-5 animate-in fade-in duration-400">
 
         {/* ── PAGE HEADER ── */}
-        <div className="flex items-center gap-4" data-testid="section-page-header">
-          <Link href="/history">
-            <button
-              className="flex-shrink-0 w-9 h-9 rounded-[12px] border border-[#0f1729] bg-white flex items-center justify-center hover:bg-[#f8fafc] transition-colors shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]"
-              data-testid="button-back"
-            >
-              <ArrowLeft className="w-4 h-4 text-[#64748b]" />
-            </button>
-          </Link>
-
-          {displayScore != null && (
-            <div className="flex-shrink-0 flex flex-col items-center gap-0.5">
-              <ConfidenceRing value={displayScore} size={68} />
-              <span className="text-[10px] font-semibold uppercase tracking-[0.5px] text-[#65758b]">
-                Pertinence
-              </span>
-            </div>
-          )}
-
-          <div className="flex-1 min-w-0">
-            <h1
-              className="text-xl font-extrabold tracking-tight text-[#1e293b] leading-tight"
-              data-testid="text-page-title"
-            >
-              {pageTitle}
-            </h1>
-            {safeDiagnosis?.primaryDiagnosis && (
-              <p className="text-[13px] text-amber-600 leading-snug mt-0.5">
-                {repairMojibake(safeDiagnosis.primaryDiagnosis)}
-              </p>
-            )}
-            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-              <span
-                className={"inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full font-semibold " + modeMeta.color}
-                data-testid="badge-mode"
+        <div className="flex items-start justify-between gap-4" data-testid="section-page-header">
+          {/* Left: back + score + title */}
+          <div className="flex items-center gap-4 min-w-0 flex-1">
+            <Link href="/history">
+              <button
+                className="flex-shrink-0 w-9 h-9 rounded-[12px] border border-[#0f1729] bg-white flex items-center justify-center hover:bg-[#f8fafc] transition-colors shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]"
+                data-testid="button-back"
               >
-                {modeMeta.icon} {modeMeta.label}
-              </span>
-              {report?.detectedLanguage && (
+                <ArrowLeft className="w-4 h-4 text-[#64748b]" />
+              </button>
+            </Link>
+
+            {displayScore != null && (
+              <div className="flex-shrink-0 flex flex-col items-center gap-0.5">
+                <ConfidenceRing value={displayScore} size={68} />
+                <span className="text-[10px] font-semibold uppercase tracking-[0.5px] text-[#65758b]">
+                  Pertinence
+                </span>
+              </div>
+            )}
+
+            <div className="flex-1 min-w-0">
+              <h1
+                className="text-xl font-extrabold tracking-tight text-[#1e293b] leading-tight"
+                data-testid="text-page-title"
+              >
+                {pageTitle}
+              </h1>
+              {safeDiagnosis?.primaryDiagnosis && (
+                <p className="text-[13px] text-amber-600 leading-snug mt-0.5">
+                  {repairMojibake(safeDiagnosis.primaryDiagnosis)}
+                </p>
+              )}
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 <span
-                  className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold"
-                  data-testid="badge-language"
+                  className={"inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full font-semibold " + modeMeta.color}
+                  data-testid="badge-mode"
                 >
-                  <Globe className="w-3 h-3" /> {repairMojibake(report.detectedLanguage)}
+                  {modeMeta.icon} {modeMeta.label}
                 </span>
-              )}
-              {report?.jobSeniority && (
-                <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-[#f1f5f9] text-[#64748b] font-medium">
-                  {repairMojibake(report.jobSeniority)}
-                </span>
-              )}
-              {jobUrl && (
-                <a
-                  href={jobUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full border border-[#e2e8f0] bg-white text-[#64748b] hover:text-[#1e293b] transition-colors font-medium"
-                  data-testid="link-job-posting"
-                >
-                  <ExternalLink className="w-3 h-3" /> Voir l'annonce
-                </a>
-              )}
+                {report?.detectedLanguage && (
+                  <span
+                    className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold"
+                    data-testid="badge-language"
+                  >
+                    <Globe className="w-3 h-3" /> {repairMojibake(report.detectedLanguage)}
+                  </span>
+                )}
+                {report?.jobSeniority && (
+                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-[#f1f5f9] text-[#64748b] font-medium">
+                    {repairMojibake(report.jobSeniority)}
+                  </span>
+                )}
+                {jobUrl && (
+                  <a
+                    href={jobUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full border border-[#e2e8f0] bg-white text-[#64748b] hover:text-[#1e293b] transition-colors font-medium"
+                    data-testid="link-job-posting"
+                  >
+                    <ExternalLink className="w-3 h-3" /> Voir l'annonce
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Suivi de candidature card aligned with score */}
+          <div className="hidden xl:block flex-shrink-0 w-[384px] rounded-[12px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-[#1e293b] mb-2">Suivi de candidature</p>
+                <ApplicationTrackerSafe
+                  runId={run.id}
+                  initialTracking={(run as any).tracking as AppTracking | null}
+                />
+              </div>
+              <svg
+                width="72"
+                height="80"
+                viewBox="0 0 72 80"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                className="flex-shrink-0 -mt-1 -mr-1"
+              >
+                <path d="M24 19 Q24 7 36 7 Q48 7 48 19" fill="#1C0F00" />
+                <circle cx="36" cy="21" r="12" fill="#FFD4A8" />
+                <circle cx="32" cy="20" r="1.6" fill="#3D1F00" />
+                <circle cx="40" cy="20" r="1.6" fill="#3D1F00" />
+                <path d="M32 26 Q36 29.5 40 26" stroke="#3D1F00" strokeWidth="1.3" strokeLinecap="round" fill="none" />
+                <ellipse cx="24" cy="21" rx="2.5" ry="3.5" fill="#FFD4A8" />
+                <path d="M20 53 Q20 39 36 37 Q52 39 52 53 L52 67 Q36 71 20 67 Z" fill="#2563EB" />
+                <path d="M30 37 L36 42 L42 37" stroke="white" strokeWidth="1.5" fill="none" />
+                <path d="M20 44 Q11 46 9 54" stroke="#FFD4A8" strokeWidth="5" strokeLinecap="round" fill="none" />
+                <path d="M52 44 Q59 38 61 32" stroke="#FFD4A8" strokeWidth="5" strokeLinecap="round" fill="none" />
+                <path d="M59 24 L70 16 L70 40 L59 36 Z" fill="#F59E0B" />
+                <rect x="52" y="28" width="9" height="9" rx="2" fill="#D97706" />
+                <path d="M71 19 C74 22 74 34 71 37" stroke="#FCD34D" strokeWidth="2.2" strokeLinecap="round" fill="none" />
+                <path d="M71 23 C73 25.5 73 30.5 71 33" stroke="#FCD34D" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+                <path d="M29 67 L27 78" stroke="#1D4ED8" strokeWidth="4.5" strokeLinecap="round" />
+                <path d="M43 67 L45 78" stroke="#1D4ED8" strokeWidth="4.5" strokeLinecap="round" />
+                <ellipse cx="26" cy="78.5" rx="5.5" ry="2.5" fill="#1C0F00" />
+                <ellipse cx="46" cy="78.5" rx="5.5" ry="2.5" fill="#1C0F00" />
+              </svg>
             </div>
           </div>
         </div>
@@ -2574,62 +2617,16 @@ export default function Result() {
           {/* ── RIGHT PANEL ── */}
           <div className="space-y-[12px]" data-testid="section-report">
 
-            {/* 1. Suivi de candidature */}
-            <div className="rounded-[12px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-[#1e293b] mb-2">Suivi de candidature</p>
-                  <ApplicationTrackerSafe
-                    runId={run.id}
-                    initialTracking={(run as any).tracking as AppTracking | null}
-                  />
-                </div>
-                {/* Megaphone illustration — ref image 2 */}
-                <svg
-                  width="72"
-                  height="80"
-                  viewBox="0 0 72 80"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="flex-shrink-0 -mt-1 -mr-1"
-                >
-                  {/* Hair */}
-                  <path d="M24 19 Q24 7 36 7 Q48 7 48 19" fill="#1C0F00" />
-                  {/* Head */}
-                  <circle cx="36" cy="21" r="12" fill="#FFD4A8" />
-                  {/* Eyes */}
-                  <circle cx="32" cy="20" r="1.6" fill="#3D1F00" />
-                  <circle cx="40" cy="20" r="1.6" fill="#3D1F00" />
-                  {/* Smile */}
-                  <path d="M32 26 Q36 29.5 40 26" stroke="#3D1F00" strokeWidth="1.3" strokeLinecap="round" fill="none" />
-                  {/* Ear left */}
-                  <ellipse cx="24" cy="21" rx="2.5" ry="3.5" fill="#FFD4A8" />
-                  {/* Body */}
-                  <path d="M20 53 Q20 39 36 37 Q52 39 52 53 L52 67 Q36 71 20 67 Z" fill="#2563EB" />
-                  {/* Collar */}
-                  <path d="M30 37 L36 42 L42 37" stroke="white" strokeWidth="1.5" fill="none" />
-                  {/* Left arm down */}
-                  <path d="M20 44 Q11 46 9 54" stroke="#FFD4A8" strokeWidth="5" strokeLinecap="round" fill="none" />
-                  {/* Right arm up holding megaphone */}
-                  <path d="M52 44 Q59 38 61 32" stroke="#FFD4A8" strokeWidth="5" strokeLinecap="round" fill="none" />
-                  {/* Megaphone body (trapezoid) */}
-                  <path d="M59 24 L70 16 L70 40 L59 36 Z" fill="#F59E0B" />
-                  {/* Megaphone handle */}
-                  <rect x="52" y="28" width="9" height="9" rx="2" fill="#D97706" />
-                  {/* Sound waves */}
-                  <path d="M71 19 C74 22 74 34 71 37" stroke="#FCD34D" strokeWidth="2.2" strokeLinecap="round" fill="none" />
-                  <path d="M71 23 C73 25.5 73 30.5 71 33" stroke="#FCD34D" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-                  {/* Legs */}
-                  <path d="M29 67 L27 78" stroke="#1D4ED8" strokeWidth="4.5" strokeLinecap="round" />
-                  <path d="M43 67 L45 78" stroke="#1D4ED8" strokeWidth="4.5" strokeLinecap="round" />
-                  {/* Shoes */}
-                  <ellipse cx="26" cy="78.5" rx="5.5" ry="2.5" fill="#1C0F00" />
-                  <ellipse cx="46" cy="78.5" rx="5.5" ry="2.5" fill="#1C0F00" />
-                </svg>
-              </div>
+            {/* Suivi visible mobile uniquement (xl = dans le header) */}
+            <div className="xl:hidden rounded-[12px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] p-4">
+              <p className="text-xs font-semibold text-[#1e293b] mb-2">Suivi de candidature</p>
+              <ApplicationTrackerSafe
+                runId={run.id}
+                initialTracking={(run as any).tracking as AppTracking | null}
+              />
             </div>
 
-            {/* 2. Copy + Export */}
+            {/* 1. Copy + Export */}
             <div className="grid grid-cols-2 gap-2">
               <Button
                 variant="default"
