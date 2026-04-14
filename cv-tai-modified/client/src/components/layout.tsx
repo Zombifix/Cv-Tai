@@ -163,7 +163,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 px-4 pb-6 md:px-7 md:pb-8 lg:px-8">{children}</main>
+        <main className="flex-1 px-4 pb-6 md:px-7 md:pb-8 lg:pl-8 lg:pr-[65px]">{children}</main>
       </div>
     </div>
   );
