@@ -58,12 +58,12 @@ const MODE_META = {
   original: {
     label: "Optimise",
     icon: <ShieldCheck className="h-3 w-3" />,
-    className: "bg-primary/10 text-primary",
+    className: "bg-[rgba(31,179,199,0.1)] text-[#1fb3c7]",
   },
   polished: {
     label: "Optimise",
     icon: <Zap className="h-3 w-3" />,
-    className: "bg-primary/10 text-primary",
+    className: "bg-[rgba(31,179,199,0.1)] text-[#1fb3c7]",
   },
   adaptive: {
     label: "Adaptatif",
@@ -124,33 +124,34 @@ function RunCard({ run, index }: { run: any; index: number }) {
   return (
     <Link href={`/results/${run.id}`}>
       <article
-        className="group cursor-pointer rounded-[20px] border border-border/70 bg-card transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-lg hover:shadow-primary/5"
+        className="group cursor-pointer rounded-[28px] border border-[rgba(225,231,239,0.7)] bg-[rgba(255,255,255,0.75)] transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-lg hover:shadow-primary/5"
         data-testid={`card-history-${index}`}
       >
-        <div className="p-5 space-y-4">
-          {/* Date + lang */}
-          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            {formatDate(run.createdAt)}{detectedLang ? ` ${detectedLang}` : ""}
-          </div>
-
-          {/* Title + company */}
-          <div className="space-y-0.5">
-            <h3
-              className="text-lg font-bold leading-tight text-foreground transition-colors group-hover:text-primary"
-              data-testid={`text-history-title-${index}`}
-            >
-              {report?.jobTitle || "Poste inconnu"}
-            </h3>
-            {report?.jobCompany && (
-              <p className="text-sm text-muted-foreground">{report.jobCompany}</p>
-            )}
-          </div>
-
-          {/* Score block */}
+        <div className="p-6 flex flex-col gap-3">
+          {/* Main row: left content + right score card */}
           <div className="flex items-start justify-between gap-4">
-            <div className="space-y-2 flex-1 min-w-0">
+            {/* Left: date, title, company, badges, verdict */}
+            <div className="flex flex-col gap-3 min-w-0 flex-1">
+              {/* Date + lang */}
+              <div className="text-[11px] font-normal uppercase tracking-[1.98px] text-muted-foreground">
+                {formatDate(run.createdAt)}{detectedLang ? ` ${detectedLang}` : ""}
+              </div>
+
+              {/* Title + company */}
+              <div className="space-y-0.5">
+                <h3
+                  className="text-[20px] font-semibold leading-tight tracking-[-0.5px] text-foreground transition-colors group-hover:text-primary"
+                  data-testid={`text-history-title-${index}`}
+                >
+                  {report?.jobTitle || "Poste inconnu"}
+                </h3>
+                {report?.jobCompany && (
+                  <p className="text-sm text-muted-foreground">{report.jobCompany}</p>
+                )}
+              </div>
+
               {/* Badges */}
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-x-2 gap-y-1">
                 <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${modeMeta.className}`}>
                   {modeMeta.icon}
                   {modeMeta.label}
@@ -168,7 +169,7 @@ function RunCard({ run, index }: { run: any; index: number }) {
                   </span>
                 )}
                 {selectedExperiences > 0 && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#f1f5f9] px-2 py-0.5 text-[11px] font-medium text-[#65758b]">
                     <FileText className="h-3 w-3" />
                     {selectedExperiences} experiences
                   </span>
@@ -176,35 +177,35 @@ function RunCard({ run, index }: { run: any; index: number }) {
               </div>
 
               {/* Verdict */}
-              <p className="text-xs leading-5 text-muted-foreground line-clamp-2">{shortVerdict}</p>
+              <p className="text-sm leading-6 text-muted-foreground line-clamp-2">{shortVerdict}</p>
             </div>
 
-            {/* Score column */}
-            <div className="flex-shrink-0 space-y-2 min-w-[120px]">
+            {/* Score card */}
+            <div className="flex-shrink-0 flex flex-col gap-3 bg-[rgba(255,255,255,0.8)] border border-[rgba(225,231,239,0.6)] rounded-[24px] p-[17px] min-w-[176px]">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                <span className="text-[11px] font-semibold uppercase tracking-[1.98px] text-muted-foreground">
                   Pertinence
                 </span>
-                <span className="text-xl font-bold tabular-nums text-foreground">
+                <span className="text-[20px] font-bold tabular-nums text-foreground">
                   {displayScore != null ? `${displayScore}%` : "n/a"}
                 </span>
               </div>
               {displayScore != null && (
-                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                <div className="h-2 overflow-hidden rounded-full bg-[#f1f5f9]">
                   <div
                     className={`h-full rounded-full ${getScoreTone(displayScore)}`}
                     style={{ width: `${Math.max(0, Math.min(100, displayScore))}%` }}
                   />
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
+              <div className="flex gap-3 text-xs">
+                <div className="flex flex-col gap-1">
                   <p className="text-muted-foreground">ATS</p>
                   <p className="font-semibold text-foreground">
                     {typeof atsOptimized === "number" ? `${atsOptimized}%` : "n/a"}
                   </p>
                 </div>
-                <div>
+                <div className="flex flex-col gap-1">
                   <p className="text-muted-foreground">Document</p>
                   <p className="font-semibold text-foreground">{badgeMeta?.label || "—"}</p>
                 </div>
@@ -212,10 +213,10 @@ function RunCard({ run, index }: { run: any; index: number }) {
             </div>
           </div>
 
-          {/* CTA */}
-          <div className="flex items-center gap-1.5 text-xs font-medium text-primary border-t border-border/50 pt-3">
+          {/* CTA - right aligned */}
+          <div className="flex items-center justify-end gap-1.5 text-sm font-medium text-[#2d4cd5]">
             Voir le CV adapté
-            <ArrowRight className="h-3.5 w-3.5" />
+            <ArrowRight className="h-4 w-4" />
           </div>
         </div>
       </article>
@@ -262,7 +263,7 @@ export default function History() {
             <h1 className="text-4xl font-extrabold tracking-tight text-foreground">
               Derniers CV générés
             </h1>
-            <p className="text-base text-muted-foreground">
+            <p className="text-xl text-muted-foreground">
               Retrouve l'historique de tes CV générés et suis tes candidatures.
             </p>
           </div>
@@ -278,39 +279,31 @@ export default function History() {
         {/* Stats */}
         {!isLoading && !error && runs && runs.length > 0 && (
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-[20px] border border-border/70 bg-card p-5 shadow-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Runs</p>
-              <p className="mt-2 text-3xl font-bold text-foreground">{runs.length}</p>
-              <p className="mt-1 text-xs text-muted-foreground">CV générés et disponibles dans l'historique.</p>
+            <div className="rounded-[24px] border border-[rgba(225,231,239,0.7)] bg-[rgba(255,255,255,0.75)] px-[21px] pt-5 pb-9 shadow-sm flex flex-col gap-1">
+              <p className="text-sm font-semibold uppercase tracking-[2.2px] text-muted-foreground">Runs</p>
+              <p className="pt-1 text-3xl font-bold text-foreground">{runs.length}</p>
+              <p className="text-sm text-muted-foreground">CV générés et disponibles dans l'historique.</p>
             </div>
 
-            <div className="rounded-[20px] border border-border/70 bg-card p-5 shadow-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">CV envoyés</p>
-              <p className="mt-2 text-3xl font-bold text-foreground">{appliedCount}</p>
-              <p className="mt-1 text-xs text-muted-foreground">CV envoyés à des offres.</p>
+            <div className="rounded-[24px] border border-[rgba(225,231,239,0.7)] bg-[rgba(255,255,255,0.75)] px-[21px] pt-5 pb-5 shadow-sm flex flex-col gap-1">
+              <p className="text-sm font-semibold uppercase tracking-[2.2px] text-muted-foreground">CV envoyés</p>
+              <p className="pt-1 text-3xl font-bold text-foreground">{appliedCount}</p>
+              <p className="text-sm text-muted-foreground">CV envoyés à des offres.</p>
             </div>
 
-            <div className="rounded-[20px] border border-border/70 bg-card p-5 shadow-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Entretiens obtenus</p>
-              <p className="mt-2 text-3xl font-bold text-foreground">{interviewCount}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Candidatures ayant donné lieu à un entretien.</p>
+            <div className="rounded-[24px] border border-[rgba(225,231,239,0.7)] bg-[rgba(255,255,255,0.75)] px-[21px] pt-5 pb-9 shadow-sm flex flex-col gap-1">
+              <p className="text-sm font-semibold uppercase tracking-[2.2px] text-muted-foreground">Entretiens obtenus</p>
+              <p className="pt-1 text-3xl font-bold text-foreground">{interviewCount}</p>
+              <p className="text-sm text-muted-foreground">Candidatures ayant donné lieu à un entretien.</p>
             </div>
 
-            <div className="rounded-[20px] border border-primary/20 bg-gradient-to-b from-primary/[0.08] via-background to-background p-5 shadow-sm flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Adéquation moyenne</p>
-                <p className="mt-2 text-3xl font-bold text-foreground">
+            <div className="rounded-[24px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] backdrop-blur-sm px-5 pt-[19px] pb-5 shadow-sm flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-semibold uppercase tracking-[2.2px] text-foreground">Adéquation moyenne</p>
+                <p className="pt-1 text-3xl font-bold text-foreground">
                   {averageScore != null ? `${averageScore}%` : "n/a"}
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">Avec les offres</p>
-              </div>
-              <div className="opacity-50 flex-shrink-0 mt-1">
-                <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="8" y="20" width="6" height="20" rx="2" fill="currentColor" className="text-primary" />
-                  <rect x="18" y="14" width="6" height="26" rx="2" fill="currentColor" className="text-primary" />
-                  <rect x="28" y="8" width="6" height="32" rx="2" fill="currentColor" className="text-primary" />
-                  <rect x="38" y="16" width="6" height="24" rx="2" fill="currentColor" className="text-primary" />
-                </svg>
+                <p className="text-sm text-muted-foreground">Avec les offres</p>
               </div>
             </div>
           </section>

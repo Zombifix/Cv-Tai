@@ -24,7 +24,9 @@
       "Bash(python3 /dev/stdin)",
       "Bash(node patch_result.mjs)",
       "Bash(rm patch_result.mjs)",
-      "WebFetch(domain:www.figma.com)"
+      "WebFetch(domain:www.figma.com)",
+      "mcp__figma__get_design_context",
+      "mcp__figma__get_screenshot"
     ]
   }
 }
