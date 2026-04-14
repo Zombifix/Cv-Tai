@@ -2389,8 +2389,7 @@ export default function Result() {
       <div className="flex flex-col gap-5 animate-in fade-in duration-400">
 
         {/* ── PAGE HEADER ── */}
-        <div className="flex items-start justify-between gap-4" data-testid="section-page-header">
-          {/* Left: back + score + title */}
+        <div className="flex items-center gap-4" data-testid="section-page-header">
           <div className="flex items-center gap-4 min-w-0 flex-1">
             <Link href="/history">
               <button
@@ -2454,46 +2453,6 @@ export default function Result() {
                   </a>
                 )}
               </div>
-            </div>
-          </div>
-
-          {/* Right: Suivi de candidature card aligned with score */}
-          <div className="hidden xl:flex flex-shrink-0 w-[384px] rounded-[12px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] p-4 gap-3 items-start">
-            {/* Illustration à gauche */}
-            <svg
-                width="72"
-                height="80"
-                viewBox="0 0 72 80"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                className="flex-shrink-0 -mt-1 -ml-1"
-              >
-                <path d="M24 19 Q24 7 36 7 Q48 7 48 19" fill="#1C0F00" />
-                <circle cx="36" cy="21" r="12" fill="#FFD4A8" />
-                <circle cx="32" cy="20" r="1.6" fill="#3D1F00" />
-                <circle cx="40" cy="20" r="1.6" fill="#3D1F00" />
-                <path d="M32 26 Q36 29.5 40 26" stroke="#3D1F00" strokeWidth="1.3" strokeLinecap="round" fill="none" />
-                <ellipse cx="24" cy="21" rx="2.5" ry="3.5" fill="#FFD4A8" />
-                <path d="M20 53 Q20 39 36 37 Q52 39 52 53 L52 67 Q36 71 20 67 Z" fill="#2563EB" />
-                <path d="M30 37 L36 42 L42 37" stroke="white" strokeWidth="1.5" fill="none" />
-                <path d="M20 44 Q11 46 9 54" stroke="#FFD4A8" strokeWidth="5" strokeLinecap="round" fill="none" />
-                <path d="M52 44 Q59 38 61 32" stroke="#FFD4A8" strokeWidth="5" strokeLinecap="round" fill="none" />
-                <path d="M59 24 L70 16 L70 40 L59 36 Z" fill="#F59E0B" />
-                <rect x="52" y="28" width="9" height="9" rx="2" fill="#D97706" />
-                <path d="M71 19 C74 22 74 34 71 37" stroke="#FCD34D" strokeWidth="2.2" strokeLinecap="round" fill="none" />
-                <path d="M71 23 C73 25.5 73 30.5 71 33" stroke="#FCD34D" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-                <path d="M29 67 L27 78" stroke="#1D4ED8" strokeWidth="4.5" strokeLinecap="round" />
-                <path d="M43 67 L45 78" stroke="#1D4ED8" strokeWidth="4.5" strokeLinecap="round" />
-                <ellipse cx="26" cy="78.5" rx="5.5" ry="2.5" fill="#1C0F00" />
-                <ellipse cx="46" cy="78.5" rx="5.5" ry="2.5" fill="#1C0F00" />
-              </svg>
-            {/* Contenu à droite de l'illustration */}
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-[#1e293b] mb-2">Suivi de candidature</p>
-              <ApplicationTrackerSafe
-                runId={run.id}
-                initialTracking={(run as any).tracking as AppTracking | null}
-              />
             </div>
           </div>
         </div>
@@ -2611,12 +2570,19 @@ export default function Result() {
           {/* ── RIGHT PANEL ── */}
           <div className="space-y-[12px]" data-testid="section-report">
 
-            {/* Suivi visible mobile uniquement (xl = dans le header) */}
-            <div className="xl:hidden rounded-[12px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] p-4">
-              <p className="text-xs font-semibold text-[#1e293b] mb-2">Suivi de candidature</p>
-              <ApplicationTrackerSafe
-                runId={run.id}
-                initialTracking={(run as any).tracking as AppTracking | null}
+            {/* Suivi de candidature */}
+            <div className="rounded-[12px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] p-4 flex items-center justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-[#0f1729] mb-0.5">Suivi de candidature</p>
+                <ApplicationTrackerSafe
+                  runId={run.id}
+                  initialTracking={(run as any).tracking as AppTracking | null}
+                />
+              </div>
+              <img
+                src="/suivi-illustration.png"
+                alt=""
+                className="flex-shrink-0 h-[80px] w-auto object-contain pointer-events-none"
               />
             </div>
 
