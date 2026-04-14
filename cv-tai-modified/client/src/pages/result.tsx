@@ -2389,7 +2389,8 @@ export default function Result() {
       <div className="flex flex-col gap-5 animate-in fade-in duration-400">
 
         {/* ── PAGE HEADER ── */}
-        <div className="flex items-center gap-4" data-testid="section-page-header">
+        <div className="flex items-start justify-between gap-4" data-testid="section-page-header">
+          {/* Gauche : back + score + titre */}
           <div className="flex items-center gap-4 min-w-0 flex-1">
             <Link href="/history">
               <button
@@ -2454,6 +2455,22 @@ export default function Result() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Droite : Suivi de candidature — aligné avec le titre, largeur = col sidebar */}
+          <div className="hidden xl:flex flex-shrink-0 w-[384px] rounded-[12px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] p-4 items-center justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold text-[#0f1729] mb-0.5">Suivi de candidature</p>
+              <ApplicationTrackerSafe
+                runId={run.id}
+                initialTracking={(run as any).tracking as AppTracking | null}
+              />
+            </div>
+            <img
+              src="/suivi-illustration.png"
+              alt=""
+              className="flex-shrink-0 h-[80px] w-auto object-contain pointer-events-none"
+            />
           </div>
         </div>
 
@@ -2570,8 +2587,8 @@ export default function Result() {
           {/* ── RIGHT PANEL ── */}
           <div className="space-y-[12px] xl:sticky xl:top-6 xl:self-start" data-testid="section-report">
 
-            {/* Suivi de candidature */}
-            <div className="rounded-[12px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] p-4 flex items-center justify-between gap-3">
+            {/* Suivi — mobile uniquement (desktop = header) */}
+            <div className="xl:hidden rounded-[12px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] p-4 flex items-center justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-semibold text-[#0f1729] mb-0.5">Suivi de candidature</p>
                 <ApplicationTrackerSafe
