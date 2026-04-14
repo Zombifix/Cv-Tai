@@ -64,7 +64,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
 
   return (
     <div className="flex h-full w-full flex-col rounded-[40px] bg-[#f7f7f7] pb-6 pt-[33px] shadow-[inset_0_1px_0_rgba(255,255,255,0.96)]">
-      <div className="flex items-center justify-between px-6">
+      <div className="relative flex items-center justify-center px-6">
         <Link href="/library">
           <div className="flex cursor-pointer items-center gap-[10px]">
             <img src="/logo-mark.svg" alt="" className="h-[16px] w-auto" />
@@ -76,7 +76,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-[#627391] hover:bg-[#dfe4ec] lg:hidden"
+            className="absolute right-4 rounded-lg p-1 text-[#627391] hover:bg-[#dfe4ec] lg:hidden"
           >
             <X className="h-5 w-5" />
           </button>
