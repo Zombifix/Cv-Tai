@@ -132,7 +132,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center px-4 md:px-7 lg:px-8">
+        <header className="flex items-center px-4 pt-[20px] pb-[16px] md:px-7 lg:pt-[30px] lg:pb-[20px] lg:pr-[65px] lg:pl-8">
           <button
             type="button"
             className="rounded-xl p-2 text-[#65758b] hover:bg-[#e7edf5] lg:hidden"
