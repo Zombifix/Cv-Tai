@@ -2568,7 +2568,7 @@ export default function Result() {
           </div>
 
           {/* ── RIGHT PANEL ── */}
-          <div className="space-y-[12px]" data-testid="section-report">
+          <div className="space-y-[12px] xl:sticky xl:top-6 xl:self-start" data-testid="section-report">
 
             {/* Suivi de candidature */}
             <div className="rounded-[12px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] p-4 flex items-center justify-between gap-3">
