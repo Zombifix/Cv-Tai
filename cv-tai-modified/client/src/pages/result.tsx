@@ -2136,74 +2136,68 @@ function ApplicationTrackerSafe({ runId, initialTracking }: { runId: string; ini
   const today = new Date().toISOString().split("T")[0];
 
   return (
-    <Card className="border-border/60 shadow-none" data-testid="section-application-tracker">
-      <CardContent className="p-4 space-y-3">
-        <h4 className="text-sm font-semibold flex items-center gap-2 text-foreground">
-          <Send className="w-3.5 h-3.5 text-muted-foreground" /> Suivi de candidature
-        </h4>
-
-        {!tracking.applied ? (
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">Tu as postule avec ce CV ?</p>
-            <Button size="sm" variant="outline" className="w-full gap-2 text-xs" onClick={() => save({ applied: true, appliedAt: today })}>
-              <Check className="w-3.5 h-3.5" /> J'ai postule
-            </Button>
+    <div className="space-y-3" data-testid="section-application-tracker">
+      {!tracking.applied ? (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Tu as postule avec ce CV ?</p>
+          <Button size="sm" variant="outline" className="w-full gap-2 text-xs" onClick={() => save({ applied: true, appliedAt: today })}>
+            <Check className="w-3.5 h-3.5" /> J'ai postule
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-border/40">
+            <span className="text-xs font-medium text-green-600 dark:text-green-400 flex items-center gap-1">
+              <Check className="w-3 h-3" /> Postule
+            </span>
+            <input
+              type="date"
+              value={tracking.appliedAt}
+              onChange={e => save({ appliedAt: e.target.value })}
+              className="text-xs border-b border-dashed border-muted-foreground/30 bg-transparent outline-none text-muted-foreground cursor-pointer"
+            />
           </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-border/40">
-              <span className="text-xs font-medium text-green-600 dark:text-green-400 flex items-center gap-1">
-                <Check className="w-3 h-3" /> Postule
+
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Reponse recue</p>
+            <div className="grid grid-cols-3 gap-1">
+              {STATUS_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => save({ status: opt.value })}
+                  className={`text-[11px] px-1 py-1.5 rounded-md border transition-all font-medium ${
+                    tracking.status === opt.value ? opt.activeClass : "border-border/60 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {(tracking.status === "interview" || tracking.status === "rejected") && (
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Calendar className="w-3 h-3" /> Date reponse
               </span>
               <input
                 type="date"
-                value={tracking.appliedAt}
-                onChange={e => save({ appliedAt: e.target.value })}
+                value={tracking.responseAt}
+                onChange={e => save({ responseAt: e.target.value })}
                 className="text-xs border-b border-dashed border-muted-foreground/30 bg-transparent outline-none text-muted-foreground cursor-pointer"
               />
             </div>
+          )}
 
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Reponse recue</p>
-              <div className="grid grid-cols-3 gap-1">
-                {STATUS_OPTIONS.map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => save({ status: opt.value })}
-                    className={`text-[11px] px-1 py-1.5 rounded-md border transition-all font-medium ${
-                      tracking.status === opt.value ? opt.activeClass : "border-border/60 text-muted-foreground hover:border-primary/40 hover:text-foreground"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {(tracking.status === "interview" || tracking.status === "rejected") && (
-              <div className="flex items-center justify-between gap-2 pt-1">
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Calendar className="w-3 h-3" /> Date reponse
-                </span>
-                <input
-                  type="date"
-                  value={tracking.responseAt}
-                  onChange={e => save({ responseAt: e.target.value })}
-                  className="text-xs border-b border-dashed border-muted-foreground/30 bg-transparent outline-none text-muted-foreground cursor-pointer"
-                />
-              </div>
-            )}
-
-            <button
-              onClick={() => save(TRACKING_DEFAULT)}
-              className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors block mt-1"
-            >
-              Reinitialiser
-            </button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          <button
+            onClick={() => save(TRACKING_DEFAULT)}
+            className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors block mt-1"
+          >
+            Reinitialiser
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2464,22 +2458,15 @@ export default function Result() {
           </div>
 
           {/* Right: Suivi de candidature card aligned with score */}
-          <div className="hidden xl:block flex-shrink-0 w-[384px] rounded-[12px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] p-4">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-[#1e293b] mb-2">Suivi de candidature</p>
-                <ApplicationTrackerSafe
-                  runId={run.id}
-                  initialTracking={(run as any).tracking as AppTracking | null}
-                />
-              </div>
-              <svg
+          <div className="hidden xl:flex flex-shrink-0 w-[384px] rounded-[12px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] p-4 gap-3 items-start">
+            {/* Illustration à gauche */}
+            <svg
                 width="72"
                 height="80"
                 viewBox="0 0 72 80"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
-                className="flex-shrink-0 -mt-1 -mr-1"
+                className="flex-shrink-0 -mt-1 -ml-1"
               >
                 <path d="M24 19 Q24 7 36 7 Q48 7 48 19" fill="#1C0F00" />
                 <circle cx="36" cy="21" r="12" fill="#FFD4A8" />
@@ -2500,6 +2487,13 @@ export default function Result() {
                 <ellipse cx="26" cy="78.5" rx="5.5" ry="2.5" fill="#1C0F00" />
                 <ellipse cx="46" cy="78.5" rx="5.5" ry="2.5" fill="#1C0F00" />
               </svg>
+            {/* Contenu à droite de l'illustration */}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-[#1e293b] mb-2">Suivi de candidature</p>
+              <ApplicationTrackerSafe
+                runId={run.id}
+                initialTracking={(run as any).tracking as AppTracking | null}
+              />
             </div>
           </div>
         </div>
