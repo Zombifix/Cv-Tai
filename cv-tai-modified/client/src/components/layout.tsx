@@ -47,8 +47,8 @@ function NavItem({ item, active }: { item: NavItemDef; active: boolean }) {
         className={[
           "flex h-8 items-center gap-3 rounded-[12px] px-3 transition-colors duration-150",
           active
-            ? "border border-white/60 bg-[#efefef] text-[#18181b] shadow-[0_2px_4px_-2px_rgba(100,103,242,0.2)]"
-            : "text-[#65758b] hover:bg-[#efefef]",
+            ? "bg-[#4e5bf2] text-white"
+            : "text-[#a8b3c8] hover:bg-[#363745]",
         ].join(" ")}
       >
         <item.icon className="h-[18px] w-[18px] flex-shrink-0" />
@@ -63,12 +63,12 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
   const logout = useLogout();
 
   return (
-    <div className="flex h-full w-full flex-col rounded-[40px] bg-[#f7f7f7] pb-6 pt-[33px] shadow-[inset_0_1px_0_rgba(255,255,255,0.96)]">
+    <div className="flex h-full w-full flex-col bg-[#2a2b35] pb-6 pt-[33px]">
       <div className="relative flex items-center justify-center px-6">
         <Link href="/library">
           <div className="flex cursor-pointer items-center gap-[10px]">
-            <img src="/logo-mark.svg" alt="" className="h-[16px] w-auto" />
-            <img src="/logo-wordmark.svg" alt="dispatch." className="h-[28px] w-auto" />
+            <img src="/logo-mark.svg" alt="" className="h-[16px] w-auto brightness-0 invert" />
+            <img src="/logo-wordmark.svg" alt="dispatch." className="h-[28px] w-auto brightness-0 invert" />
           </div>
         </Link>
 
@@ -85,7 +85,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
 
       <div className="mt-8 px-2">
         <div className="px-4 pb-2 pt-1">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#65758b]">Navigation</p>
+          <p className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#8892a4]">Navigation</p>
         </div>
         <nav className="space-y-2 px-2">
           {NAV_ITEMS.map((item) => (
@@ -101,16 +101,16 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
       <button
         type="button"
         onClick={() => logout.mutate()}
-        className="mt-auto mx-2 flex h-10 items-center justify-center gap-3 rounded-[12px] text-[14px] font-normal text-[#65758b] transition-colors hover:bg-[#efefef]"
+        className="mt-auto mx-2 flex h-10 items-center justify-center gap-3 rounded-[12px] text-[14px] font-normal text-red-400 transition-colors hover:bg-red-500/20"
       >
         <LogOut className="h-5 w-5" />
-        <span className="leading-none">Deconnexion</span>
+        <span className="leading-none">Déconnexion</span>
       </button>
     </div>
   );
 }
 
-export function Layout({ children }: { children: React.ReactNode }) {
+export function Layout({ children, pageLabel }: { children: React.ReactNode; pageLabel?: string }) {
   const { data: user } = useCurrentUser();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -118,7 +118,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-white">
-      <aside className="hidden w-[288px] flex-shrink-0 p-4 lg:block">
+      <aside className="hidden w-[288px] flex-shrink-0 lg:block">
         <Sidebar />
       </aside>
 
@@ -132,6 +132,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {pageLabel && (
+          <div className="w-full bg-[#1a1a1a] px-8 py-2.5">
+            <span className="text-[11px] font-semibold uppercase tracking-[2px] text-[#8892a4]">
+              {pageLabel}
+            </span>
+          </div>
+        )}
         <header className="flex items-center px-4 pt-[20px] pb-[16px] md:px-7 lg:pt-[30px] lg:pb-[20px] lg:pr-[65px] lg:pl-8">
           <button
             type="button"
@@ -145,7 +152,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-3 rounded-[30px] bg-[#f7f7f7] px-4 py-2">
               <div className="h-[44px] w-[44px] flex-shrink-0 overflow-hidden rounded-full">
                 <img
-                  src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(avatarSeed)}&backgroundColor=e5e7eb`}
+                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(avatarSeed)}`}
                   alt="avatar"
                   className="h-full w-full object-cover"
                   onError={(event) => {

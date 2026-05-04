@@ -251,7 +251,7 @@ export default function History() {
   const pagedRuns = runs ? runs.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE) : [];
 
   return (
-    <Layout>
+    <Layout pageLabel="Historique">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 animate-in fade-in duration-500">
         {/* Page header */}
         <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -285,17 +285,10 @@ export default function History() {
               <p className="text-sm text-muted-foreground">CV générés et disponibles dans l'historique.</p>
             </div>
 
-            <div className="rounded-[24px] border border-[rgba(225,231,239,0.7)] bg-[rgba(255,255,255,0.75)] px-[21px] pt-[19px] pb-5 shadow-sm relative overflow-hidden">
-              <div className="flex flex-col gap-1">
-                <p className="text-sm font-semibold uppercase tracking-[2.2px] text-muted-foreground">CV envoyés</p>
-                <p className="pt-1 text-3xl font-bold text-foreground">{appliedCount}</p>
-                <p className="text-sm text-muted-foreground">CV envoyés à des offres.</p>
-              </div>
-              <img
-                src="/suivi-illustration.png"
-                alt=""
-                className="absolute right-0 bottom-0 h-[110px] w-auto object-contain pointer-events-none"
-              />
+            <div className="rounded-[24px] border border-[rgba(225,231,239,0.7)] bg-[rgba(255,255,255,0.75)] px-[21px] pt-5 pb-9 shadow-sm flex flex-col gap-1">
+              <p className="text-sm font-semibold uppercase tracking-[2.2px] text-muted-foreground">CV envoyés</p>
+              <p className="pt-1 text-3xl font-bold text-foreground">{appliedCount}</p>
+              <p className="text-sm text-muted-foreground">CV envoyés à des offres.</p>
             </div>
 
             <div className="rounded-[24px] border border-[rgba(225,231,239,0.7)] bg-[rgba(255,255,255,0.75)] px-[21px] pt-5 pb-9 shadow-sm flex flex-col gap-1">
@@ -304,19 +297,12 @@ export default function History() {
               <p className="text-sm text-muted-foreground">Candidatures ayant donné lieu à un entretien.</p>
             </div>
 
-            <div className="rounded-[24px] border border-[rgba(225,231,239,0.7)] bg-[rgba(241,245,249,0.25)] backdrop-blur-sm px-5 pt-[19px] pb-5 shadow-sm relative overflow-hidden">
-              <div className="flex flex-col gap-1">
-                <p className="text-sm font-semibold uppercase tracking-[2.2px] text-foreground">Adéquation moyenne</p>
-                <p className="pt-1 text-3xl font-bold text-foreground">
-                  {averageScore != null ? `${averageScore}%` : "n/a"}
-                </p>
-                <p className="text-sm text-muted-foreground">Avec les offres</p>
-              </div>
-              <img
-                src="/adequation-illustration.png"
-                alt=""
-                className="absolute right-0 bottom-0 h-[110px] w-auto object-contain pointer-events-none"
-              />
+            <div className="rounded-[24px] border border-[rgba(225,231,239,0.7)] bg-[rgba(255,255,255,0.75)] px-[21px] pt-5 pb-9 shadow-sm flex flex-col gap-1">
+              <p className="text-sm font-semibold uppercase tracking-[2.2px] text-muted-foreground">Adéquation moyenne</p>
+              <p className="pt-1 text-3xl font-bold text-foreground">
+                {averageScore != null ? `${averageScore}%` : "n/a"}
+              </p>
+              <p className="text-sm text-muted-foreground">Avec les offres</p>
             </div>
           </section>
         )}
@@ -370,33 +356,31 @@ export default function History() {
               ))}
             </div>
 
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl h-9 px-4"
-                  disabled={page === 0}
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Precedent
-                </Button>
-                <span className="rounded-full border border-border/70 bg-background px-4 py-1.5 text-sm text-muted-foreground tabular-nums">
-                  {page + 1} / {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl h-9 px-4"
-                  disabled={page >= totalPages - 1}
-                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                >
-                  Suivant
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
-            )}
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl h-9 px-4"
+                disabled={page === 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Précédent
+              </Button>
+              <span className="rounded-full border border-border/70 bg-background px-4 py-1.5 text-sm text-muted-foreground tabular-nums">
+                {page + 1} / {totalPages || 1}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl h-9 px-4"
+                disabled={page >= totalPages - 1}
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              >
+                Suivant
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
           </section>
         )}
       </div>
