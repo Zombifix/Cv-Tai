@@ -55,6 +55,7 @@
 - Le calcul d'integrite texte est maintenant volontairement plus dur : surveiller toute sur-penalisation si seul le debug est corrompu mais pas le CV final
 - Auth toujours non multi-tenant (`userId` absent des tables coeur)
 - Railway peut encore diverger local/prod sur cookies et version Node
+- Railway build command corrigee dans `railway.toml` pour installer les optional deps Linux (`npm ci --include=optional`)
 - Le lancement local du serveur reste bloque sans `DATABASE_URL`, et `npm run dev` garde une syntaxe d'env POSIX non portable sur Windows
 
 ## Do not repeat blindly

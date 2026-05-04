@@ -1,5 +1,15 @@
 # Last Changes
 
+## 2026-05-04
+
+### Railway build fix
+- Quoi : correction de la commande de build Railway pour installer les dependances optionnelles Linux requises par `esbuild`
+- Fichiers : `railway.toml`, `.ai/TODO.md`, `.ai/LAST_CHANGES.md`
+- Impact :
+  - Railway n'utilise plus `npm install && npm run build`
+  - le build passe par `npm ci --include=optional && npm run build` pour recuperer `@esbuild/linux-x64`
+- Verification : non relancee localement
+
 ## 2026-04-13
 
 ### Tailoring Figma parity pass
